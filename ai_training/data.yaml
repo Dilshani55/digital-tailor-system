@@ -1,13 +1,16 @@
-path: ./dataset
-train: images/train
-val: images/val
-test: images/test
+# YOLOv8 dataset configuration
+# Digital Tailor System — Garment Detection
 
+path: ./dataset          # root dataset directory
+train: images/train      # training images
+val:   images/val        # validation images
+test:  images/test       # test images (optional)
+
+# Number of classes
+nc: 3
+
+# Class names — must match CATEGORY_MAP in convert_dataset.py
 names:
-  0: neckline_round
-  1: neckline_v
-  2: sleeve_short
-  3: sleeve_long
-  4: sleeve_sleeveless
-  5: dart_bust
-  6: dart_waist
+  0: t-shirt
+  1: blouse
+  2: crop-top
