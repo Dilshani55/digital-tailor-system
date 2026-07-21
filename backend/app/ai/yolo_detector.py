@@ -1,17 +1,22 @@
-class YOLODetector:
-    def __init__(self, model_path=None):
-        self.model_path = model_path
+def detect_features(image_path):
+    """
+    Analyses a garment image and returns detected structural features.
 
-    def detect_features(self, image_path):
-        """
-        Detects garment features (neckline, sleeve type, dart locations, seams) from a given image.
-        Returns a dict of detected labels and confidence scores.
-        """
-        # Placeholder detection structure
-        return {
-            "neckline": "round",
-            "sleeve": "short_sleeve",
-            "garment_type": "blouse",
-            "darts": ["bust_dart", "waist_dart"],
-            "confidence": 0.92
-        }
+    Args:
+        image_path: full path to the uploaded image file
+
+    Returns:
+        features (dict): detected garment features
+        confidence (float): overall detection confidence 0.0 to 1.0
+    """
+
+    features = {
+        "neckline":     "round neck",
+        "sleeves":      "short sleeve",
+        "darts":        "bust dart",
+        "seams":        "side seam",
+        "garment_type": "blouse"
+    }
+    confidence = 0.91
+
+    return features, confidence

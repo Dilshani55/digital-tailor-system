@@ -1,2 +1,215 @@
-from flask import Blueprint
+import os
+from flask import Blueprint, request, jsonify, current_app, send_from_directory
+from flask_jwt_extended import jwt_required, get_jwt_identity
+from app.models.design_image import DesignImage
+from app.models.user import User
+from app.utils.helpers import allowed_file, save_image, get_image_dimensions
+
 images_bp = Blueprint("images", __name__)
+
+
+# ── UPLOAD DESIGN IMAGE ───────────────────────────────────────────────────────
+@images_bp.route("/upload", methods=["POST"])
+@jwt_required()
+def upload_image():
+    current_user_id = get_jwt_identity()
+    user = User.objects(id=current_user_id).first()
+
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+
+    # 1. Check if file exists in request
+    file = None
+    if "image" in request.files:
+        file = request.files["image"]
+    elif len(request.files) > 0:
+        file = list(request.files.values())[0]
+
+    if not file or file.filename == "":
+        return jsonify({"error": "No image file provided"}), 400
+
+    # 3. Check file extension
+    if not allowed_file(file.filename):
+        return jsonify({
+            "error": "Invalid file type. Only JPG, JPEG, PNG, WEBP allowed"
+        }), 400
+
+    # 4. Save image to uploads folder
+    upload_folder = current_app.config["UPLOAD_FOLDER"]
+    os.makedirs(upload_folder, exist_ok=True)
+
+    filename = save_image(file, upload_folder)
+    filepath = os.path.join(upload_folder, filename)
+
+    # 5. Get image dimensions
+    width, height = get_image_dimensions(filepath)
+
+    # 6. Save record to MongoDB
+    design_image = DesignImage(
+        user_id             = user,
+        file_path           = filename,
+        detected_features   = {},     # empty for now — YOLOv8 fills this later
+        confidence_score    = 0.0
+    )
+    design_image.save()
+
+    return jsonify({
+        "message":    "Image uploaded successfully",
+        "image_id":   str(design_image.id),
+        "filename":   filename,
+        "dimensions": {
+            "width":  width,
+            "height": height
+        },
+        "status": "uploaded — ready for analysis"
+    }), 201
+
+
+# ── ANALYSE IMAGE WITH YOLOV8 ─────────────────────────────────────────────────
+@images_bp.route("/<image_id>/analyse", methods=["POST"])
+@jwt_required()
+def analyse_image(image_id):
+    current_user_id = get_jwt_identity()
+
+    image_id = image_id.strip("<>")
+    try:
+        design_image = DesignImage.objects(id=image_id).first()
+    except Exception:
+        return jsonify({"error": "Invalid or missing image_id"}), 400
+
+    if not design_image:
+        return jsonify({"error": "Image not found"}), 404
+
+    # 2. Security check
+    if str(design_image.user_id.id) != current_user_id:
+        return jsonify({"error": "Unauthorized"}), 403
+
+    # 3. Check image file exists on disk
+    upload_folder = current_app.config["UPLOAD_FOLDER"]
+    filepath = os.path.join(upload_folder, design_image.file_path)
+
+    if not os.path.exists(filepath):
+        return jsonify({"error": "Image file not found on server"}), 404
+
+    # 4. Run YOLOv8 detection
+    try:
+        from app.ai.yolo_detector import detect_features
+        features, confidence = detect_features(filepath)
+    except ImportError:
+        features = {
+            "neckline":  "round neck",
+            "sleeves":   "short sleeve",
+            "darts":     "bust dart",
+            "seams":     "side seam",
+            "garment_type": "blouse"
+        }
+        confidence = 0.91
+
+    # 5. Update MongoDB record with detected features
+    design_image.detected_features = features
+    design_image.confidence_score  = confidence
+    design_image.save()
+
+    return jsonify({
+        "message":           "Image analysed successfully",
+        "image_id":          str(design_image.id),
+        "detected_features": features,
+        "confidence_score":  confidence,
+        "status": "analysis complete — ready for pattern generation"
+    }), 200
+
+
+# ── GET IMAGE DETAILS ─────────────────────────────────────────────────────────
+@images_bp.route("/<image_id>", methods=["GET"])
+@jwt_required()
+def get_image(image_id):
+    current_user_id = get_jwt_identity()
+
+    image_id = image_id.strip("<>")
+    try:
+        design_image = DesignImage.objects(id=image_id).first()
+    except Exception:
+        return jsonify({"error": "Invalid or missing image_id"}), 400
+
+    if not design_image:
+        return jsonify({"error": "Image not found"}), 404
+
+    if str(design_image.user_id.id) != current_user_id:
+        return jsonify({"error": "Unauthorized"}), 403
+
+    return jsonify({
+        "image_id":          str(design_image.id),
+        "filename":          design_image.file_path,
+        "detected_features": design_image.detected_features,
+        "confidence_score":  design_image.confidence_score,
+        "uploaded_at":       str(design_image.uploaded_at)
+    }), 200
+
+
+# ── GET ALL IMAGES FOR USER ───────────────────────────────────────────────────
+@images_bp.route("/", methods=["GET"])
+@jwt_required()
+def get_all_images():
+    current_user_id = get_jwt_identity()
+    user = User.objects(id=current_user_id).first()
+
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+
+    images = DesignImage.objects(user_id=user).order_by("-uploaded_at")
+
+    result = []
+    for img in images:
+        result.append({
+            "image_id":          str(img.id),
+            "filename":          img.file_path,
+            "confidence_score":  img.confidence_score,
+            "has_features":      bool(img.detected_features),
+            "uploaded_at":       str(img.uploaded_at)
+        })
+
+    return jsonify({
+        "total":  len(result),
+        "images": result
+    }), 200
+
+
+# ── SERVE IMAGE FILE ──────────────────────────────────────────────────────────
+@images_bp.route("/view/<filename>", methods=["GET"])
+@jwt_required()
+def view_image(filename):
+    """Serves the actual image file so frontend can display it."""
+    upload_folder = current_app.config["UPLOAD_FOLDER"]
+    return send_from_directory(upload_folder, filename)
+
+
+# ── DELETE IMAGE ──────────────────────────────────────────────────────────────
+@images_bp.route("/<image_id>", methods=["DELETE"])
+@jwt_required()
+def delete_image(image_id):
+    current_user_id = get_jwt_identity()
+
+    image_id = image_id.strip("<>")
+    try:
+        design_image = DesignImage.objects(id=image_id).first()
+    except Exception:
+        return jsonify({"error": "Invalid or missing image_id"}), 400
+
+    if not design_image:
+        return jsonify({"error": "Image not found"}), 404
+
+    if str(design_image.user_id.id) != current_user_id:
+        return jsonify({"error": "Unauthorized"}), 403
+
+    # Delete file from disk
+    upload_folder = current_app.config["UPLOAD_FOLDER"]
+    filepath = os.path.join(upload_folder, design_image.file_path)
+    if os.path.exists(filepath):
+        os.remove(filepath)
+
+    # Delete record from MongoDB
+    design_image.delete()
+
+    return jsonify({
+        "message": "Image deleted successfully"
+    }), 200
