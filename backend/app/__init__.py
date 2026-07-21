@@ -1,15 +1,17 @@
 import os
 from flask import Flask
 from flask_cors import CORS
-from pymongo import MongoClient
+from flask_jwt_extended import JWTManager
+from mongoengine import connect
 from config import Config
-
-mongo_client = None
-db = None
 
 def create_app():
     app = Flask(__name__)
     app.config.from_object(Config)
+
+    # JWT Configuration
+    app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', 'jwt-digital-tailor-secret-key-2026')
+    JWTManager(app)
 
     CORS(app)
 
@@ -17,10 +19,8 @@ def create_app():
     os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
     os.makedirs(app.config['OUTPUT_FOLDER'], exist_ok=True)
 
-    # Initialize MongoDB Client
-    global mongo_client, db
-    mongo_client = MongoClient(app.config['MONGO_URI'])
-    db = mongo_client.get_database()
+    # Connect MongoEngine to MongoDB
+    connect(host=app.config['MONGO_URI'])
 
     # Register Route Blueprints
     from app.routes.auth import auth_bp

@@ -50,3 +50,58 @@ Today, custom garment creation relies heavily on manual body measurement, manual
 - **Scope**: Ladies' casual garments (blouses, T-shirts, crop tops) from a single front-view photo.
 - **Novelty**: Integrates Computer Vision (feature detection), Applied Fashion Geometry (Aldrich parametric drafting), and Combinatorial Optimization (fabric nesting) into a single end-to-end web pipeline.
 - **Environmental Impact**: Reduces fabric off-cut waste at the custom tailoring stage, promoting sustainable practices in fashion software engineering.
+
+---
+
+## 🚀 How to Run the Project
+
+### Prerequisites
+- **Python** 3.10+
+- **Node.js** (v18+) & **npm**
+- **MongoDB** running locally (`mongodb://localhost:27017`) or a MongoDB Atlas URI
+
+---
+
+### Step 1: Start MongoDB
+Ensure MongoDB is running locally:
+```bash
+# Windows (if MongoDB service is installed):
+net start MongoDB
+
+# Or start manually:
+mongod
+```
+
+---
+
+### Step 2: Run the Flask Backend API (Port 5000)
+Open a terminal in the project root:
+```bash
+cd backend
+
+# Activate Virtual Environment
+# Windows:
+venv\Scripts\activate
+# Mac/Linux:
+# source venv/bin/activate
+
+# Run Flask backend
+python run.py
+```
+> The API server will start at `http://localhost:5000`
+
+---
+
+### Step 3: Run the React Frontend App (Port 3000)
+Open a second terminal in the project root:
+```bash
+cd frontend
+
+# Install dependencies (first time only)
+npm install
+
+# Start Vite dev server
+npm run dev
+```
+> Open your browser and navigate to `http://localhost:3000`
+
