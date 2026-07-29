@@ -24,6 +24,7 @@ def save_measurements():
 
     profile = MeasurementProfile(
         user_id     = user,
+        client_name = data.get("client_name", "Customer Profile"),
         bust_cm     = float(data["bust_cm"]),
         waist_cm    = float(data["waist_cm"]),
         hip_cm      = float(data["hip_cm"]),
@@ -37,6 +38,7 @@ def save_measurements():
         "message": "Measurement profile saved successfully",
         "measurement_id": str(profile.id),
         "profile": {
+            "client_name": profile.client_name,
             "bust_cm": profile.bust_cm,
             "waist_cm": profile.waist_cm,
             "hip_cm": profile.hip_cm,
@@ -66,6 +68,7 @@ def get_measurement(measurement_id):
 
     return jsonify({
         "measurement_id": str(profile.id),
+        "client_name": profile.client_name or "Customer Profile",
         "bust_cm": profile.bust_cm,
         "waist_cm": profile.waist_cm,
         "hip_cm": profile.hip_cm,
@@ -91,6 +94,7 @@ def get_all_measurements():
     for p in profiles:
         result.append({
             "measurement_id": str(p.id),
+            "client_name": p.client_name or "Customer Profile",
             "bust_cm": p.bust_cm,
             "waist_cm": p.waist_cm,
             "hip_cm": p.hip_cm,

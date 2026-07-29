@@ -6,6 +6,7 @@ class MeasurementProfile(Document):
     meta = {'collection': 'measurements'}
 
     user_id = ReferenceField(User, required=True)
+    client_name = StringField(default="Customer Profile")
     bust_cm = FloatField(required=True)
     waist_cm = FloatField(required=True)
     hip_cm = FloatField(required=True)

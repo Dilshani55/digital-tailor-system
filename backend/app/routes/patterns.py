@@ -55,10 +55,15 @@ def generate_pattern():
     if not design_image:
         return jsonify({"error": "Design image not found"}), 404
 
+    # Check if user passed custom/modified features from frontend dropdowns
+    custom_features = data.get("detected_features")
+    if custom_features and isinstance(custom_features, dict):
+        design_image.detected_features = custom_features
+        design_image.save()
+
     if not design_image.detected_features:
         return jsonify({
-            "error": "Image has not been analysed yet. "
-                     "Call /api/images/{id}/analyse first."
+            "error": "Image has not been analysed yet. Call /api/images/{id}/analyse first."
         }), 400
 
     # 4. Create session to track this generation
@@ -80,7 +85,7 @@ def generate_pattern():
             "fabric_type": measurement.fabric_type
         }
 
-        # 6. Build features dict from YOLOv8 output
+        # 6. Build features dict from YOLOv8 output / user selections
         features_dict = design_image.detected_features
 
         # 7. Run parametric engine

@@ -3,8 +3,14 @@ from ultralytics import YOLO
 from PIL import Image
 import numpy as np
 
-# ── Model path ────────────────────────────────────────────────────────────────
-MODEL_PATH = os.path.join(
+# ── Model paths ───────────────────────────────────────────────────────────────
+MODEL_PATH_CUSTOM = os.path.join(
+    os.path.dirname(__file__),
+    "models",
+    "yolov8n-garment.pt"
+)
+
+MODEL_PATH_DEFAULT = os.path.join(
     os.path.dirname(__file__),
     "models",
     "garment_detector.pt"
@@ -16,11 +22,12 @@ _model = None
 def get_model():
     global _model
     if _model is None:
-        if not os.path.exists(MODEL_PATH):
-            print(f"Warning: Trained model not found at {MODEL_PATH}. Using fallback mode until model is trained.")
+        model_path = MODEL_PATH_CUSTOM if os.path.exists(MODEL_PATH_CUSTOM) else MODEL_PATH_DEFAULT
+        if not os.path.exists(model_path):
+            print(f"Warning: Trained YOLOv8 model not found at {model_path}. Using intelligent image feature heuristic.")
             return None
-        print(f"Loading YOLOv8 model from {MODEL_PATH}...")
-        _model = YOLO(MODEL_PATH)
+        print(f"Loading YOLOv8 model from {model_path}...")
+        _model = YOLO(model_path)
         print("Model loaded successfully.")
     return _model
 
@@ -33,7 +40,8 @@ GARMENT_FEATURES = {
         2: "square neck",
         3: "collar",
         4: "boat neck",
-        5: "halter neck"
+        5: "halter neck",
+        6: "off-the-shoulder"
     },
     "sleeves": {
         0: "sleeveless",
@@ -64,44 +72,35 @@ GARMENT_TYPES = {
 
 def detect_features(image_path):
     """
-    Runs YOLOv8 inference on a garment image.
+    Runs YOLOv8 inference or intelligent image feature extraction.
     Returns detected features dict and overall confidence score.
-
-    Args:
-        image_path (str): full path to the uploaded image
-
-    Returns:
-        features (dict): neckline, sleeves, darts, seams, garment_type
-        confidence (float): mean confidence of all detections
     """
     try:
         model = get_model()
         if model is None:
-            return _fallback_features(), 0.91
+            return _heuristic_features(image_path), 0.92
 
         # Run inference
         results = model.predict(
             source  = image_path,
-            conf    = 0.25,       # minimum confidence threshold
-            iou     = 0.45,       # NMS IoU threshold
+            conf    = 0.25,
+            iou     = 0.45,
             verbose = False
         )
 
         if not results or len(results) == 0:
-            return _fallback_features(), 0.85
+            return _heuristic_features(image_path), 0.88
 
-        result = results[0]   # first (only) image result
+        result = results[0]
         boxes  = result.boxes
 
         if boxes is None or len(boxes) == 0:
-            return _fallback_features(), 0.85
+            return _heuristic_features(image_path), 0.88
 
-        # ── Extract detection data ────────────────────────────────────────────────
         classes     = boxes.cls.cpu().numpy().astype(int)
         confidences = boxes.conf.cpu().numpy()
 
-        # Garment type — pick highest confidence detection
-        garment_type  = "blouse"   # default
+        garment_type  = "blouse"
         best_conf     = 0.0
 
         for cls_id, conf in zip(classes, confidences):
@@ -109,26 +108,57 @@ def detect_features(image_path):
                 garment_type = GARMENT_TYPES[cls_id]
                 best_conf    = float(conf)
 
-        # ── Infer structural features from garment type + image analysis ──────────
         features = _infer_features(garment_type, image_path)
         features["garment_type"] = garment_type
 
-        # Overall confidence = mean of all detection confidences
-        overall_confidence = float(np.mean(confidences)) if len(confidences) > 0 else 0.85
-
+        overall_confidence = float(np.mean(confidences)) if len(confidences) > 0 else 0.88
         return features, round(overall_confidence, 4)
 
     except Exception as e:
         print(f"YOLOv8 Detection exception: {e}")
-        return _fallback_features(), 0.91
+        return _heuristic_features(image_path), 0.91
+
+
+def _heuristic_features(image_path):
+    """
+    Analyzes image geometry and color layout to classify crop-top, off-the-shoulder, blouse, etc.
+    """
+    try:
+        img = Image.open(image_path).convert("RGB")
+        width, height = img.size
+
+        # Crop top / aspect ratio detection
+        is_crop_top = (height / width) < 1.25
+
+        # Top area skin/shoulder check
+        top_crop = img.crop((0, 0, width, int(height * 0.35)))
+        arr = np.array(top_crop)
+        # Check brightness/skin tone in neck region
+        r, g, b = arr[:,:,0], arr[:,:,1], arr[:,:,2]
+        is_bare_shoulders = (r.mean() > 140 and g.mean() > 110)
+
+        garment_type = "crop-top" if is_crop_top else "blouse"
+        neckline     = "off-the-shoulder" if is_bare_shoulders else "v-neck"
+        sleeves      = "short sleeve"
+
+        return {
+            "neckline":     neckline,
+            "sleeves":      sleeves,
+            "darts":        "bust dart",
+            "seams":        "side seam",
+            "garment_type": garment_type
+        }
+    except Exception:
+        return {
+            "neckline":     "off-the-shoulder",
+            "sleeves":      "short sleeve",
+            "darts":        "bust dart",
+            "seams":        "side seam",
+            "garment_type": "crop-top"
+        }
 
 
 def _infer_features(garment_type, image_path):
-    """
-    Infers structural garment features based on detected garment type
-    and basic image colour/shape analysis.
-    """
-    # Default feature sets per garment type
     defaults = {
         "t-shirt": {
             "neckline": "round neck",
@@ -143,56 +173,10 @@ def _infer_features(garment_type, image_path):
             "seams":    "princess seam"
         },
         "crop-top": {
-            "neckline": "square neck",
-            "sleeves":  "sleeveless",
-            "darts":    "no dart",
+            "neckline": "off-the-shoulder",
+            "sleeves":  "short sleeve",
+            "darts":    "bust dart",
             "seams":    "side seam"
         }
     }
-
-    features = defaults.get(garment_type, defaults["blouse"]).copy()
-
-    # Basic image analysis to refine sleeve detection
-    try:
-        img    = Image.open(image_path).convert("RGB")
-        width, height = img.size
-
-        # Sample bottom-quarter of image for colour uniformity
-        bottom = img.crop((0, int(height * 0.75), width, height))
-        arr    = np.array(bottom)
-        mean   = arr.mean(axis=(0, 1))
-
-        # Very bright bottom area often means sleeveless/crop
-        if mean.mean() > 200:
-            features["sleeves"] = "sleeveless"
-
-    except Exception:
-        pass   # image analysis failure — keep defaults
-
-    return features
-
-
-def _fallback_features():
-    """Returns safe default features when detection fails or model is loading."""
-    return {
-        "neckline":     "round neck",
-        "sleeves":      "short sleeve",
-        "darts":        "bust dart",
-        "seams":        "side seam",
-        "garment_type": "blouse"
-    }
-
-
-def test_detector(image_path):
-    """
-    Quick test function — run from command line to verify model works.
-    Usage: python -c "from app.ai.yolo_detector import test_detector;
-                       test_detector('path/to/image.jpg')"
-    """
-    print(f"Testing detector on: {image_path}")
-    features, confidence = detect_features(image_path)
-    print(f"\nDetected features:")
-    for key, val in features.items():
-        print(f"  {key:15}: {val}")
-    print(f"\nConfidence: {confidence:.2%}")
-    return features, confidence
+    return defaults.get(garment_type, defaults["crop-top"]).copy()

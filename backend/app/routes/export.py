@@ -184,6 +184,40 @@ def download_pdf(export_id):
     )
 
 
+# ── DELETE PDF EXPORT ─────────────────────────────────────────────────────────
+@export_bp.route("/<export_id>", methods=["DELETE"])
+@jwt_required()
+def delete_export(export_id):
+    current_user_id = get_jwt_identity()
+
+    export_id = export_id.strip("<>")
+    try:
+        pdf_export = PdfExport.objects(id=export_id).first()
+    except Exception:
+        return jsonify({"error": "Invalid export_id format"}), 400
+
+    if not pdf_export:
+        return jsonify({"error": "Export not found"}), 404
+
+    # Security check
+    if str(pdf_export.pattern_id.session_id.user_id.id) != current_user_id:
+        return jsonify({"error": "Unauthorized"}), 403
+
+    # Attempt to delete PDF file from disk
+    output_dir = current_app.config["OUTPUT_FOLDER"]
+    file_path  = os.path.join(output_dir, pdf_export.file_path)
+    if os.path.exists(file_path):
+        try:
+            os.remove(file_path)
+        except Exception:
+            pass
+
+    # Delete record from MongoDB
+    pdf_export.delete()
+
+    return jsonify({"message": "Export deleted successfully"}), 200
+
+
 # ── GET ALL EXPORTS FOR USER ──────────────────────────────────────────────────
 @export_bp.route("/", methods=["GET"])
 @jwt_required()
