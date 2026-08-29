@@ -1,4 +1,5 @@
 import { useState }       from 'react';
+import { Bot, AlertCircle, Recycle, Ruler, ScanLine } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth }        from '../context/AuthContext';
 
@@ -38,7 +39,7 @@ export default function Login() {
 
           <div>
             <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-brand-500/10 border border-brand-500/20 text-brand-400 text-xs font-semibold mb-6">
-              <span>🔬</span> Research Project — NSBM Green University
+              <ScanLine size={15}/> Research Project — NSBM Green University
             </div>
 
             <h1 className="font-display font-extrabold text-3xl sm:text-4xl text-white leading-tight tracking-tight">
@@ -51,18 +52,20 @@ export default function Login() {
 
           <div className="my-8 space-y-4">
             {[
-              { icon: '🤖', title: 'YOLOv8 Vision AI', desc: 'Detects necklines, sleeves & garment structure' },
-              { icon: '📐', title: 'Aldrich Metric Engine', desc: 'Generates custom technical cutting blocks' },
-              { icon: '♻️', title: '2D Fabric Nesting', desc: 'Minimizes textile waste & calculates yardage' },
-            ].map((feat, i) => (
+              { icon: Bot, title: 'YOLOv8 Vision AI', desc: 'Detects necklines, sleeves & garment structure' },
+              { icon: Ruler, title: 'Aldrich Metric Engine', desc: 'Generates custom technical cutting blocks' },
+              { icon: Recycle, title: '2D Fabric Nesting', desc: 'Minimizes textile waste & calculates yardage' },
+            ].map((feat, i) => {
+              const Icon = feat.icon;
+              return (
               <div key={i} className="flex items-start gap-3 p-3 rounded-xl bg-slate-900/40 border border-slate-800/60">
-                <span className="text-xl p-2 rounded-lg bg-slate-800/80">{feat.icon}</span>
+                <span className="p-2 rounded-lg bg-slate-800/80"><Icon size={18}/></span>
                 <div>
                   <h4 className="text-xs font-bold text-slate-200">{feat.title}</h4>
                   <p className="text-[11px] text-slate-400 mt-0.5">{feat.desc}</p>
                 </div>
               </div>
-            ))}
+            )})}
           </div>
 
           <div className="text-[11px] text-slate-500 pt-4 border-t border-slate-800/60">
@@ -80,7 +83,7 @@ export default function Login() {
 
           {error && (
             <div className="bg-red-500/10 border border-red-500/20 text-red-400 rounded-xl p-3 mb-6 text-xs flex items-center gap-2">
-              <span>⚠️</span> {error}
+              <AlertCircle size={16}/> {error}
             </div>
           )}
 

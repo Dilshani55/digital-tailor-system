@@ -1,4 +1,5 @@
 import { useState }          from 'react';
+import { AlertCircle, Zap } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth }           from '../context/AuthContext';
 
@@ -41,7 +42,7 @@ export default function Register() {
           
           <div>
             <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-brand-500/10 border border-brand-500/20 text-brand-400 text-xs font-semibold mb-6">
-              <span>⚡</span> Immediate Access
+              <Zap size={15}/> Immediate Access
             </div>
 
             <h1 className="font-display font-extrabold text-3xl text-white leading-tight">
@@ -79,7 +80,7 @@ export default function Register() {
 
           {error && (
             <div className="bg-red-500/10 border border-red-500/20 text-red-400 rounded-xl p-3 mb-6 text-xs flex items-center gap-2">
-              <span>⚠️</span> {error}
+              <AlertCircle size={16}/> {error}
             </div>
           )}
 

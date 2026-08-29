@@ -13,6 +13,42 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
   </head>
   <body>
+    <script>
+      window.addEventListener('error', function(e) {
+        var div = document.createElement('div');
+        div.style.position = 'fixed';
+        div.style.top = '0';
+        div.style.left = '0';
+        div.style.width = '100%';
+        div.style.height = '100%';
+        div.style.background = '#800';
+        div.style.color = '#fff';
+        div.style.padding = '20px';
+        div.style.zIndex = '999999';
+        div.style.fontFamily = 'monospace';
+        div.style.fontSize = '14px';
+        div.style.overflow = 'auto';
+        div.innerHTML = '<h1>Browser Error Captured</h1><pre>' + e.message + '\\n' + e.filename + ':' + e.lineno + ':' + e.colno + '\\n\\n' + (e.error ? e.error.stack : '') + '</pre>';
+        document.body.appendChild(div);
+      });
+      window.addEventListener('unhandledrejection', function(e) {
+        var div = document.createElement('div');
+        div.style.position = 'fixed';
+        div.style.top = '0';
+        div.style.left = '0';
+        div.style.width = '100%';
+        div.style.height = '100%';
+        div.style.background = '#800';
+        div.style.color = '#fff';
+        div.style.padding = '20px';
+        div.style.zIndex = '999999';
+        div.style.fontFamily = 'monospace';
+        div.style.fontSize = '14px';
+        div.style.overflow = 'auto';
+        div.innerHTML = '<h1>Unhandled Rejection</h1><pre>' + e.reason + '\\n\\n' + (e.reason && e.reason.stack ? e.reason.stack : '') + '</pre>';
+        document.body.appendChild(div);
+      });
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>

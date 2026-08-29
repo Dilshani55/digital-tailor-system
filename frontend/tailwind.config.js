@@ -13,12 +13,12 @@ export default {
       },
       colors: {
         brand: {
-          50: '#eef2ff',
-          100: '#e0e7ff',
-          500: '#6366f1',
-          600: '#4f46e5',
-          700: '#4338ca',
-          900: '#1e1b4b',
+          50: '#f2f9f5',
+          100: '#e1f2e8',
+          500: '#2e7d32',
+          600: '#1b5e20',
+          700: '#144218',
+          900: '#081c0a',
         },
         emerald: {
           400: '#34d399',
@@ -35,7 +35,7 @@ export default {
         'hero-pattern': 'linear-gradient(to right bottom, rgba(15, 23, 42, 0.9), rgba(30, 27, 75, 0.9))',
       },
       boxShadow: {
-        'glow-indigo': '0 0 25px -5px rgba(99, 102, 241, 0.4)',
+        'glow-indigo': '0 0 25px -5px rgba(46, 125, 50, 0.4)',
         'glow-emerald': '0 0 25px -5px rgba(16, 185, 129, 0.4)',
         'glass': '0 8px 32px 0 rgba(0, 0, 0, 0.37)',
       }

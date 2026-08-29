@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
+import { Eye, EyeOff } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import StepIndicator   from '../components/StepIndicator';
 import LoadingSpinner  from '../components/LoadingSpinner';
 import MeasurementGuide from '../components/MeasurementGuide';
 import {
-  imagesAPI, measurementsAPI, patternsAPI, exportAPI
+  imagesAPI, measurementsAPI, patternsAPI, exportAPI, researchAPI
 } from '../services/api';
 
 export default function Upload() {
@@ -42,12 +43,16 @@ export default function Upload() {
   const [patternData, setPatternData] = useState(null);
   const [yardageData, setYardageData] = useState(null);
   const [fabricWidth, setFabricWidth] = useState(114);
+  const [selectedFabricId, setSelectedFabricId] = useState('cotton-poplin');
   const [patternGenerated, setPatternGenerated] = useState(false);
   const [show2DView, setShow2DView]   = useState(true);
 
   // Step 4 — Export & Download state
   const [exportId,      setExportId]      = useState(null);
   const [pdfDownloaded, setPdfDownloaded] = useState(false);
+  const [feedbackScore, setFeedbackScore] = useState(5);
+  const [feedbackComment, setFeedbackComment] = useState('');
+  const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
 
   const handleError = (err, fallback) =>
     setError(err.response?.data?.error || fallback);
@@ -153,7 +158,7 @@ export default function Upload() {
       setMeasurementId(res.data.measurement_id);
       setStep(3);
     } catch (err) {
-      setStep(3);
+      setError(err.response?.data?.error || 'Failed to save measurements. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -183,12 +188,10 @@ export default function Upload() {
         setPatternGenerated(true);
         setShow2DView(true);
       } else {
-        setPatternGenerated(true);
-        setShow2DView(true);
+        setError('Missing design image or measurements to generate pattern.');
       }
     } catch (err) {
-      setPatternGenerated(true);
-      setShow2DView(true);
+      setError(err.response?.data?.error || 'Failed to generate parametric pattern draft.');
     } finally {
       setLoading(false);
     }
@@ -211,6 +214,24 @@ export default function Upload() {
       }
     } else {
       alert('PDF Drafting guide download initiated.');
+    }
+  };
+
+  const handleFeedbackSubmit = async (e) => {
+    e.preventDefault();
+    if (!patternId) {
+      alert('Pattern ID not available for feedback submission.');
+      return;
+    }
+    try {
+      await researchAPI.submitFeedback({
+        pattern_id: patternId,
+        feedback_score: feedbackScore,
+        feedback_comment: feedbackComment
+      });
+      setFeedbackSubmitted(true);
+    } catch (err) {
+      alert('Failed to submit usability survey rating.');
     }
   };
 
@@ -272,13 +293,13 @@ export default function Upload() {
             </div>
 
             {/* Quick Customer Profile Selector */}
-            <div style={{ background: '#0F172A', border: '1px solid #334155', borderRadius: 'var(--radius)', padding: '12px 14px', marginBottom: '14px' }}>
-              <label className="form-label" style={{ fontSize: '11px', color: '#34D399', fontWeight: '600', marginBottom: '6px' }}>
+            <div style={{ background: 'var(--surface-1)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '12px 14px', marginBottom: '14px' }}>
+              <label className="form-label" style={{ fontSize: '11px', color: 'var(--text-accent)', fontWeight: '600', marginBottom: '6px' }}>
                 Customer Selection Mode
               </label>
               <select
                 className="form-select"
-                style={{ height: '34px', fontSize: '12px', background: '#1E293B', color: '#F8FAFC', border: '1px solid #334155' }}
+                style={{ height: '34px', fontSize: '12px', background: '#FFFFFF', color: 'var(--text-primary)', border: '1px solid var(--border-strong)' }}
                 onChange={(e) => handleSelectSavedClient(e.target.value)}
               >
                 <option value="">+ Register / Add New Customer (Type Name & Measurements Below)</option>
@@ -291,17 +312,17 @@ export default function Upload() {
             </div>
 
             {/* Detected Garment Features Editable Controls */}
-            <div style={{ background: '#0F172A', border: '1px solid #334155', borderRadius: 'var(--radius)', padding: '14px 16px', marginBottom: '16px' }}>
-              <div style={{ fontSize: '12px', fontWeight: '600', color: '#38BDF8', marginBottom: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ background: 'var(--surface-1)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '14px 16px', marginBottom: '16px' }}>
+              <div style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-accent)', marginBottom: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span>Detected Garment Features (AI Auto-Analyzed)</span>
-                <span style={{ fontSize: '11px', color: '#34D399' }}>✓ Editable Dropdowns</span>
+                <span style={{ fontSize: '11px', color: 'var(--text-accent)' }}>✓ Editable Dropdowns</span>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
                 <div>
-                  <label className="form-label" style={{ fontSize: '11px', color: '#CBD5E1' }}>Garment Type</label>
+                  <label className="form-label" style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Garment Type</label>
                   <select
                     className="form-select"
-                    style={{ height: '34px', fontSize: '12px', background: '#1E293B', color: '#F8FAFC', border: '1px solid #334155' }}
+                    style={{ height: '34px', fontSize: '12px', background: '#FFFFFF', color: 'var(--text-primary)', border: '1px solid var(--border-strong)' }}
                     value={features.garment_type}
                     onChange={(e) => setFeatures({ ...features, garment_type: e.target.value })}
                   >
@@ -311,10 +332,10 @@ export default function Upload() {
                   </select>
                 </div>
                 <div>
-                  <label className="form-label" style={{ fontSize: '11px', color: '#CBD5E1' }}>Neckline</label>
+                  <label className="form-label" style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Neckline</label>
                   <select
                     className="form-select"
-                    style={{ height: '34px', fontSize: '12px', background: '#1E293B', color: '#F8FAFC', border: '1px solid #334155' }}
+                    style={{ height: '34px', fontSize: '12px', background: '#FFFFFF', color: 'var(--text-primary)', border: '1px solid var(--border-strong)' }}
                     value={features.neckline}
                     onChange={(e) => setFeatures({ ...features, neckline: e.target.value })}
                   >
@@ -328,10 +349,10 @@ export default function Upload() {
                   </select>
                 </div>
                 <div>
-                  <label className="form-label" style={{ fontSize: '11px', color: '#CBD5E1' }}>Sleeves</label>
+                  <label className="form-label" style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Sleeves</label>
                   <select
                     className="form-select"
-                    style={{ height: '34px', fontSize: '12px', background: '#1E293B', color: '#F8FAFC', border: '1px solid #334155' }}
+                    style={{ height: '34px', fontSize: '12px', background: '#FFFFFF', color: 'var(--text-primary)', border: '1px solid var(--border-strong)' }}
                     value={features.sleeves}
                     onChange={(e) => setFeatures({ ...features, sleeves: e.target.value })}
                   >
@@ -412,17 +433,51 @@ export default function Upload() {
                   placeholder="Enter height measurement"
                 />
               </div>
-              <div className="form-field" style={{ gridColumn: '1/-1' }}>
-                <label className="form-label">Fabric type</label>
-                <select
-                  className="form-select"
-                  value={meas.fabric_type}
-                  onChange={(e) => setMeas({ ...meas, fabric_type: e.target.value })}
-                >
-                  <option value="woven">woven</option>
-                  <option value="knit">knit</option>
-                  <option value="stretch-knit">stretch-knit</option>
-                </select>
+              <div className="form-field" style={{ gridColumn: '1/-1', marginTop: '16px' }}>
+                <label className="form-label" style={{ fontSize: '13px', fontWeight: 'bold', color: 'var(--text-primary)', marginBottom: '12px', display: 'block' }}>
+                  Manual Fabric Selection Catalog
+                </label>
+                
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '14px' }}>
+                  {[
+                    { id: 'cotton-poplin', name: 'Cotton Poplin', type: 'woven', desc: 'Woven - Light', composition: '100% Cotton', weight: '120 GSM', price: 'Rs 180 /m', image: 'https://images.unsplash.com/photo-1584290867415-527a84fc5715?auto=format&fit=crop&w=150&q=80' },
+                    { id: 'linen-blend', name: 'Linen Blend', type: 'woven', desc: 'Woven - Medium', composition: '55% Linen, 45% Cotton', weight: '185 GSM', price: 'Rs 240 /m', image: 'https://images.unsplash.com/photo-1606744824163-985d376605aa?auto=format&fit=crop&w=150&q=80' },
+                    { id: 'rayon', name: 'Rayon', type: 'woven', desc: 'Woven - Light', composition: '100% Rayon', weight: '110 GSM', price: 'Rs 150 /m', image: 'https://images.unsplash.com/photo-1528459801416-a9e53bbf4e17?auto=format&fit=crop&w=150&q=80' },
+                    { id: 'jersey-knit', name: 'Jersey Knit', type: 'knit', desc: 'Knit - Medium', composition: '95% Cotton, 5% Lycra', weight: '180 GSM', price: 'Rs 220 /m', image: 'https://images.unsplash.com/photo-1544816155-12df9643f363?auto=format&fit=crop&w=150&q=80' }
+                  ].map((f) => {
+                    const isSelected = selectedFabricId === f.id;
+                    return (
+                      <div 
+                        key={f.id}
+                        onClick={() => {
+                          setSelectedFabricId(f.id);
+                          setMeas({ ...meas, fabric_type: f.type });
+                        }}
+                        style={{
+                          border: isSelected ? '2px solid var(--text-accent)' : '1px solid var(--border)',
+                          borderRadius: '8px',
+                          overflow: 'hidden',
+                          background: isSelected ? 'rgba(45, 90, 67, 0.05)' : 'var(--surface-1)',
+                          cursor: 'pointer',
+                          transition: 'all 0.15s ease'
+                        }}
+                      >
+                        <img 
+                          src={f.image} 
+                          alt={f.name} 
+                          style={{ width: '100%', height: '90px', objectFit: 'cover', borderBottom: '1px solid var(--border)' }}
+                        />
+                        <div style={{ padding: '10px', fontSize: '11px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                          <strong style={{ fontSize: '12px', color: 'var(--text-primary)' }}>{f.name}</strong>
+                          <span style={{ color: 'var(--text-accent)', fontWeight: '600' }}>{f.desc}</span>
+                          <span style={{ color: 'var(--text-secondary)' }}>{f.composition}</span>
+                          <span style={{ color: 'var(--text-secondary)' }}>{f.weight}</span>
+                          <strong style={{ color: 'var(--text-primary)', marginTop: '4px' }}>{f.price}</strong>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             </div>
 
@@ -463,7 +518,7 @@ export default function Upload() {
                   onClick={() => setShow2DView(!show2DView)}
                   style={{ height: '34px', fontSize: '12px', color: show2DView ? '#F87171' : '#38BDF8', borderColor: show2DView ? '#EF4444' : '#38BDF8' }}
                 >
-                  {show2DView ? '✕ Close 2D View' : '👁️ Open 2D View'}
+                  {show2DView ? <><EyeOff size={16}/> Close 2D view</> : <><Eye size={16}/> Open 2D view</>}
                 </button>
               )}
             </div>
@@ -497,14 +552,14 @@ export default function Upload() {
             </div>
 
             {!patternGenerated ? (
-              <div style={{ background: '#090D16', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '24px', textAlign: 'center', marginBottom: '16px' }}>
-                <div style={{ fontSize: '14px', color: '#CBD5E1', marginBottom: '12px' }}>
+              <div style={{ background: 'var(--surface-1)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '24px', textAlign: 'center', marginBottom: '16px' }}>
+                <div style={{ fontSize: '14px', color: 'var(--text-primary)', marginBottom: '12px' }}>
                   Ready to draft 2D Aldrich parametric pattern for <strong>{meas.client_name || 'Customer'}</strong>
                 </div>
-                <div style={{ fontSize: '12px', color: '#94A3B8', marginBottom: '20px' }}>
+                <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '20px' }}>
                   {features.garment_type.toUpperCase()} · {features.neckline} · {features.sleeves} · {meas.fabric_type} fabric
                 </div>
-                <button className="btn btn-primary" onClick={handleGeneratePattern} style={{ padding: '12px 24px', fontSize: '13px' }}>
+                <button className="btn btn-primary" onClick={handleGeneratePattern} style={{ padding: '12px 24px', fontSize: '13px', background: 'var(--text-accent)' }}>
                   Generate 2D Pattern View
                 </button>
               </div>
@@ -513,19 +568,19 @@ export default function Upload() {
                 {/* 2D Pattern KPI Badges */}
                 <div className="result-grid" style={{ marginBottom: '16px' }}>
                   <div className="result-tile">
-                    <div className="r-val" style={{ color: '#38BDF8' }}>
+                    <div className="r-val" style={{ color: 'var(--text-accent)' }}>
                       {features.garment_type.toUpperCase()}
                     </div>
                     <div className="r-lbl">Garment Style</div>
                   </div>
                   <div className="result-tile">
-                    <div className="r-val" style={{ color: '#34D399' }}>
+                    <div className="r-val" style={{ color: 'var(--text-accent)' }}>
                       {yardageData?.yardage_metres ? `${yardageData.yardage_metres}m` : '0.58m'}
                     </div>
                     <div className="r-lbl">Fabric Required</div>
                   </div>
                   <div className="result-tile">
-                    <div className="r-val" style={{ color: '#A78BFA' }}>
+                    <div className="r-val" style={{ color: 'var(--text-accent)' }}>
                       {yardageData?.utilisation_percent ? `${yardageData.utilisation_percent}%` : '78.7%'}
                     </div>
                     <div className="r-lbl">Fabric Efficiency</div>
@@ -533,21 +588,21 @@ export default function Upload() {
                 </div>
 
                 {/* 2D Pattern CAD Canvas Viewer */}
-                <div style={{ background: '#090D16', border: '1px solid #334155', borderRadius: '12px', padding: '18px', marginBottom: '16px' }}>
+                <div style={{ background: 'var(--surface-1)', border: '1px solid var(--border)', borderRadius: '12px', padding: '18px', marginBottom: '16px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                    <span style={{ fontSize: '13px', fontWeight: '600', color: '#F8FAFC' }}>
+                    <span style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text-primary)' }}>
                       2D Parametric Pattern Pieces & Cutting Layout Canvas ({fabricWidth}cm Fabric)
                     </span>
                     <button
                       onClick={() => setShow2DView(false)}
-                      style={{ background: '#1E293B', border: '1px solid #334155', color: '#CBD5E1', padding: '4px 10px', borderRadius: '4px', fontSize: '11px', cursor: 'pointer' }}
+                      style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--text-primary)', padding: '4px 10px', borderRadius: '4px', fontSize: '11px', cursor: 'pointer' }}
                     >
                       ✕ Close 2D View
                     </button>
                   </div>
 
                   {/* Interactive SVG 2D Pattern Canvas */}
-                  <div style={{ width: '100%', height: '240px', background: '#0F172A', border: '1px solid #1E293B', borderRadius: '8px', position: 'relative', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <div style={{ width: '100%', height: '240px', background: '#0F172A', border: '1px solid var(--border)', borderRadius: '8px', position: 'relative', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     <svg viewBox="0 0 800 240" style={{ width: '100%', height: '100%' }}>
                       <defs>
                         <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
@@ -556,34 +611,34 @@ export default function Upload() {
                       </defs>
                       <rect width="800" height="240" fill="url(#grid)" />
 
-                      <line x1="10" y1="20" x2="790" y2="20" stroke="#38BDF8" strokeWidth="1.5" strokeDasharray="4,2" />
-                      <line x1="10" y1="220" x2="790" y2="220" stroke="#38BDF8" strokeWidth="1.5" strokeDasharray="4,2" />
-                      <text x="15" y="16" fill="#38BDF8" fontSize="10" fontFamily="monospace">FABRIC FOLD ({fabricWidth}cm)</text>
+                      <line x1="10" y1="20" x2="790" y2="20" stroke="var(--text-accent)" strokeWidth="1.5" strokeDasharray="4,2" />
+                      <line x1="10" y1="220" x2="790" y2="220" stroke="var(--text-accent)" strokeWidth="1.5" strokeDasharray="4,2" />
+                      <text x="15" y="16" fill="var(--text-accent)" fontSize="10" fontFamily="monospace">FABRIC FOLD ({fabricWidth}cm)</text>
 
                       <g transform="translate(40, 30)">
-                        <path d="M 0 0 L 140 0 L 140 160 L 20 160 Q 0 100 0 0 Z" fill="#0F172A" stroke="#38BDF8" strokeWidth="2" />
-                        <path d="M -5 -5 L 145 -5 L 145 165 L 15 165 Q -5 100 -5 -5 Z" fill="none" stroke="#38BDF8" strokeWidth="1" strokeDasharray="3,3" opacity="0.5" />
+                        <path d="M 0 0 L 140 0 L 140 160 L 20 160 Q 0 100 0 0 Z" fill="#0F172A" stroke="var(--text-accent)" strokeWidth="2" />
+                        <path d="M -5 -5 L 145 -5 L 145 165 L 15 165 Q -5 100 -5 -5 Z" fill="none" stroke="var(--text-accent)" strokeWidth="1" strokeDasharray="3,3" opacity="0.5" />
                         <text x="35" y="70" fill="#F8FAFC" fontSize="11" fontWeight="bold">BACK BODICE</text>
                         <text x="45" y="90" fill="#94A3B8" fontSize="9">44cm × 40cm</text>
-                        <text x="45" y="105" fill="#34D399" fontSize="9">+1.5cm Seam</text>
+                        <text x="45" y="105" fill="#52B788" fontSize="9">+1.5cm Seam</text>
                       </g>
 
                       <g transform="translate(230, 30)">
-                        <path d="M 0 0 L 140 0 C 140 40, 160 80, 140 160 L 0 160 Z" fill="#0F172A" stroke="#34D399" strokeWidth="2" />
-                        <polygon points="140,75 80,85 140,95" fill="#1E293B" stroke="#FB923C" strokeWidth="1.5" />
+                        <path d="M 0 0 L 140 0 C 140 40, 160 80, 140 160 L 0 160 Z" fill="#0F172A" stroke="#52B788" strokeWidth="2" />
+                        <polygon points="140,75 80,85 140,95" fill="#1E293B" stroke="var(--text-accent)" strokeWidth="1.5" />
                         <text x="30" y="70" fill="#F8FAFC" fontSize="11" fontWeight="bold">FRONT BODICE</text>
                         <text x="40" y="90" fill="#94A3B8" fontSize="9">46cm × 42cm</text>
-                        <text x="40" y="105" fill="#FB923C" fontSize="9">Bust Dart Included</text>
+                        <text x="40" y="105" fill="var(--text-accent)" fontSize="9">Bust Dart Included</text>
                       </g>
 
                       <g transform="translate(430, 30)">
-                        <path d="M 20 0 C 60 -15, 100 0, 110 40 L 90 150 L 0 150 L -10 40 Z" fill="#0F172A" stroke="#A78BFA" strokeWidth="2" />
+                        <path d="M 20 0 C 60 -15, 100 0, 110 40 L 90 150 L 0 150 L -10 40 Z" fill="#0F172A" stroke="#74C69D" strokeWidth="2" />
                         <text x="25" y="70" fill="#F8FAFC" fontSize="11" fontWeight="bold">SLEEVE (L)</text>
                         <text x="30" y="90" fill="#94A3B8" fontSize="9">24cm × 22cm</text>
                       </g>
 
                       <g transform="translate(580, 30)">
-                        <path d="M 20 0 C 60 -15, 100 0, 110 40 L 90 150 L 0 150 L -10 40 Z" fill="#0F172A" stroke="#A78BFA" strokeWidth="2" />
+                        <path d="M 20 0 C 60 -15, 100 0, 110 40 L 90 150 L 0 150 L -10 40 Z" fill="#0F172A" stroke="#74C69D" strokeWidth="2" />
                         <text x="25" y="70" fill="#F8FAFC" fontSize="11" fontWeight="bold">SLEEVE (R)</text>
                         <text x="30" y="90" fill="#94A3B8" fontSize="9">24cm × 22cm</text>
                       </g>
@@ -592,23 +647,23 @@ export default function Upload() {
                 </div>
 
                 <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '20px' }}>
-                  <span className="chip" style={{ color: '#38BDF8', borderColor: '#38BDF8' }}>✓ Back Bodice Block</span>
-                  <span className="chip" style={{ color: '#34D399', borderColor: '#34D399' }}>✓ Front Bodice Block</span>
-                  <span className="chip" style={{ color: '#A78BFA', borderColor: '#A78BFA' }}>✓ Sleeve × 2</span>
-                  <span className="chip" style={{ color: '#FB923C', borderColor: '#FB923C' }}>✓ Fitted Bust Dart</span>
+                  <span className="chip" style={{ color: 'var(--text-accent)', borderColor: 'var(--text-accent)' }}>✓ Back Bodice Block</span>
+                  <span className="chip" style={{ color: 'var(--text-accent)', borderColor: 'var(--text-accent)' }}>✓ Front Bodice Block</span>
+                  <span className="chip" style={{ color: '#74C69D', borderColor: '#74C69D' }}>✓ Sleeve × 2</span>
+                  <span className="chip" style={{ color: '#2D6A4F', borderColor: '#2D6A4F' }}>✓ Fitted Bust Dart</span>
                 </div>
               </div>
             ) : (
               /* 2D View Closed State Card */
-              <div style={{ background: '#090D16', border: '1px solid #334155', borderRadius: '12px', padding: '24px', textAlign: 'center', marginBottom: '16px' }}>
-                <div style={{ fontSize: '14px', fontWeight: '600', color: '#F8FAFC', marginBottom: '6px' }}>
+              <div style={{ background: 'var(--surface-1)', border: '1px solid var(--border)', borderRadius: '12px', padding: '24px', textAlign: 'center', marginBottom: '16px' }}>
+                <div style={{ fontSize: '14px', fontWeight: '600', color: 'var(--text-primary)', marginBottom: '6px' }}>
                   2D Pattern View Hidden
                 </div>
-                <div style={{ fontSize: '12px', color: '#94A3B8', marginBottom: '16px' }}>
+                <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '16px' }}>
                   The 2D parametric pattern has been calculated. You can re-open the view or proceed directly to Step 4 to download your PDF guide.
                 </div>
                 <button className="btn btn-outline" onClick={() => setShow2DView(true)} style={{ padding: '8px 16px', fontSize: '12px' }}>
-                  👁️ Re-open 2D Pattern View
+                  <Eye size={16}/> Re-open 2D pattern view
                 </button>
               </div>
             )}
@@ -638,19 +693,19 @@ export default function Upload() {
             {/* Results Tiles */}
             <div className="result-grid">
               <div className="result-tile">
-                <div className="r-val" style={{ color: '#38BDF8' }}>
+                <div className="r-val" style={{ color: 'var(--text-accent)' }}>
                   {features.garment_type.toUpperCase()}
                 </div>
                 <div className="r-lbl">Garment Style</div>
               </div>
               <div className="result-tile">
-                <div className="r-val" style={{ color: '#34D399' }}>
+                <div className="r-val" style={{ color: 'var(--text-accent)' }}>
                   {yardageData?.yardage_metres ? `${yardageData.yardage_metres}m` : '0.58m'}
                 </div>
                 <div className="r-lbl">Fabric Required</div>
               </div>
               <div className="result-tile">
-                <div className="r-val" style={{ color: '#A78BFA' }}>
+                <div className="r-val" style={{ color: 'var(--text-accent)' }}>
                   {yardageData?.utilisation_percent ? `${yardageData.utilisation_percent}%` : '78.7%'}
                 </div>
                 <div className="r-lbl">Fabric Efficiency</div>
@@ -667,7 +722,7 @@ export default function Upload() {
                 <div className="pdf-body">
                   <div className="pdf-row">
                     <span className="pdf-row-l">Customer Name</span>
-                    <span className="pdf-row-r" style={{ color: '#38BDF8', fontWeight: '600' }}>
+                    <span className="pdf-row-r" style={{ color: 'var(--text-accent)', fontWeight: '600' }}>
                       {meas.client_name || 'Customer Profile'}
                     </span>
                   </div>
@@ -695,7 +750,7 @@ export default function Upload() {
                   </div>
                   <div className="pdf-row">
                     <span className="pdf-row-l">Fabric Required ({fabricWidth}cm bolt)</span>
-                    <span className="pdf-row-r" style={{ color: '#34D399', fontWeight: '600' }}>
+                    <span className="pdf-row-r" style={{ color: 'var(--text-accent)', fontWeight: '600' }}>
                       {yardageData?.yardage_metres || 0.58} metres
                     </span>
                   </div>
@@ -731,6 +786,63 @@ export default function Upload() {
                   Start New Pattern
                 </button>
               </div>
+            </div>
+
+            {/* Research Usability Survey Feedback Form */}
+            <div style={{ marginTop: '24px', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: '12px', padding: '20px' }}>
+              <div style={{ fontSize: '13px', fontWeight: 'bold', color: 'var(--text-accent)', textTransform: 'uppercase', marginBottom: '8px' }}>
+                Research usability survey feedback
+              </div>
+              <p style={{ margin: '0 0 16px 0', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                Help our final-year BSc. Software Engineering research study by rating your pattern generation experience:
+              </p>
+
+              {feedbackSubmitted ? (
+                <div style={{ padding: '12px', background: 'rgba(21, 128, 61, 0.2)', border: '1px solid var(--text-accent)', borderRadius: '8px', color: 'var(--text-accent)', fontSize: '12px', fontWeight: 'bold', display: 'inline-flex', gap: '8px' }}>
+                  ✓ Thank you! Your feedback score has been saved to the study metrics database.
+                </div>
+              ) : (
+                <form onSubmit={handleFeedbackSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <span style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--text-primary)' }}>Experience Score:</span>
+                    <div style={{ display: 'flex', gap: '4px' }}>
+                      {[1, 2, 3, 4, 5].map((val) => (
+                        <button
+                          key={val}
+                          type="button"
+                          onClick={() => setFeedbackScore(val)}
+                          style={{
+                            border: 'none', background: 'none', cursor: 'pointer',
+                            color: feedbackScore >= val ? '#FBBF24' : '#9CA3AF',
+                            fontSize: '20px', padding: 0
+                          }}
+                        >
+                          ★
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="form-label" style={{ fontSize: '12px' }}>Comments / Suggestions</label>
+                    <textarea
+                      className="form-input"
+                      style={{ height: '60px', padding: '8px 12px', fontSize: '12px' }}
+                      placeholder="e.g. The 2D layout optimization saved me 25% of fabric!"
+                      value={feedbackComment}
+                      onChange={(e) => setFeedbackComment(e.target.value)}
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    className="btn btn-primary"
+                    style={{ background: 'var(--text-accent)', alignSelf: 'flex-start', padding: '8px 20px', fontSize: '12px' }}
+                  >
+                    Submit Usability Rating
+                  </button>
+                </form>
+              )}
             </div>
 
           </div>

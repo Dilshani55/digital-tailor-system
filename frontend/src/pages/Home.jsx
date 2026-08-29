@@ -1,10 +1,35 @@
-import React from 'react';
+import { Link } from 'react-router-dom';
+import { ArrowRight, BrainCircuit, Check, FileOutput, Leaf, MoveRight, Ruler, ScanLine, Scissors, Shirt, Sparkles, UploadCloud } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 
-export default function Home() {
-  return (
-    <div>
-      <h2>Welcome to Digital Tailor</h2>
-      <p>AI-Powered Pattern Drafting & Fabric Waste Minimization</p>
-    </div>
-  );
+const steps=[
+  {n:'01',icon:UploadCloud,title:'Upload a garment design',text:'Add a clear front-view image of a blouse, T-shirt or crop top.'},
+  {n:'02',icon:Ruler,title:'Enter body measurements',text:'Provide the measurements needed to create your personal size profile.'},
+  {n:'03',icon:BrainCircuit,title:'Review AI analysis',text:'Confirm the detected garment features before pattern generation.'},
+  {n:'04',icon:FileOutput,title:'Generate the drafting guide',text:'Receive garment measurements, fabric estimates and a PDF guide.'}
+];
+const features=[
+  {icon:ScanLine,title:'Design feature analysis',text:'Computer vision identifies visible garment details that affect sizing and construction.'},
+  {icon:Ruler,title:'Personalized measurements',text:'Body measurements and design details are combined into a made-to-measure size chart.'},
+  {icon:Scissors,title:'Pattern and fabric planning',text:'Parametric calculations estimate pattern dimensions and required fabric length.'},
+  {icon:Leaf,title:'Waste-aware production',text:'Optimized planning helps reduce unnecessary fabric before the cutting stage.'}
+];
+
+export default function Home(){
+ const {user}=useAuth();
+ return <div className="landing">
+  <header className="landing-nav"><Link to="/" className="landing-logo"><span><Ruler size={20}/></span><div><strong>TailorAI</strong><small>AI-assisted digital tailoring</small></div></Link><nav><a href="#workflow">How it works</a><a href="#capabilities">Capabilities</a><a href="#research">Research</a><Link to="/auth">Sign in</Link><Link className="landing-cta" to={user?'/dashboard':'/auth'}>{user?'Open workspace':'Start designing'} <ArrowRight size={15}/></Link></nav></header>
+  <main>
+   <section className="landing-hero"><div className="hero-copy"><span className="eyebrow"><Sparkles size={14}/> AI-assisted custom clothing</span><h1>From design inspiration to a <em>made-to-measure</em> pattern.</h1><p className="hero-lead">Transform a garment image and body measurements into personalized sizing, intelligent pattern guidance and a clearer fabric plan.</p><div className="hero-actions"><Link className="landing-primary" to={user?'/upload':'/auth'}>Create your first pattern <ArrowRight size={17}/></Link><a className="landing-secondary" href="#workflow">See how it works</a></div><div className="hero-proof"><span><Check size={15}/> Focused on casual women’s tops</span><span><Check size={15}/> Research-driven calculations</span></div></div>
+    <div className="analysis-card"><div className="analysis-head"><div><small>LIVE WORKFLOW</small><strong>Garment feature analysis</strong></div><span><i/> Processing</span></div><div className="garment-canvas"><svg viewBox="0 0 260 240" aria-label="Technical blouse outline"><path d="M65 55 L98 55 Q130 82 162 55 L195 55 L218 103 L187 115 L187 195 L73 195 L73 115 L42 103 Z" fill="none" stroke="currentColor" strokeWidth="2"/><path d="M98 55 Q130 82 162 55" fill="none" stroke="currentColor" strokeWidth="2"/><path d="M101 140 L108 122 L115 140 M145 140 L152 122 L159 140" fill="none" stroke="currentColor" strokeWidth="1.5" strokeDasharray="3 3"/></svg><span className="detect-tag neckline">Round neckline · 96%</span><span className="detect-tag sleeve">Short sleeve · 94%</span><span className="scan-beam"/></div><div className="analysis-data"><div><span>Bust allowance</span><strong>+4 cm</strong></div><div><span>Estimated fabric</span><strong>1.18 m</strong></div><div><span>Layout efficiency</span><strong>83.7%</strong></div></div></div>
+   </section>
+   <section className="trust-strip"><div><strong>Computer vision</strong><span>Garment feature detection</span></div><div><strong>Parametric sizing</strong><span>Personalized measurements</span></div><div><strong>2D nesting</strong><span>Fabric utilization planning</span></div><div><strong>PDF output</strong><span>Tailor-ready guidance</span></div></section>
+   <section id="workflow" className="landing-section"><div className="section-heading"><span>How it works</span><h2>A focused workflow from image to pattern</h2><p>The system keeps every stage clear and gives you control before final generation.</p></div><div className="step-grid">{steps.map(({n,icon:Icon,title,text})=><article key={n}><div className="step-top"><span><Icon size={20}/></span><small>{n}</small></div><h3>{title}</h3><p>{text}</p><MoveRight size={18}/></article>)}</div></section>
+   <section id="capabilities" className="capability-section"><div className="section-heading left"><span>Platform capabilities</span><h2>Professional tools for smarter tailoring decisions</h2><p>Every feature supports the research objective: better fit and more responsible use of material.</p></div><div className="feature-grid">{features.map(({icon:Icon,title,text})=><article key={title}><span><Icon size={21}/></span><h3>{title}</h3><p>{text}</p></article>)}</div></section>
+   <section id="research" className="research-section"><div><span className="dark-kicker">Research objective</span><h2>Improving fit while reducing avoidable fabric waste.</h2><p>Traditional custom tailoring relies heavily on manual interpretation and approximate fabric allowances. TailorAI studies how design-image analysis, personalized measurements and parametric pattern logic can form a more consistent workflow.</p><Link to="/auth">Explore the research prototype <ArrowRight size={16}/></Link></div><div className="comparison"><article><small>TRADITIONAL WORKFLOW</small><p>Manual design interpretation</p><p>Experience-based size decisions</p><p>Approximate fabric allowance</p></article><article className="recommended"><small>TAILORAI WORKFLOW</small><p><Check size={14}/> Design feature analysis</p><p><Check size={14}/> Measurement-based sizing</p><p><Check size={14}/> Pattern-led fabric estimation</p></article></div></section>
+   <section className="garment-scope"><div className="section-heading"><span>Research scope</span><h2>Designed for everyday garments</h2><p>The current prototype focuses on selected women’s casual tops.</p></div><div>{['Blouse','T-shirt','Crop top'].map((name,i)=><article key={name}><span><Shirt size={27}/></span><h3>{name}</h3><p>{i===0?'Bodice blocks, necklines and sleeve variations.':i===1?'Casual knit blocks with suitable ease.':'Shortened bodice dimensions and fit options.'}</p></article>)}</div></section>
+   <section className="final-cta"><div><span>Ready to begin?</span><h2>Create a smarter custom pattern.</h2><p>Upload your garment design and start the guided tailoring workflow.</p></div><Link to={user?'/upload':'/auth'}>Start designing <ArrowRight size={17}/></Link></section>
+  </main>
+  <footer className="landing-footer"><div className="landing-logo"><span><Ruler size={18}/></span><div><strong>TailorAI</strong><small>Final-year software engineering research prototype</small></div></div><p>© 2026 TailorAI · NSBM Green University</p></footer>
+ </div>
 }

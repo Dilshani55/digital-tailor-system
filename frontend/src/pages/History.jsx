@@ -1,126 +1,23 @@
-import { useState, useEffect } from 'react';
-import { useNavigate }         from 'react-router-dom';
-import { exportAPI }           from '../services/api';
-import LoadingSpinner          from '../components/LoadingSpinner';
+import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Download, FileText, MoreHorizontal, Plus, Search, Trash2 } from 'lucide-react';
+import { exportAPI } from '../services/api';
+import LoadingSpinner from '../components/LoadingSpinner';
 
 export default function History() {
-  const navigate              = useNavigate();
-  const [exports, setExports] = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  const fetchExports = async () => {
-    try {
-      const res = await exportAPI.getAll();
-      setExports(res.data.exports || []);
-    } catch (err) {
-      console.error(err);
-      setExports([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchExports();
-  }, []);
-
-  const handleDownload = async (exportId) => {
-    try {
-      const res   = await exportAPI.download(exportId);
-      const url   = window.URL.createObjectURL(new Blob([res.data]));
-      const link  = document.createElement('a');
-      link.href   = url;
-      link.download = `drafting_guide_${exportId}.pdf`;
-      link.click();
-      window.URL.revokeObjectURL(url);
-    } catch (err) {
-      alert('Download started.');
-    }
-  };
-
-  const handleDelete = async (exportId) => {
-    if (!window.confirm("Are you sure you want to delete this pattern export history?")) return;
-    try {
-      await exportAPI.delete(exportId);
-      // Remove deleted item from state
-      setExports(exports.filter(e => e.export_id !== exportId));
-    } catch (err) {
-      alert('Failed to delete export. Please try again.');
-    }
-  };
-
-  if (loading) return <LoadingSpinner message="Loading pattern history..." />;
-
-  return (
-    <div className="view active" id="v-history">
-      <div className="ui-card" style={{ padding: 0, overflow: 'hidden' }}>
-        <div className="card-head" style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', marginBottom: 0 }}>
-          <span className="card-title">Pattern history</span>
-          <button
-            className="btn btn-primary"
-            style={{ height: '32px', fontSize: '12px' }}
-            onClick={() => navigate('/upload')}
-          >
-            New pattern
-          </button>
-        </div>
-        
-        {exports.length === 0 ? (
-          <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '13px' }}>
-            No pattern export history found. Click <strong>New pattern</strong> to generate your first PDF guide.
-          </div>
-        ) : (
-          <table className="hist-table">
-            <thead>
-              <tr>
-                <th>Garment</th>
-                <th>Features</th>
-                <th>Fabric</th>
-                <th>Yardage</th>
-                <th>Efficiency</th>
-                <th>Date</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {exports.map((e) => (
-                <tr key={e.export_id}>
-                  <td><strong>{e.filename.includes('blouse') ? 'Blouse' : 'Pattern'}</strong></td>
-                  <td>
-                    <span className="chip">
-                      v-neck · short sleeve
-                    </span>
-                  </td>
-                  <td>Woven</td>
-                  <td>1.83m</td>
-                  <td><span style={{ color: '#34D399', fontWeight: 600 }}>71%</span></td>
-                  <td style={{ color: 'var(--text-secondary)' }}>
-                    {new Date(e.exported_at).toLocaleDateString('en-GB')}
-                  </td>
-                  <td>
-                    <div style={{ display: 'flex', gap: '6px' }}>
-                      <button
-                        className="btn btn-success"
-                        style={{ height: '28px', fontSize: '11px', padding: '0 12px' }}
-                        onClick={() => handleDownload(e.export_id)}
-                      >
-                        Download
-                      </button>
-                      <button
-                        className="btn"
-                        style={{ height: '28px', fontSize: '11px', padding: '0 12px', background: '#7F1D1D', color: '#FECACA' }}
-                        onClick={() => handleDelete(e.export_id)}
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
-    </div>
-  );
+  const navigate=useNavigate();
+  const [exports,setExports]=useState([]),[loading,setLoading]=useState(true),[query,setQuery]=useState('');
+  useEffect(()=>{exportAPI.getAll().then(r=>setExports(r.data.exports||[])).catch(()=>setExports([])).finally(()=>setLoading(false))},[]);
+  const download=async(id)=>{try{const r=await exportAPI.download(id);const url=URL.createObjectURL(new Blob([r.data]));const a=document.createElement('a');a.href=url;a.download=`drafting_guide_${id}.pdf`;a.click();URL.revokeObjectURL(url)}catch{alert('Download started.')}};
+  const remove=async(id)=>{if(!confirm('Delete this drafting guide from your history?'))return;try{await exportAPI.delete(id);setExports(v=>v.filter(e=>e.export_id!==id))}catch{alert('Unable to delete this item.')}};
+  if(loading)return <LoadingSpinner message="Loading your pattern library..."/>;
+  const rows=exports.filter(e=>(e.filename||'pattern').toLowerCase().includes(query.toLowerCase()));
+  return <div className="history-page">
+    <section className="page-heading"><div><span className="section-kicker">Your work</span><h1>Pattern library</h1><p>Find, download and manage every generated drafting guide.</p></div><button className="btn btn-primary btn-lg" onClick={()=>navigate('/upload')}><Plus size={17}/> New pattern</button></section>
+    <section className="library-toolbar"><div className="search-field"><Search size={17}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search pattern library"/></div><span>{rows.length} {rows.length===1?'guide':'guides'}</span></section>
+    <section className="ui-card library-card">
+      {rows.length===0?<div className="empty-state"><span><FileText size={28}/></span><h2>{query?'No matching patterns':'Your pattern library is empty'}</h2><p>{query?'Try another search term.':'Generate your first personalized pattern and its PDF guide will appear here.'}</p>{!query&&<button className="btn btn-primary" onClick={()=>navigate('/upload')}><Plus size={16}/> Create first pattern</button>}</div>:
+      <div className="table-wrap"><table className="hist-table"><thead><tr><th>Pattern</th><th>Garment details</th><th>Fabric plan</th><th>Efficiency</th><th>Created</th><th><span className="sr-only">Actions</span></th></tr></thead><tbody>{rows.map((e,i)=><tr key={e.export_id||i}><td><div className="file-cell"><span><FileText size={18}/></span><div><strong>{e.filename?.replace('.pdf','')||'Custom drafting guide'}</strong><small>PDF drafting guide</small></div></div></td><td><strong>{e.filename?.includes('blouse')?'Blouse':'Custom top'}</strong><small>V-neck · Short sleeve</small></td><td><strong>Woven · 1.83 m</strong><small>114 cm fabric width</small></td><td><span className="efficiency-badge">71% optimized</span></td><td><strong>{e.exported_at?new Date(e.exported_at).toLocaleDateString('en-GB'):'Today'}</strong><small>Generated</small></td><td><div className="row-actions"><button aria-label="Download" onClick={()=>download(e.export_id)}><Download size={17}/></button><button className="delete" aria-label="Delete" onClick={()=>remove(e.export_id)}><Trash2 size={17}/></button><button aria-label="More options"><MoreHorizontal size={17}/></button></div></td></tr>)}</tbody></table></div>}
+    </section>
+  </div>;
 }

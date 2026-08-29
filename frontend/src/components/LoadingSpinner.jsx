@@ -1,3 +1,5 @@
+import { Scissors } from 'lucide-react';
+
 export default function LoadingSpinner({ message = "Processing AI calculations..." }) {
   return (
     <div className="flex flex-col items-center justify-center py-16 px-4">
@@ -9,7 +11,7 @@ export default function LoadingSpinner({ message = "Processing AI calculations..
         <div className="w-14 h-14 rounded-full border-4 border-slate-800 border-t-brand-500 border-r-emerald-400 animate-spin"></div>
         
         {/* Center Icon */}
-        <div className="absolute text-xl">✂️</div>
+        <div className="absolute text-brand-400"><Scissors size={20} /></div>
       </div>
       <p className="mt-6 text-sm font-semibold text-slate-200 tracking-wide animate-pulse">
         {message}
