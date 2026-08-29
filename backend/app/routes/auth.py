@@ -84,6 +84,48 @@ def login():
     }), 200
 
 
+# ── GOOGLE LOGIN ──────────────────────────────────────────────────────────────
+@auth_bp.route("/google-login", methods=["POST"])
+def google_login():
+    data = request.get_json() or {}
+    email = data.get("email")
+    full_name = data.get("full_name")
+
+    if not email or not full_name:
+        return jsonify({"error": "Email and full_name are required"}), 400
+
+    # Find or create user
+    user = User.objects(email=email).first()
+    if not user:
+        # Create a mock password hash for google profiles
+        hashed = bcrypt.hashpw(
+            "google-oauth-dummy-password".encode("utf-8"),
+            bcrypt.gensalt()
+        ).decode("utf-8")
+        user = User(
+            full_name = full_name,
+            email     = email,
+            password  = hashed
+        )
+        user.save()
+
+    # Generate valid JWT token signed by our app's secret key
+    token = create_access_token(
+        identity = str(user.id),
+        expires_delta = timedelta(hours=24)
+    )
+
+    return jsonify({
+        "message": "Google login successful",
+        "token": token,
+        "user": {
+            "id":        str(user.id),
+            "full_name": user.full_name,
+            "email":     user.email
+        }
+    }), 200
+
+
 # ── GET PROFILE (protected route example) ────────────────────────────────────
 @auth_bp.route("/profile", methods=["GET"])
 @jwt_required()

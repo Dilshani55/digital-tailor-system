@@ -28,12 +28,14 @@ def create_app():
     from app.routes.measurements import measurements_bp
     from app.routes.patterns import patterns_bp
     from app.routes.export import export_bp
+    from app.routes.research import research_bp
 
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
     app.register_blueprint(images_bp, url_prefix='/api/images')
     app.register_blueprint(measurements_bp, url_prefix='/api/measurements')
     app.register_blueprint(patterns_bp, url_prefix='/api/patterns')
     app.register_blueprint(export_bp, url_prefix='/api/export')
+    app.register_blueprint(research_bp, url_prefix='/api/research')
 
     @app.route('/')
     def index():
