@@ -55,3 +55,8 @@ ai_training/dataset/labels/*
 .idea/
 .DS_Store
 Thumbs.db
+
+# Temporary & Generated Zip Files
+temp_zip_*
+*.zip
+runs/
