@@ -78,7 +78,9 @@ def detect_features(image_path):
     try:
         model = get_model()
         if model is None:
-            return _heuristic_features(image_path), 0.92
+            features = _heuristic_features(image_path)
+            features["is_mock"] = True
+            return features, 0.92
 
         # Run inference
         results = model.predict(
@@ -89,13 +91,17 @@ def detect_features(image_path):
         )
 
         if not results or len(results) == 0:
-            return _heuristic_features(image_path), 0.88
+            features = _heuristic_features(image_path)
+            features["is_mock"] = True
+            return features, 0.88
 
         result = results[0]
         boxes  = result.boxes
 
         if boxes is None or len(boxes) == 0:
-            return _heuristic_features(image_path), 0.88
+            features = _heuristic_features(image_path)
+            features["is_mock"] = True
+            return features, 0.88
 
         classes     = boxes.cls.cpu().numpy().astype(int)
         confidences = boxes.conf.cpu().numpy()
@@ -110,13 +116,16 @@ def detect_features(image_path):
 
         features = _infer_features(garment_type, image_path)
         features["garment_type"] = garment_type
+        features["is_mock"] = False
 
         overall_confidence = float(np.mean(confidences)) if len(confidences) > 0 else 0.88
         return features, round(overall_confidence, 4)
 
     except Exception as e:
         print(f"YOLOv8 Detection exception: {e}")
-        return _heuristic_features(image_path), 0.91
+        features = _heuristic_features(image_path)
+        features["is_mock"] = True
+        return features, 0.91
 
 
 def _heuristic_features(image_path):

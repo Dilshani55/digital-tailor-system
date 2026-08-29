@@ -15,8 +15,12 @@ if device == "cpu":
 model = YOLO("yolov8s.pt")   # downloads pretrained weights automatically
 
 # ── Train with transfer learning ──────────────────────────────────────────────
+import os
+current_dir = os.path.dirname(os.path.abspath(__file__))
+data_yaml_path = os.path.join(current_dir, "data.yaml")
+
 results = model.train(
-    data      = "data.yaml",      # dataset config
+    data      = data_yaml_path,      # dataset config
     epochs    = 50,               # number of training rounds
     imgsz     = 640,              # image size (YOLOv8 standard)
     batch     = 16,               # images per batch (reduce to 8 if out of memory)

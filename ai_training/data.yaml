@@ -1,7 +1,7 @@
 # YOLOv8 dataset configuration
 # Digital Tailor System — Garment Detection
 
-path: ./dataset          # root dataset directory
+path: C:\Research\Developing\digital-tailor-system\ai_training\dataset          # root dataset directory
 train: images/train      # training images
 val:   images/val        # validation images
 test:  images/test       # test images (optional)
