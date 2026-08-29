@@ -2,19 +2,22 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import Navbar         from './components/Navbar';
 import Sidebar        from './components/Sidebar';
-import Login          from './pages/Login';
-import Register       from './pages/Register';
+import Home           from './pages/Home';
+import Auth           from './pages/Auth';
 import Dashboard      from './pages/Dashboard';
 import Upload         from './pages/Upload';
 import History        from './pages/History';
 import Measurements   from './pages/Measurements';
+import Customers      from './pages/Customers';
+import Settings       from './pages/Settings';
+import ResearcherDashboard from './pages/ResearcherDashboard';
 import LoadingSpinner from './components/LoadingSpinner';
 
 // Protected route wrapper with Sidebar layout
 function ProtectedLayout({ children }) {
   const { user, loading } = useAuth();
   if (loading) return <LoadingSpinner />;
-  if (!user) return <Navigate to="/login" />;
+  if (!user) return <Navigate to="/auth" />;
 
   return (
     <div className="app">
@@ -35,8 +38,10 @@ function AppRoutes() {
 
   return (
     <Routes>
-      <Route path="/login" element={<Login />} />
-      <Route path="/register" element={<Register />} />
+      <Route path="/" element={<Home />} />
+      <Route path="/auth" element={<Auth />} />
+      <Route path="/login" element={<Navigate to="/auth" />} />
+      <Route path="/register" element={<Navigate to="/auth" />} />
       <Route path="/dashboard" element={
         <ProtectedLayout><Dashboard /></ProtectedLayout>
       }/>
@@ -49,8 +54,14 @@ function AppRoutes() {
       <Route path="/measurements" element={
         <ProtectedLayout><Measurements /></ProtectedLayout>
       }/>
-      <Route path="/" element={
-        <Navigate to={user ? '/dashboard' : '/login'} />
+      <Route path="/customers" element={
+        <ProtectedLayout><Customers /></ProtectedLayout>
+      }/>
+      <Route path="/settings" element={
+        <ProtectedLayout><Settings /></ProtectedLayout>
+      }/>
+      <Route path="/researcher" element={
+        <ProtectedLayout><ResearcherDashboard /></ProtectedLayout>
       }/>
     </Routes>
   );

@@ -12,7 +12,13 @@ export function AuthProvider({ children }) {
     const savedUser  = localStorage.getItem('user');
     const savedToken = localStorage.getItem('token');
     if (savedUser && savedToken) {
-      setUser(JSON.parse(savedUser));
+      try {
+        setUser(JSON.parse(savedUser));
+      } catch (e) {
+        console.error("Failed to parse user from localStorage:", e);
+        localStorage.removeItem('user');
+        localStorage.removeItem('token');
+      }
     }
     setLoading(false);
   }, []);
@@ -31,6 +37,15 @@ export function AuthProvider({ children }) {
     return response.data;
   };
 
+  const googleLogin = async (fullName, email) => {
+    const response = await authAPI.googleLogin({ full_name: fullName, email });
+    const { token, user } = response.data;
+    localStorage.setItem('token', token);
+    localStorage.setItem('user',  JSON.stringify(user));
+    setUser(user);
+    return user;
+  };
+
   const logout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
@@ -38,7 +53,7 @@ export function AuthProvider({ children }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, register, logout, loading }}>
+    <AuthContext.Provider value={{ user, login, register, googleLogin, logout, loading }}>
       {children}
     </AuthContext.Provider>
   );

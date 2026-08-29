@@ -24,7 +24,7 @@ api.interceptors.response.use(
     if (error.response?.status === 401) {
       localStorage.removeItem('token');
       localStorage.removeItem('user');
-      window.location.href = '/login';
+      window.location.href = '/auth';
     }
     return Promise.reject(error);
   }
@@ -34,6 +34,7 @@ api.interceptors.response.use(
 export const authAPI = {
   register: (data) => api.post('/auth/register', data),
   login:    (data) => api.post('/auth/login',    data),
+  googleLogin: (data) => api.post('/auth/google-login', data),
   profile:  ()     => api.get('/auth/profile'),
 };
 
@@ -73,6 +74,13 @@ export const exportAPI = {
   }),
   delete:   (id)       => api.delete(`/export/${id}`),
   getAll:   ()         => api.get('/export/'),
+};
+
+// ── RESEARCH METRICS ──────────────────────────────────────────────────────────
+export const researchAPI = {
+  submitFeedback: (data) => api.post('/research/feedback', data),
+  getMetrics:     ()     => api.get('/research/metrics'),
+  getCSVUrl:      ()     => `${BASE_URL}/research/export/csv`
 };
 
 export default api;

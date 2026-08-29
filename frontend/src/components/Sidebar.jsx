@@ -1,85 +1,41 @@
-import { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { BarChart3, FileClock, LogOut, Plus, Ruler, Settings, Sparkles, Users, Database } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { exportAPI, measurementsAPI } from '../services/api';
+
+const links = [
+  { to: '/dashboard', label: 'Overview', icon: BarChart3 },
+  { to: '/upload', label: 'Create pattern', icon: Plus },
+  { to: '/history', label: 'Pattern library', icon: FileClock },
+  { to: '/customers', label: 'Customers', icon: Users },
+  { to: '/measurements', label: 'Measurements', icon: Ruler },
+  { to: '/researcher', label: 'Researcher Metrics', icon: Database },
+];
 
 export default function Sidebar() {
-  const location = useLocation();
+  const { pathname } = useLocation();
   const navigate = useNavigate();
-  const { logout, user } = useAuth();
-  const [historyCount, setHistoryCount] = useState(0);
-  const [measurementsCount, setMeasurementsCount] = useState(0);
-
-  const isActive = (path) => location.pathname === path;
-
-  // Fetch dynamic history count and measurements count from API
-  useEffect(() => {
-    if (user) {
-      exportAPI.getAll()
-        .then((res) => {
-          setHistoryCount(res.data.total || res.data.exports?.length || 0);
-        })
-        .catch(() => setHistoryCount(0));
-
-      measurementsAPI.getAll()
-        .then((res) => {
-          setMeasurementsCount(res.data.total || res.data.measurements?.length || 0);
-        })
-        .catch(() => setMeasurementsCount(0));
-    }
-  }, [user, location.pathname]);
-
+  const { logout } = useAuth();
   return (
     <aside className="sidebar">
-      <div className="sidebar-section">Main</div>
-      
-      <Link
-        to="/dashboard"
-        className={`sidebar-item ${isActive('/dashboard') ? 'active' : ''}`}
-      >
-        Dashboard
+      <div className="sidebar-label">Workspace</div>
+      <nav className="sidebar-nav">
+        {links.map(({ to, label, icon: Icon }) => (
+          <Link key={to} to={to} className={'sidebar-item ' + (pathname === to ? 'active' : '')}>
+            <Icon size={18} strokeWidth={1.8}/><span>{label}</span>
+          </Link>
+        ))}
+      </nav>
+      <div className="sidebar-label account-label">Account</div>
+      <Link to="/settings" className={'sidebar-item ' + (pathname === '/settings' ? 'active' : '')}>
+        <Settings size={18}/><span>Settings</span>
       </Link>
-
-      <Link
-        to="/upload"
-        className={`sidebar-item ${isActive('/upload') ? 'active' : ''}`}
-      >
-        New pattern
-      </Link>
-
-      <Link
-        to="/history"
-        className={`sidebar-item ${isActive('/history') ? 'active' : ''}`}
-      >
-        History
-        <span className="sidebar-badge">{historyCount}</span>
-      </Link>
-
-      <div className="sidebar-section">Account</div>
-
-      <Link
-        to="/measurements"
-        className={`sidebar-item ${isActive('/measurements') ? 'active' : ''}`}
-      >
-        Measurements
-        <span className="sidebar-badge" style={{ background: '#1E293B', color: '#38BDF8', border: '1px solid #334155' }}>
-          {measurementsCount}
-        </span>
-      </Link>
-
-      <div className="sidebar-item">
-        Settings
+      <div className="sidebar-research">
+        <Sparkles size={17}/>
+        <div><strong>Research prototype</strong><small>AI-assisted custom tailoring</small></div>
       </div>
-
-      <div
-        className="sidebar-item"
-        onClick={() => {
-          logout();
-          navigate('/login');
-        }}
-      >
-        Logout
-      </div>
+      <button className="sidebar-item logout" onClick={() => { logout(); navigate('/auth'); }}>
+        <LogOut size={18}/><span>Sign out</span>
+      </button>
     </aside>
   );
 }
