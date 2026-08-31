@@ -48,7 +48,7 @@ export default function Navbar() {
 
   return (
     <header className="app-header">
-      <Link to="/dashboard" className="app-brand" aria-label="TailorAI dashboard">
+      <Link to="/" className="app-brand" aria-label="TailorAI dashboard">
         <span className="app-brand-mark"><Ruler size={20} strokeWidth={1.8}/></span>
         <span><strong>TailorAI</strong><small>Digital pattern studio</small></span>
       </Link>
