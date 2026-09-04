@@ -141,8 +141,8 @@ def _heuristic_features(image_path):
         # Crop top / aspect ratio detection
         is_crop_top = (height / width) < 1.25
 
-        # Top area skin/shoulder check
-        top_crop = img.crop((0, 0, width, int(height * 0.35)))
+        # Top area skin/shoulder check (50% of height)
+        top_crop = img.crop((0, 0, width, int(height * 0.50)))
         arr = np.array(top_crop)
         # Check brightness/skin tone in neck region
         r, g, b = arr[:,:,0], arr[:,:,1], arr[:,:,2]
@@ -150,11 +150,11 @@ def _heuristic_features(image_path):
 
         # Check shoulder asymmetry (e.g. one-shoulder / single sleeve)
         half_w = width // 2
-        left_shoulder = arr[:, :half_w, :]
-        right_shoulder = arr[:, half_w:, :]
+        left_shoulder = arr[:, :half_w, :3]
+        right_shoulder = arr[:, half_w:, :3]
         left_brightness = float(left_shoulder.mean())
         right_brightness = float(right_shoulder.mean())
-        is_one_shoulder = abs(left_brightness - right_brightness) > 22.0
+        is_one_shoulder = abs(left_brightness - right_brightness) > 12.0
 
         garment_type = "crop-top" if is_crop_top else "blouse"
         
@@ -186,24 +186,30 @@ def _heuristic_features(image_path):
 
 
 def _infer_features(garment_type, image_path):
+    h = _heuristic_features(image_path)
+    neckline = h.get("neckline", "round neck")
+    sleeves = h.get("sleeves", "short sleeve")
+
     defaults = {
         "t-shirt": {
-            "neckline": "round neck",
-            "sleeves":  "short sleeve",
+            "neckline": neckline if neckline in ["one-shoulder", "halter neck"] else "round neck",
+            "sleeves":  sleeves if sleeves in ["single sleeve", "sleeveless"] else "short sleeve",
             "darts":    "no dart",
             "seams":    "side seam"
         },
         "blouse": {
-            "neckline": "v-neck",
-            "sleeves":  "long sleeve",
+            "neckline": neckline if neckline in ["one-shoulder", "off-the-shoulder"] else "v-neck",
+            "sleeves":  sleeves if sleeves in ["single sleeve", "sleeveless"] else "long sleeve",
             "darts":    "bust dart",
             "seams":    "princess seam"
         },
         "crop-top": {
-            "neckline": "off-the-shoulder",
-            "sleeves":  "short sleeve",
+            "neckline": neckline,
+            "sleeves":  sleeves,
             "darts":    "bust dart",
             "seams":    "side seam"
         }
     }
-    return defaults.get(garment_type, defaults["crop-top"]).copy()
+    res = defaults.get(garment_type, defaults["crop-top"]).copy()
+    res["garment_type"] = garment_type
+    return res
