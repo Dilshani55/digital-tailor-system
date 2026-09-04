@@ -31,7 +31,6 @@ def prepare():
         
         reader = csv.reader(io.StringIO(csv_data))
         header = next(reader)
-        # Find column indices
         path_idx = header.index("path")
         bbox_idx = header.index("b_box")
         cat_idx = header.index("category_name")
@@ -39,7 +38,7 @@ def prepare():
         h_idx = header.index("img_height")
 
         count = 0
-        limit = 100 if split == "train" else 20
+        limit = 60 if split == "train" else 15
         
         # Output folders
         split_name = "train" if split == "train" else "val"
@@ -67,12 +66,15 @@ def prepare():
             width = (x2 - x1) / img_w
             height = (y2 - y1) / img_h
 
-            # Extract image
-            img_zip_path = "DeepFashion2 Resized/" + row[path_idx].lstrip("/")
-            img_data = z.read(img_zip_path)
+            img_name = os.path.basename(row[path_idx])
+            img_zip_path = f"DeepFashion2 Resized/resized/{split}/{img_name}"
+            
+            try:
+                img_data = z.read(img_zip_path)
+            except KeyError:
+                continue
             
             # Save image
-            img_name = os.path.basename(img_zip_path)
             with open(os.path.join(img_out, img_name), "wb") as f:
                 f.write(img_data)
                 
