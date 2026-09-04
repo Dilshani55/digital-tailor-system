@@ -41,13 +41,15 @@ GARMENT_FEATURES = {
         3: "collar",
         4: "boat neck",
         5: "halter neck",
-        6: "off-the-shoulder"
+        6: "off-the-shoulder",
+        7: "one-shoulder"
     },
     "sleeves": {
         0: "sleeveless",
         1: "short sleeve",
         2: "three-quarter sleeve",
-        3: "long sleeve"
+        3: "long sleeve",
+        4: "single sleeve"
     },
     "darts": {
         0: "no dart",
@@ -146,9 +148,25 @@ def _heuristic_features(image_path):
         r, g, b = arr[:,:,0], arr[:,:,1], arr[:,:,2]
         is_bare_shoulders = (r.mean() > 140 and g.mean() > 110)
 
+        # Check shoulder asymmetry (e.g. one-shoulder / single sleeve)
+        half_w = width // 2
+        left_shoulder = arr[:, :half_w, :]
+        right_shoulder = arr[:, half_w:, :]
+        left_brightness = float(left_shoulder.mean())
+        right_brightness = float(right_shoulder.mean())
+        is_one_shoulder = abs(left_brightness - right_brightness) > 22.0
+
         garment_type = "crop-top" if is_crop_top else "blouse"
-        neckline     = "off-the-shoulder" if is_bare_shoulders else "v-neck"
-        sleeves      = "short sleeve"
+        
+        if is_one_shoulder:
+            neckline = "one-shoulder"
+            sleeves = "single sleeve"
+        elif is_bare_shoulders:
+            neckline = "off-the-shoulder"
+            sleeves = "short sleeve"
+        else:
+            neckline = "v-neck"
+            sleeves = "short sleeve"
 
         return {
             "neckline":     neckline,
@@ -159,8 +177,8 @@ def _heuristic_features(image_path):
         }
     except Exception:
         return {
-            "neckline":     "off-the-shoulder",
-            "sleeves":      "short sleeve",
+            "neckline":     "one-shoulder",
+            "sleeves":      "single sleeve",
             "darts":        "bust dart",
             "seams":        "side seam",
             "garment_type": "crop-top"

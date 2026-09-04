@@ -339,6 +339,7 @@ export default function Upload() {
                     value={features.neckline}
                     onChange={(e) => setFeatures({ ...features, neckline: e.target.value })}
                   >
+                    <option value="one-shoulder">one-shoulder</option>
                     <option value="off-the-shoulder">off-the-shoulder</option>
                     <option value="round neck">round neck</option>
                     <option value="v-neck">v-neck</option>
@@ -356,6 +357,7 @@ export default function Upload() {
                     value={features.sleeves}
                     onChange={(e) => setFeatures({ ...features, sleeves: e.target.value })}
                   >
+                    <option value="single sleeve">single sleeve</option>
                     <option value="short sleeve">short sleeve</option>
                     <option value="sleeveless">sleeveless</option>
                     <option value="long sleeve">long sleeve</option>
@@ -631,25 +633,35 @@ export default function Upload() {
                         <text x="40" y="105" fill="var(--text-accent)" fontSize="9">Bust Dart Included</text>
                       </g>
 
-                      <g transform="translate(430, 30)">
-                        <path d="M 20 0 C 60 -15, 100 0, 110 40 L 90 150 L 0 150 L -10 40 Z" fill="#0F172A" stroke="#74C69D" strokeWidth="2" />
-                        <text x="25" y="70" fill="#F8FAFC" fontSize="11" fontWeight="bold">SLEEVE (L)</text>
-                        <text x="30" y="90" fill="#94A3B8" fontSize="9">24cm × 22cm</text>
-                      </g>
+                      {features.sleeves !== 'sleeveless' && (
+                        <g transform="translate(430, 30)">
+                          <path d="M 20 0 C 60 -15, 100 0, 110 40 L 90 150 L 0 150 L -10 40 Z" fill="#0F172A" stroke="#74C69D" strokeWidth="2" />
+                          <text x="18" y="70" fill="#F8FAFC" fontSize="11" fontWeight="bold">
+                            {features.sleeves === 'single sleeve' || features.neckline === 'one-shoulder' ? 'SLEEVE (Single)' : 'SLEEVE (L)'}
+                          </text>
+                          <text x="30" y="90" fill="#94A3B8" fontSize="9">24cm × 22cm</text>
+                        </g>
+                      )}
 
-                      <g transform="translate(580, 30)">
-                        <path d="M 20 0 C 60 -15, 100 0, 110 40 L 90 150 L 0 150 L -10 40 Z" fill="#0F172A" stroke="#74C69D" strokeWidth="2" />
-                        <text x="25" y="70" fill="#F8FAFC" fontSize="11" fontWeight="bold">SLEEVE (R)</text>
-                        <text x="30" y="90" fill="#94A3B8" fontSize="9">24cm × 22cm</text>
-                      </g>
+                      {features.sleeves !== 'sleeveless' && features.sleeves !== 'single sleeve' && features.neckline !== 'one-shoulder' && (
+                        <g transform="translate(580, 30)">
+                          <path d="M 20 0 C 60 -15, 100 0, 110 40 L 90 150 L 0 150 L -10 40 Z" fill="#0F172A" stroke="#74C69D" strokeWidth="2" />
+                          <text x="25" y="70" fill="#F8FAFC" fontSize="11" fontWeight="bold">SLEEVE (R)</text>
+                          <text x="30" y="90" fill="#94A3B8" fontSize="9">24cm × 22cm</text>
+                        </g>
+                      )}
                     </svg>
                   </div>
                 </div>
 
                 <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '20px' }}>
                   <span className="chip" style={{ color: 'var(--text-accent)', borderColor: 'var(--text-accent)' }}>✓ Back Bodice Block</span>
-                  <span className="chip" style={{ color: 'var(--text-accent)', borderColor: 'var(--text-accent)' }}>✓ Front Bodice Block</span>
-                  <span className="chip" style={{ color: '#74C69D', borderColor: '#74C69D' }}>✓ Sleeve × 2</span>
+                  <span className="chip" style={{ color: 'var(--text-accent)', borderColor: 'var(--text-accent)' }}>
+                    {features.neckline === 'one-shoulder' ? '✓ One-Shoulder Bodice' : '✓ Front Bodice Block'}
+                  </span>
+                  <span className="chip" style={{ color: '#74C69D', borderColor: '#74C69D' }}>
+                    {features.sleeves === 'sleeveless' ? '✓ Sleeveless' : (features.sleeves === 'single sleeve' || features.neckline === 'one-shoulder') ? '✓ Single Sleeve × 1' : '✓ Sleeve × 2'}
+                  </span>
                   <span className="chip" style={{ color: '#2D6A4F', borderColor: '#2D6A4F' }}>✓ Fitted Bust Dart</span>
                 </div>
               </div>

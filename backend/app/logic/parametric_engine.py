@@ -257,8 +257,10 @@ class ParametricEngine:
         CROWN_L = (sleeve_width * 0.25, sleeve_head * 0.3)
         CROWN_R = (sleeve_width * 0.75, sleeve_head * 0.3)
 
+        is_single = (sleeve_type == "single sleeve" or self.features.get("neckline") == "one-shoulder")
         piece = {
-            "name": f"Sleeve ({sleeve_type})",
+            "name": "Sleeve (single sleeve)" if is_single else f"Sleeve ({sleeve_type})",
+            "cut_count": 1 if is_single else 2,
             "seam_allowance_cm": 1.5,
             "length_cm": sleeve_length,
             "width_cm":  sleeve_width,

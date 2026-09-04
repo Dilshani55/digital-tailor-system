@@ -27,18 +27,21 @@ EASE_RULES = {
 
 # Neckline depth adjustments (cm dropped from base neck)
 NECKLINE_DEPTH = {
-    "round neck":   2.0,
-    "v-neck":       8.0,
-    "square neck":  4.0,
-    "collar":       1.0,
-    "boat neck":    1.5,
-    "halter neck": 10.0
+    "round neck":        2.0,
+    "v-neck":            8.0,
+    "square neck":       4.0,
+    "collar":            1.0,
+    "boat neck":         1.5,
+    "halter neck":      10.0,
+    "off-the-shoulder":  6.0,
+    "one-shoulder":      8.0
 }
 
 # Sleeve length standards (cm from shoulder point)
 SLEEVE_LENGTH = {
     "sleeveless":             0.0,
     "short sleeve":          22.0,
+    "single sleeve":         22.0,
     "three-quarter sleeve":  45.0,
     "long sleeve":           58.0
 }

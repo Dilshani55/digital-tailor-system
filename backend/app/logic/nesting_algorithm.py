@@ -67,11 +67,12 @@ class NestingAlgorithm:
             h    = bbox.get("height_cm", 40.0)
             name = p.get("name", "Piece")
 
-            count = 2
+            count = p.get("cut_count", 2)
 
             for i in range(count):
+                cut_suffix = f" (cut {i + 1})" if count > 1 else ""
                 rects.append(Rectangle(
-                    name  = f"{name} (cut {i + 1})",
+                    name  = f"{name}{cut_suffix}",
                     width = w + self.SEAM_GAP,
                     height= h + self.SEAM_GAP
                 ))
