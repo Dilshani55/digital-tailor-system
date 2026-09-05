@@ -74,14 +74,16 @@ GARMENT_FEATURES = {
         4: "boat neck",
         5: "halter neck",
         6: "off-the-shoulder",
-        7: "one-shoulder"
+        7: "one-shoulder",
+        8: "sweetheart neck"
     },
     "sleeves": {
         0: "sleeveless",
         1: "short sleeve",
         2: "three-quarter sleeve",
         3: "long sleeve",
-        4: "single sleeve"
+        4: "single sleeve",
+        5: "puff sleeve"
     },
     "darts": {
         0: "no dart",
@@ -277,19 +279,25 @@ def _heuristic_features(image_path):
         lower_outer_mass = float(g_mask[int(gh * 0.75):, :int(gw * 0.22)].sum() + g_mask[int(gh * 0.75):, int(gw * 0.78):].sum())
         has_long_sleeves = (lower_outer_mass / total_mass > 0.08) and not is_crop_top
 
+        # Puff sleeve: bulging volume at shoulder/bicep with short vertical extent
+        outer_mass = float(left_outer.sum() + right_outer.sum())
+        is_puff_sleeve = (outer_mass / total_mass > 0.18) and not has_long_sleeves and has_sleeves
+
         if is_one_shoulder:
             garment_type = "crop-top" if is_crop_top else "blouse"
             neckline = "one-shoulder"
             sleeves = "single sleeve"
         elif center_fill < 0.12 or avg_drop > 0.18:
             garment_type = "crop-top" if is_crop_top else "blouse"
-            if drop_variance < 0.07:
+            if drop_variance < 0.05:
                 neckline = "square neck"
+            elif 0.05 <= drop_variance <= 0.10:
+                neckline = "sweetheart neck"
             elif avg_drop > 0.28:
                 neckline = "off-the-shoulder"
             else:
-                neckline = "v-neck" if drop_variance > 0.10 else "square neck"
-            sleeves = "short sleeve" if not has_long_sleeves else "long sleeve"
+                neckline = "v-neck"
+            sleeves = "puff sleeve" if is_puff_sleeve else ("short sleeve" if not has_long_sleeves else "long sleeve")
         elif not has_sleeves:
             garment_type = "crop-top" if is_crop_top else "t-shirt"
             neckline = "round neck"
@@ -301,7 +309,7 @@ def _heuristic_features(image_path):
         else:
             garment_type = "crop-top" if is_crop_top else "t-shirt"
             neckline = "round neck"
-            sleeves = "short sleeve"
+            sleeves = "puff sleeve" if is_puff_sleeve else "short sleeve"
 
         return {
             "neckline":     neckline,

@@ -193,10 +193,18 @@ class ParametricEngine:
         )
         DART_APEX = (dart_apex_x, dart_apex_y)
 
-        neck_curve = (
-            A1[0] * 0.3,
-            self.front_neck_depth * 0.7
-        )
+        neckline_type = self.features.get("neckline", "round neck")
+        if neckline_type == "sweetheart neck":
+            # Winifred Aldrich Sweetheart neckline arch
+            neck_curve = (
+                A1[0] * 0.45,
+                self.front_neck_depth * 0.40
+            )
+        else:
+            neck_curve = (
+                A1[0] * 0.3,
+                self.front_neck_depth * 0.7
+            )
 
         piece = {
             "name": "Front Bodice",
@@ -243,19 +251,24 @@ class ParametricEngine:
             return None
 
         sleeve_length = get_sleeve_length(sleeve_type)
-        sleeve_head   = self.armhole_depth * 0.75
-        sleeve_width  = self.half_bust / 2 + 3.0
+        is_puff = (sleeve_type == "puff sleeve")
+
+        # Winifred Aldrich puff sleeve adds gather fullness to crown & bicep
+        sleeve_head   = self.armhole_depth * (0.85 if is_puff else 0.75)
+        sleeve_width  = self.half_bust / 2 + (6.0 if is_puff else 3.0)
 
         CROWN = (sleeve_width / 2, 0)
         UL = (0,             sleeve_head)   # underarm left
         UR = (sleeve_width,  sleeve_head)   # underarm right
 
-        taper = 3.0 if sleeve_type == "long sleeve" else 1.0
+        taper = 3.0 if sleeve_type == "long sleeve" else (2.0 if is_puff else 1.0)
         HL    = (taper,                  sleeve_length)
         HR    = (sleeve_width - taper,   sleeve_length)
 
-        CROWN_L = (sleeve_width * 0.25, sleeve_head * 0.3)
-        CROWN_R = (sleeve_width * 0.75, sleeve_head * 0.3)
+        # Puff sleeve has higher arch control points for gathered cap
+        crown_arch_y = sleeve_head * (0.20 if is_puff else 0.30)
+        CROWN_L = (sleeve_width * 0.25, crown_arch_y)
+        CROWN_R = (sleeve_width * 0.75, crown_arch_y)
 
         is_single = (sleeve_type == "single sleeve" or self.features.get("neckline") == "one-shoulder")
         piece = {

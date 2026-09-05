@@ -341,9 +341,10 @@ export default function Upload() {
                   >
                     <option value="one-shoulder">one-shoulder</option>
                     <option value="off-the-shoulder">off-the-shoulder</option>
+                    <option value="sweetheart neck">sweetheart neck</option>
+                    <option value="square neck">square neck</option>
                     <option value="round neck">round neck</option>
                     <option value="v-neck">v-neck</option>
-                    <option value="square neck">square neck</option>
                     <option value="boat neck">boat neck</option>
                     <option value="collar">collar</option>
                     <option value="halter neck">halter neck</option>
@@ -357,8 +358,9 @@ export default function Upload() {
                     value={features.sleeves}
                     onChange={(e) => setFeatures({ ...features, sleeves: e.target.value })}
                   >
-                    <option value="single sleeve">single sleeve</option>
+                    <option value="puff sleeve">puff sleeve</option>
                     <option value="short sleeve">short sleeve</option>
+                    <option value="single sleeve">single sleeve</option>
                     <option value="sleeveless">sleeveless</option>
                     <option value="long sleeve">long sleeve</option>
                     <option value="three-quarter sleeve">three-quarter sleeve</option>
@@ -635,19 +637,35 @@ export default function Upload() {
 
                       {features.sleeves !== 'sleeveless' && (
                         <g transform="translate(430, 30)">
-                          <path d="M 20 0 C 60 -15, 100 0, 110 40 L 90 150 L 0 150 L -10 40 Z" fill="#0F172A" stroke="#74C69D" strokeWidth="2" />
+                          <path
+                            d={features.sleeves === 'puff sleeve'
+                              ? "M 15 25 C 30 -20, 90 -20, 105 25 L 95 150 L 5 150 Z"
+                              : "M 20 0 C 60 -15, 100 0, 110 40 L 90 150 L 0 150 L -10 40 Z"}
+                            fill="#0F172A" stroke="#74C69D" strokeWidth="2"
+                          />
                           <text x="18" y="70" fill="#F8FAFC" fontSize="11" fontWeight="bold">
-                            {features.sleeves === 'single sleeve' || features.neckline === 'one-shoulder' ? 'SLEEVE (Single)' : 'SLEEVE (L)'}
+                            {features.sleeves === 'puff sleeve' ? 'SLEEVE (Puff L)' : (features.sleeves === 'single sleeve' || features.neckline === 'one-shoulder' ? 'SLEEVE (Single)' : 'SLEEVE (L)')}
                           </text>
-                          <text x="30" y="90" fill="#94A3B8" fontSize="9">24cm × 22cm</text>
+                          <text x="25" y="90" fill="#94A3B8" fontSize="9">
+                            {features.sleeves === 'puff sleeve' ? '30cm × 20cm (Gathers)' : '24cm × 22cm'}
+                          </text>
                         </g>
                       )}
 
                       {features.sleeves !== 'sleeveless' && features.sleeves !== 'single sleeve' && features.neckline !== 'one-shoulder' && (
                         <g transform="translate(580, 30)">
-                          <path d="M 20 0 C 60 -15, 100 0, 110 40 L 90 150 L 0 150 L -10 40 Z" fill="#0F172A" stroke="#74C69D" strokeWidth="2" />
-                          <text x="25" y="70" fill="#F8FAFC" fontSize="11" fontWeight="bold">SLEEVE (R)</text>
-                          <text x="30" y="90" fill="#94A3B8" fontSize="9">24cm × 22cm</text>
+                          <path
+                            d={features.sleeves === 'puff sleeve'
+                              ? "M 15 25 C 30 -20, 90 -20, 105 25 L 95 150 L 5 150 Z"
+                              : "M 20 0 C 60 -15, 100 0, 110 40 L 90 150 L 0 150 L -10 40 Z"}
+                            fill="#0F172A" stroke="#74C69D" strokeWidth="2"
+                          />
+                          <text x="25" y="70" fill="#F8FAFC" fontSize="11" fontWeight="bold">
+                            {features.sleeves === 'puff sleeve' ? 'SLEEVE (Puff R)' : 'SLEEVE (R)'}
+                          </text>
+                          <text x="25" y="90" fill="#94A3B8" fontSize="9">
+                            {features.sleeves === 'puff sleeve' ? '30cm × 20cm (Gathers)' : '24cm × 22cm'}
+                          </text>
                         </g>
                       )}
                     </svg>
@@ -657,10 +675,10 @@ export default function Upload() {
                 <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '20px' }}>
                   <span className="chip" style={{ color: 'var(--text-accent)', borderColor: 'var(--text-accent)' }}>✓ Back Bodice Block</span>
                   <span className="chip" style={{ color: 'var(--text-accent)', borderColor: 'var(--text-accent)' }}>
-                    {features.neckline === 'one-shoulder' ? '✓ One-Shoulder Bodice' : '✓ Front Bodice Block'}
+                    {features.neckline === 'one-shoulder' ? '✓ One-Shoulder Bodice' : features.neckline === 'sweetheart neck' ? '✓ Sweetheart Neck Bodice' : '✓ Front Bodice Block'}
                   </span>
                   <span className="chip" style={{ color: '#74C69D', borderColor: '#74C69D' }}>
-                    {features.sleeves === 'sleeveless' ? '✓ Sleeveless' : (features.sleeves === 'single sleeve' || features.neckline === 'one-shoulder') ? '✓ Single Sleeve × 1' : '✓ Sleeve × 2'}
+                    {features.sleeves === 'sleeveless' ? '✓ Sleeveless' : (features.sleeves === 'single sleeve' || features.neckline === 'one-shoulder') ? '✓ Single Sleeve × 1' : features.sleeves === 'puff sleeve' ? '✓ Puff Sleeve (Gathered) × 2' : '✓ Sleeve × 2'}
                   </span>
                   <span className="chip" style={{ color: '#2D6A4F', borderColor: '#2D6A4F' }}>✓ Fitted Bust Dart</span>
                 </div>

@@ -34,7 +34,8 @@ NECKLINE_DEPTH = {
     "boat neck":         1.5,
     "halter neck":      10.0,
     "off-the-shoulder":  6.0,
-    "one-shoulder":      8.0
+    "one-shoulder":      8.0,
+    "sweetheart neck":   7.5
 }
 
 # Sleeve length standards (cm from shoulder point)
@@ -42,6 +43,7 @@ SLEEVE_LENGTH = {
     "sleeveless":             0.0,
     "short sleeve":          22.0,
     "single sleeve":         22.0,
+    "puff sleeve":           20.0,
     "three-quarter sleeve":  45.0,
     "long sleeve":           58.0
 }
