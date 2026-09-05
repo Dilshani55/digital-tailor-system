@@ -7,10 +7,13 @@ val:   images/val        # validation images
 test:  images/test       # test images (optional)
 
 # Number of classes
-nc: 3
+nc: 6
 
-# Class names — must match CATEGORY_MAP in convert_dataset.py
+# Class names — sleeves and necklines
 names:
-  0: t-shirt
-  1: blouse
-  2: crop-top
+  0: short-sleeve
+  1: long-sleeve
+  2: sleeveless
+  3: one-shoulder
+  4: round-neck
+  5: v-neck

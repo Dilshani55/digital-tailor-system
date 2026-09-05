@@ -18,16 +18,16 @@ data_yaml_path = os.path.join(current_dir, "data.yaml")
 
 results = model.train(
     data        = data_yaml_path,     # dataset config
-    epochs      = 3,                  # rapid training epochs
+    epochs      = 8,                  # rapid training epochs
     imgsz       = 320,                # optimized CPU resolution
-    batch       = 8,                  # batch size
+    batch       = 16,                 # batch size
     name        = "garment_detector",
     project     = os.path.join(current_dir, "runs"),
     device      = device,
     pretrained  = True,
-    optimizer   = "Adam",
-    lr0         = 0.001,
+    lr0         = 0.01,
     augment     = True,
+    exist_ok    = True,
     verbose     = True
 )
 
