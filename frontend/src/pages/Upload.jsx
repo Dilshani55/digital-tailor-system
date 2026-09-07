@@ -358,12 +358,26 @@ export default function Upload() {
                     value={features.sleeves}
                     onChange={(e) => setFeatures({ ...features, sleeves: e.target.value })}
                   >
+                    <option value="bell sleeve">bell sleeve</option>
+                    <option value="flared sleeve">flared sleeve</option>
+                    <option value="bishop sleeve">bishop sleeve</option>
+                    <option value="balloon sleeve">balloon sleeve</option>
                     <option value="puff sleeve">puff sleeve</option>
+                    <option value="cap sleeve">cap sleeve</option>
                     <option value="short sleeve">short sleeve</option>
+                    <option value="elbow sleeve">elbow sleeve</option>
+                    <option value="three-quarter sleeve">three-quarter sleeve</option>
+                    <option value="long sleeve">long sleeve</option>
+                    <option value="leg-o'-mutton sleeve">leg-o'-mutton sleeve</option>
+                    <option value="cold shoulder sleeve">cold shoulder sleeve</option>
+                    <option value="cape sleeve">cape sleeve</option>
+                    <option value="butterfly sleeve">butterfly sleeve</option>
+                    <option value="slit sleeve">slit sleeve</option>
+                    <option value="batwing sleeve">batwing sleeve</option>
+                    <option value="kimono sleeve">kimono sleeve</option>
+                    <option value="lantern sleeve">lantern sleeve</option>
                     <option value="single sleeve">single sleeve</option>
                     <option value="sleeveless">sleeveless</option>
-                    <option value="long sleeve">long sleeve</option>
-                    <option value="three-quarter sleeve">three-quarter sleeve</option>
                   </select>
                 </div>
               </div>
@@ -638,16 +652,50 @@ export default function Upload() {
                       {features.sleeves !== 'sleeveless' && (
                         <g transform="translate(430, 30)">
                           <path
-                            d={features.sleeves === 'puff sleeve'
-                              ? "M 15 25 C 30 -20, 90 -20, 105 25 L 95 150 L 5 150 Z"
-                              : "M 20 0 C 60 -15, 100 0, 110 40 L 90 150 L 0 150 L -10 40 Z"}
+                            d={
+                              features.sleeves === 'puff sleeve'
+                                ? "M 15 25 C 30 -20, 90 -20, 105 25 L 95 150 L 5 150 Z"
+                                : (features.sleeves === 'bell sleeve' || features.sleeves === 'flared sleeve' || features.sleeves === 'ruffle sleeve' || features.sleeves === 'tiered sleeve')
+                                  ? "M 20 0 C 60 -15, 100 0, 110 40 L 140 160 L -20 160 L 0 40 Z"
+                                  : (features.sleeves === 'bishop sleeve' || features.sleeves === 'balloon sleeve' || features.sleeves === 'lantern sleeve')
+                                    ? "M 15 0 C 55 -15, 95 0, 105 35 L 125 135 L -5 135 L 5 35 Z M 15 140 L 105 140 L 105 155 L 15 155 Z"
+                                    : features.sleeves === 'leg-o\'-mutton sleeve'
+                                      ? "M 15 20 C 25 -25, 95 -25, 110 20 L 75 160 L 45 160 L 0 40 Z"
+                                      : (features.sleeves === 'cap sleeve' || features.sleeves === 'petal sleeve')
+                                        ? "M 15 0 C 55 -15, 95 0, 105 30 L 95 70 C 60 85, 40 85, 10 70 Z"
+                                        : (features.sleeves === 'cold shoulder sleeve' || features.sleeves === 'slit sleeve')
+                                          ? "M 15 20 C 35 35, 85 35, 105 20 L 90 150 L 10 150 Z"
+                                          : (features.sleeves === 'cape sleeve' || features.sleeves === 'butterfly sleeve')
+                                            ? "M 20 0 C 60 -15, 100 0, 110 30 L 150 120 C 90 150, 40 150, -20 120 Z"
+                                            : "M 20 0 C 60 -15, 100 0, 110 40 L 90 150 L 0 150 L -10 40 Z"
+                            }
                             fill="#0F172A" stroke="#74C69D" strokeWidth="2"
                           />
                           <text x="18" y="70" fill="#F8FAFC" fontSize="11" fontWeight="bold">
-                            {features.sleeves === 'puff sleeve' ? 'SLEEVE (Puff L)' : (features.sleeves === 'single sleeve' || features.neckline === 'one-shoulder' ? 'SLEEVE (Single)' : 'SLEEVE (L)')}
+                            {features.sleeves === 'single sleeve' || features.neckline === 'one-shoulder' ? 'SLEEVE (Single)' : `SLEEVE (L: ${features.sleeves.split(' ')[0]})`}
                           </text>
-                          <text x="25" y="90" fill="#94A3B8" fontSize="9">
-                            {features.sleeves === 'puff sleeve' ? '30cm × 20cm (Gathers)' : '24cm × 22cm'}
+                          <text x="20" y="90" fill="#94A3B8" fontSize="9">
+                            {features.sleeves === 'puff sleeve'
+                              ? '30.5cm × 20cm (Gathers)'
+                              : (features.sleeves === 'bell sleeve' || features.sleeves === 'flared sleeve')
+                                ? '43.5cm × 56cm (Flared)'
+                                : (features.sleeves === 'bishop sleeve' || features.sleeves === 'balloon sleeve')
+                                  ? '40cm × 58cm (+ Cuff)'
+                                  : features.sleeves === 'leg-o\'-mutton sleeve'
+                                    ? '30.5cm × 58cm (Puff/Tight)'
+                                    : features.sleeves === 'cap sleeve'
+                                      ? '26cm × 10cm (Cap)'
+                                      : features.sleeves === 'cold shoulder sleeve'
+                                        ? '27.5cm × 50cm (Cutout)'
+                                        : features.sleeves === 'cape sleeve'
+                                          ? '47.5cm × 35cm (Drape)'
+                                          : features.sleeves === 'long sleeve'
+                                            ? '27.5cm × 58cm'
+                                            : features.sleeves === 'three-quarter sleeve'
+                                              ? '27.5cm × 45cm'
+                                              : features.sleeves === 'elbow sleeve'
+                                                ? '27.5cm × 32cm'
+                                                : '27.5cm × 22cm'}
                           </text>
                         </g>
                       )}
@@ -655,16 +703,50 @@ export default function Upload() {
                       {features.sleeves !== 'sleeveless' && features.sleeves !== 'single sleeve' && features.neckline !== 'one-shoulder' && (
                         <g transform="translate(580, 30)">
                           <path
-                            d={features.sleeves === 'puff sleeve'
-                              ? "M 15 25 C 30 -20, 90 -20, 105 25 L 95 150 L 5 150 Z"
-                              : "M 20 0 C 60 -15, 100 0, 110 40 L 90 150 L 0 150 L -10 40 Z"}
+                            d={
+                              features.sleeves === 'puff sleeve'
+                                ? "M 15 25 C 30 -20, 90 -20, 105 25 L 95 150 L 5 150 Z"
+                                : (features.sleeves === 'bell sleeve' || features.sleeves === 'flared sleeve' || features.sleeves === 'ruffle sleeve' || features.sleeves === 'tiered sleeve')
+                                  ? "M 20 0 C 60 -15, 100 0, 110 40 L 140 160 L -20 160 L 0 40 Z"
+                                  : (features.sleeves === 'bishop sleeve' || features.sleeves === 'balloon sleeve' || features.sleeves === 'lantern sleeve')
+                                    ? "M 15 0 C 55 -15, 95 0, 105 35 L 125 135 L -5 135 L 5 35 Z M 15 140 L 105 140 L 105 155 L 15 155 Z"
+                                    : features.sleeves === 'leg-o\'-mutton sleeve'
+                                      ? "M 15 20 C 25 -25, 95 -25, 110 20 L 75 160 L 45 160 L 0 40 Z"
+                                      : (features.sleeves === 'cap sleeve' || features.sleeves === 'petal sleeve')
+                                        ? "M 15 0 C 55 -15, 95 0, 105 30 L 95 70 C 60 85, 40 85, 10 70 Z"
+                                        : (features.sleeves === 'cold shoulder sleeve' || features.sleeves === 'slit sleeve')
+                                          ? "M 15 20 C 35 35, 85 35, 105 20 L 90 150 L 10 150 Z"
+                                          : (features.sleeves === 'cape sleeve' || features.sleeves === 'butterfly sleeve')
+                                            ? "M 20 0 C 60 -15, 100 0, 110 30 L 150 120 C 90 150, 40 150, -20 120 Z"
+                                            : "M 20 0 C 60 -15, 100 0, 110 40 L 90 150 L 0 150 L -10 40 Z"
+                            }
                             fill="#0F172A" stroke="#74C69D" strokeWidth="2"
                           />
-                          <text x="25" y="70" fill="#F8FAFC" fontSize="11" fontWeight="bold">
-                            {features.sleeves === 'puff sleeve' ? 'SLEEVE (Puff R)' : 'SLEEVE (R)'}
+                          <text x="18" y="70" fill="#F8FAFC" fontSize="11" fontWeight="bold">
+                            {`SLEEVE (R: ${features.sleeves.split(' ')[0]})`}
                           </text>
-                          <text x="25" y="90" fill="#94A3B8" fontSize="9">
-                            {features.sleeves === 'puff sleeve' ? '30cm × 20cm (Gathers)' : '24cm × 22cm'}
+                          <text x="20" y="90" fill="#94A3B8" fontSize="9">
+                            {features.sleeves === 'puff sleeve'
+                              ? '30.5cm × 20cm (Gathers)'
+                              : (features.sleeves === 'bell sleeve' || features.sleeves === 'flared sleeve')
+                                ? '43.5cm × 56cm (Flared)'
+                                : (features.sleeves === 'bishop sleeve' || features.sleeves === 'balloon sleeve')
+                                  ? '40cm × 58cm (+ Cuff)'
+                                  : features.sleeves === 'leg-o\'-mutton sleeve'
+                                    ? '30.5cm × 58cm (Puff/Tight)'
+                                    : features.sleeves === 'cap sleeve'
+                                      ? '26cm × 10cm (Cap)'
+                                      : features.sleeves === 'cold shoulder sleeve'
+                                        ? '27.5cm × 50cm (Cutout)'
+                                        : features.sleeves === 'cape sleeve'
+                                          ? '47.5cm × 35cm (Drape)'
+                                          : features.sleeves === 'long sleeve'
+                                            ? '27.5cm × 58cm'
+                                            : features.sleeves === 'three-quarter sleeve'
+                                              ? '27.5cm × 45cm'
+                                              : features.sleeves === 'elbow sleeve'
+                                                ? '27.5cm × 32cm'
+                                                : '27.5cm × 22cm'}
                           </text>
                         </g>
                       )}
@@ -678,7 +760,13 @@ export default function Upload() {
                     {features.neckline === 'one-shoulder' ? '✓ One-Shoulder Bodice' : features.neckline === 'sweetheart neck' ? '✓ Sweetheart Neck Bodice' : '✓ Front Bodice Block'}
                   </span>
                   <span className="chip" style={{ color: '#74C69D', borderColor: '#74C69D' }}>
-                    {features.sleeves === 'sleeveless' ? '✓ Sleeveless' : (features.sleeves === 'single sleeve' || features.neckline === 'one-shoulder') ? '✓ Single Sleeve × 1' : features.sleeves === 'puff sleeve' ? '✓ Puff Sleeve (Gathered) × 2' : '✓ Sleeve × 2'}
+                    {features.sleeves === 'sleeveless'
+                      ? '✓ Sleeveless'
+                      : (features.sleeves === 'single sleeve' || features.neckline === 'one-shoulder')
+                        ? '✓ Single Sleeve × 1'
+                        : ['bishop sleeve', 'balloon sleeve', 'lantern sleeve'].includes(features.sleeves)
+                          ? `✓ ${features.sleeves.toUpperCase()} × 2 (+ Cuffs × 2)`
+                          : `✓ ${features.sleeves.toUpperCase()} × 2`}
                   </span>
                   <span className="chip" style={{ color: '#2D6A4F', borderColor: '#2D6A4F' }}>✓ Fitted Bust Dart</span>
                 </div>

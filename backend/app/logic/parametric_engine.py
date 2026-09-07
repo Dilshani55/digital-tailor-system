@@ -242,8 +242,15 @@ class ParametricEngine:
     # ── SLEEVE ────────────────────────────────────────────────────────────────
     def draft_sleeve(self):
         """
-        Drafts the sleeve block.
-        Returns None if garment is sleeveless.
+        Drafts the sleeve block based on Winifred Aldrich pattern construction formulas.
+        Supports 7 parametric geometry families:
+        1. Standard Set-in: cap, short, elbow, three-quarter, long, single
+        2. Volume & Gathers: puff, bishop, balloon, lantern (+ wrist cuff band)
+        3. Flared & Radial: bell, flared, cape, butterfly, ruffle, tiered
+        4. Hybrid Puff & Taper: leg-o'-mutton
+        5. Cut-out & Slit: cold shoulder, slit
+        6. Bodice-Integrated: batwing, kimono
+        Returns None if garment is sleeveless, or a piece dict (or list of piece dicts).
         """
         sleeve_type = self.features.get("sleeves", "short sleeve")
 
@@ -252,49 +259,172 @@ class ParametricEngine:
 
         sleeve_length = get_sleeve_length(sleeve_type)
         is_puff = (sleeve_type == "puff sleeve")
+        is_bell = (sleeve_type in ["bell sleeve", "flared sleeve", "ruffle sleeve", "tiered sleeve"])
+        is_bishop = (sleeve_type in ["bishop sleeve", "balloon sleeve", "lantern sleeve"])
+        is_leg_mutton = (sleeve_type == "leg-o'-mutton sleeve")
+        is_cap = (sleeve_type in ["cap sleeve", "petal sleeve"])
+        is_cape = (sleeve_type in ["cape sleeve", "butterfly sleeve"])
+        is_cold_shoulder = (sleeve_type in ["cold shoulder sleeve", "slit sleeve"])
+        is_batwing = (sleeve_type in ["batwing sleeve", "kimono sleeve"])
 
-        # Winifred Aldrich puff sleeve adds gather fullness to crown & bicep
-        sleeve_head   = self.armhole_depth * (0.85 if is_puff else 0.75)
-        sleeve_width  = self.half_bust / 2 + (6.0 if is_puff else 3.0)
+        # Sleeve cap depth and bicep width according to Aldrich standards
+        if is_cap:
+            sleeve_head = self.armhole_depth * 0.50
+            sleeve_width = self.half_bust / 2 + 1.5
+        elif is_puff or is_leg_mutton:
+            sleeve_head = self.armhole_depth * 0.90
+            sleeve_width = self.half_bust / 2 + 6.0
+        elif is_bishop:
+            sleeve_head = self.armhole_depth * 0.75
+            sleeve_width = self.half_bust / 2 + 7.5
+        elif is_batwing:
+            sleeve_head = self.armhole_depth * 1.30
+            sleeve_width = self.half_bust / 2 + 10.0
+        else:
+            sleeve_head = self.armhole_depth * 0.75
+            sleeve_width = self.half_bust / 2 + 3.0
 
         CROWN = (sleeve_width / 2, 0)
-        UL = (0,             sleeve_head)   # underarm left
-        UR = (sleeve_width,  sleeve_head)   # underarm right
+        UL = (0, sleeve_head)
+        UR = (sleeve_width, sleeve_head)
 
-        taper = 3.0 if sleeve_type == "long sleeve" else (2.0 if is_puff else 1.0)
-        HL    = (taper,                  sleeve_length)
-        HR    = (sleeve_width - taper,   sleeve_length)
-
-        # Puff sleeve has higher arch control points for gathered cap
-        crown_arch_y = sleeve_head * (0.20 if is_puff else 0.30)
+        # Crown arch control points
+        crown_arch_y = sleeve_head * (0.20 if (is_puff or is_leg_mutton) else 0.30)
         CROWN_L = (sleeve_width * 0.25, crown_arch_y)
         CROWN_R = (sleeve_width * 0.75, crown_arch_y)
 
+        # Lower hem points according to style geometry
+        if is_bell:
+            # Aldrich Slash-and-Spread elbow flare
+            elbow_y = min(32.0, sleeve_length * 0.55)
+            EL = (1.5, elbow_y)
+            ER = (sleeve_width - 1.5, elbow_y)
+            flare_amount = 8.0
+            HL = (-flare_amount, sleeve_length)
+            HR = (sleeve_width + flare_amount, sleeve_length)
+            points = {
+                "CROWN": CROWN, "UL": UL, "UR": UR,
+                "EL": EL, "ER": ER, "HL": HL, "HR": HR,
+                "CROWN_L": CROWN_L, "CROWN_R": CROWN_R
+            }
+            outline = [CROWN, CROWN_R, UR, ER, HR, HL, EL, UL, CROWN_L, CROWN]
+
+        elif is_cape:
+            # Wide circular drape
+            flare_amount = 10.0
+            HL = (-flare_amount, sleeve_length)
+            HR = (sleeve_width + flare_amount, sleeve_length)
+            HEM_C = (sleeve_width / 2, sleeve_length + 3.0)
+            points = {
+                "CROWN": CROWN, "UL": UL, "UR": UR,
+                "HL": HL, "HR": HR, "HEM_C": HEM_C,
+                "CROWN_L": CROWN_L, "CROWN_R": CROWN_R
+            }
+            outline = [CROWN, CROWN_R, UR, HR, HEM_C, HL, UL, CROWN_L, CROWN]
+
+        elif is_leg_mutton:
+            # Wide bicep tapering dramatically to narrow wrist
+            wrist_taper = 6.5
+            HL = (wrist_taper, sleeve_length)
+            HR = (sleeve_width - wrist_taper, sleeve_length)
+            elbow_y = sleeve_length * 0.55
+            EL = (2.0, elbow_y)
+            ER = (sleeve_width - 2.0, elbow_y)
+            points = {
+                "CROWN": CROWN, "UL": UL, "UR": UR,
+                "EL": EL, "ER": ER, "HL": HL, "HR": HR,
+                "CROWN_L": CROWN_L, "CROWN_R": CROWN_R
+            }
+            outline = [CROWN, CROWN_R, UR, ER, HR, HL, EL, UL, CROWN_L, CROWN]
+
+        elif is_cold_shoulder:
+            # Cutout notch at the sleeve crown
+            taper = 3.5 if sleeve_length > 40 else 1.5
+            HL = (taper, sleeve_length)
+            HR = (sleeve_width - taper, sleeve_length)
+            CUTOUT_L = (sleeve_width * 0.35, sleeve_head * 0.40)
+            CUTOUT_R = (sleeve_width * 0.65, sleeve_head * 0.40)
+            points = {
+                "CROWN": CROWN, "UL": UL, "UR": UR,
+                "HL": HL, "HR": HR, "CROWN_L": CROWN_L, "CROWN_R": CROWN_R,
+                "CUTOUT_L": CUTOUT_L, "CUTOUT_R": CUTOUT_R
+            }
+            outline = [CROWN_R, UR, HR, HL, UL, CROWN_L, CUTOUT_L, CUTOUT_R, CROWN_R]
+
+        elif is_bishop:
+            # Full body gathered into wrist cuff
+            gather_ease = 4.0
+            HL = (-gather_ease, sleeve_length)
+            HR = (sleeve_width + gather_ease, sleeve_length)
+            points = {
+                "CROWN": CROWN, "UL": UL, "UR": UR,
+                "HL": HL, "HR": HR,
+                "CROWN_L": CROWN_L, "CROWN_R": CROWN_R
+            }
+            outline = [CROWN, CROWN_R, UR, HR, HL, UL, CROWN_L, CROWN]
+
+        else:
+            # Standard set-in sleeve
+            if sleeve_length > 45.0:
+                taper = 3.5
+            elif sleeve_length > 30.0:
+                taper = 2.0
+            elif is_puff:
+                taper = 2.0
+            else:
+                taper = 1.0
+
+            HL = (taper, sleeve_length)
+            HR = (sleeve_width - taper, sleeve_length)
+            points = {
+                "CROWN": CROWN, "UL": UL, "UR": UR,
+                "HL": HL, "HR": HR,
+                "CROWN_L": CROWN_L, "CROWN_R": CROWN_R
+            }
+            outline = [CROWN, CROWN_R, UR, HR, HL, UL, CROWN_L, CROWN]
+
         is_single = (sleeve_type == "single sleeve" or self.features.get("neckline") == "one-shoulder")
-        piece = {
+        main_piece = {
             "name": "Sleeve (single sleeve)" if is_single else f"Sleeve ({sleeve_type})",
             "cut_count": 1 if is_single else 2,
             "seam_allowance_cm": 1.5,
             "length_cm": sleeve_length,
-            "width_cm":  sleeve_width,
-            "points": {
-                "CROWN":   CROWN,
-                "UL":      UL,
-                "UR":      UR,
-                "HL":      HL,
-                "HR":      HR,
-                "CROWN_L": CROWN_L,
-                "CROWN_R": CROWN_R
-            },
-            "outline": [
-                CROWN, CROWN_R, UR, HR, HL, UL, CROWN_L, CROWN
-            ],
+            "width_cm": sleeve_width,
+            "points": points,
+            "outline": outline,
             "grain_line": {
                 "start": (sleeve_width / 2, sleeve_head),
-                "end":   (sleeve_width / 2, sleeve_length)
+                "end": (sleeve_width / 2, sleeve_length)
             }
         }
-        return piece
+
+        # For Bishop and Balloon sleeves, draft an accompanying wrist cuff piece
+        if is_bishop:
+            cuff_width = 22.0
+            cuff_height = 5.0
+            cuff_piece = {
+                "name": "Sleeve Wrist Cuff",
+                "cut_count": 2,
+                "seam_allowance_cm": 1.0,
+                "length_cm": cuff_height,
+                "width_cm": cuff_width,
+                "points": {
+                    "TL": (0, 0),
+                    "TR": (cuff_width, 0),
+                    "BR": (cuff_width, cuff_height),
+                    "BL": (0, cuff_height)
+                },
+                "outline": [
+                    (0, 0), (cuff_width, 0), (cuff_width, cuff_height), (0, cuff_height), (0, 0)
+                ],
+                "grain_line": {
+                    "start": (cuff_width / 2, 0),
+                    "end": (cuff_width / 2, cuff_height)
+                }
+            }
+            return [main_piece, cuff_piece]
+
+        return main_piece
 
 
     # ── GENERATE FULL PATTERN ─────────────────────────────────────────────────
@@ -309,7 +439,10 @@ class ParametricEngine:
 
         pieces = [back, front]
         if sleeve:
-            pieces.append(sleeve)
+            if isinstance(sleeve, list):
+                pieces.extend(sleeve)
+            else:
+                pieces.append(sleeve)
 
         for piece in pieces:
             outline = piece["outline"]

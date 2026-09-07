@@ -41,11 +41,28 @@ NECKLINE_DEPTH = {
 # Sleeve length standards (cm from shoulder point)
 SLEEVE_LENGTH = {
     "sleeveless":             0.0,
+    "cap sleeve":            10.0,
     "short sleeve":          22.0,
+    "elbow sleeve":          32.0,
+    "three-quarter sleeve":  45.0,
+    "long sleeve":           58.0,
     "single sleeve":         22.0,
     "puff sleeve":           20.0,
-    "three-quarter sleeve":  45.0,
-    "long sleeve":           58.0
+    "bell sleeve":           56.0,
+    "flared sleeve":         56.0,
+    "bishop sleeve":         58.0,
+    "balloon sleeve":        54.0,
+    "lantern sleeve":        52.0,
+    "leg-o'-mutton sleeve":  58.0,
+    "cold shoulder sleeve":  54.0,
+    "cape sleeve":           32.0,
+    "butterfly sleeve":      26.0,
+    "slit sleeve":           58.0,
+    "batwing sleeve":        56.0,
+    "kimono sleeve":         54.0,
+    "petal sleeve":          14.0,
+    "ruffle sleeve":         30.0,
+    "tiered sleeve":         56.0
 }
 
 

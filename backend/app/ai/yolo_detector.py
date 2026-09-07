@@ -83,7 +83,20 @@ GARMENT_FEATURES = {
         2: "three-quarter sleeve",
         3: "long sleeve",
         4: "single sleeve",
-        5: "puff sleeve"
+        5: "puff sleeve",
+        6: "bell sleeve",
+        7: "flared sleeve",
+        8: "bishop sleeve",
+        9: "balloon sleeve",
+        10: "lantern sleeve",
+        11: "leg-o'-mutton sleeve",
+        12: "cold shoulder sleeve",
+        13: "cape sleeve",
+        14: "butterfly sleeve",
+        15: "slit sleeve",
+        16: "batwing sleeve",
+        17: "kimono sleeve",
+        18: "cap sleeve"
     },
     "darts": {
         0: "no dart",
@@ -172,7 +185,11 @@ def detect_features(image_path):
         if geom.get("neckline") in ["off-the-shoulder", "sweetheart neck", "square neck", "one-shoulder"]:
             detected_neckline = geom.get("neckline")
 
-        if geom.get("sleeves") in ["puff sleeve", "single sleeve"]:
+        if geom.get("sleeves") in [
+            "puff sleeve", "single sleeve", "bell sleeve", "flared sleeve",
+            "bishop sleeve", "balloon sleeve", "cap sleeve", "cold shoulder sleeve",
+            "leg-o'-mutton sleeve", "cape sleeve", "butterfly sleeve", "batwing sleeve"
+        ]:
             detected_sleeve = geom.get("sleeves")
 
         if geom.get("is_crop_top"):
@@ -289,6 +306,16 @@ def _heuristic_features(image_path):
             arm_skin = float(skin[y_bic_s:y_wri_e, :int(w * 0.28)].mean() + skin[y_bic_s:y_wri_e, int(w * 0.72):].mean()) / 2.0
             is_sleeveless = (arm_skin > 0.22 and not has_bicep_fabric and not has_wrist_fabric)
 
+            # Detect sleeve flare (bell sleeve), gathers (bishop), and cap lengths
+            wrist_fab = max(left_wri_fab, right_wri_fab)
+            bicep_fab = max(left_bic_fab, right_bic_fab)
+            is_bell = (wrist_fab > bicep_fab * 1.30 and wrist_fab > 0.40)
+            is_bishop = (wrist_fab > 0.55 and bicep_fab < 0.35)
+
+            y_cap_s, y_cap_e = int(h * 0.26), int(h * 0.36)
+            cap_fab = max(float(fabric[y_cap_s:y_cap_e, :int(w * 0.25)].mean()), float(fabric[y_cap_s:y_cap_e, int(w * 0.75):].mean()))
+            is_cap = (cap_fab > 0.15 and not has_bicep_fabric and not has_wrist_fabric)
+
             if is_one_shoulder:
                 neckline = "one-shoulder"
                 sleeves = "single sleeve"
@@ -299,10 +326,16 @@ def _heuristic_features(image_path):
                     sleeves = "sleeveless"
                 else:
                     neckline = "off-the-shoulder"
-                    if has_wrist_fabric:
+                    if is_bell:
+                        sleeves = "bell sleeve"
+                    elif is_bishop:
+                        sleeves = "bishop sleeve"
+                    elif has_wrist_fabric:
                         sleeves = "long sleeve"
-                    elif max(left_bic_fab, right_bic_fab) > 0.35:
+                    elif bicep_fab > 0.35:
                         sleeves = "puff sleeve"
+                    elif is_cap:
+                        sleeves = "cap sleeve"
                     else:
                         sleeves = "short sleeve"
             elif is_sleeveless:
@@ -314,17 +347,23 @@ def _heuristic_features(image_path):
                 else:
                     neckline = "round neck"
 
-                if has_wrist_fabric:
+                if is_bell:
+                    sleeves = "bell sleeve"
+                elif is_bishop:
+                    sleeves = "bishop sleeve"
+                elif has_wrist_fabric:
                     sleeves = "long sleeve"
-                elif max(left_bic_fab, right_bic_fab) > 0.45:
+                elif bicep_fab > 0.45:
                     sleeves = "puff sleeve"
+                elif is_cap:
+                    sleeves = "cap sleeve"
                 else:
                     sleeves = "short sleeve"
 
             if is_crop_top:
                 garment_type = "crop-top"
             else:
-                garment_type = "blouse" if (sleeves == "long sleeve" or neckline in ["v-neck", "off-the-shoulder"]) else "t-shirt"
+                garment_type = "blouse" if (sleeves in ["long sleeve", "bell sleeve", "bishop sleeve"] or neckline in ["v-neck", "off-the-shoulder"]) else "t-shirt"
 
             aspect = float(h / w)
 
