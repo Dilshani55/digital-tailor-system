@@ -18,14 +18,16 @@ data_yaml_path = os.path.join(current_dir, "data.yaml")
 
 results = model.train(
     data        = data_yaml_path,     # dataset config
-    epochs      = 8,                  # rapid training epochs
+    epochs      = 15,                 # 15 transfer learning epochs for optimal convergence
     imgsz       = 320,                # optimized CPU resolution
     batch       = 16,                 # batch size
+    workers     = 2,                  # CPU worker threads
     name        = "garment_detector",
     project     = os.path.join(current_dir, "runs"),
     device      = device,
     pretrained  = True,
     lr0         = 0.01,
+    lrf         = 0.01,
     augment     = True,
     exist_ok    = True,
     verbose     = True
@@ -33,15 +35,17 @@ results = model.train(
 
 print("\nTraining complete!")
 best_model_path = os.path.join(current_dir, "runs", "garment_detector", "weights", "best.pt")
-print(f"Best model saved to: {best_model_path}")
+last_model_path = os.path.join(current_dir, "runs", "garment_detector", "weights", "last.pt")
+source_weights = best_model_path if os.path.exists(best_model_path) else last_model_path
+print(f"Model saved to: {source_weights}")
 
 # ── Automatically deploy weights to backend models directory ──────────────────
 target_model_dir = os.path.join(os.path.dirname(current_dir), "backend", "app", "ai", "models")
 os.makedirs(target_model_dir, exist_ok=True)
 target_model_path = os.path.join(target_model_dir, "yolov8n-garment.pt")
 
-if os.path.exists(best_model_path):
-    shutil.copy(best_model_path, target_model_path)
+if os.path.exists(source_weights):
+    shutil.copy(source_weights, target_model_path)
     print(f"Successfully deployed trained model to: {target_model_path}")
 else:
     print("Note: Check runs directory for exported weights.")

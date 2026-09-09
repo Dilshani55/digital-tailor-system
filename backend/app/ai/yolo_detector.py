@@ -32,36 +32,44 @@ def get_model():
     return _model
 
 
-# ── Deep Learning Class Mappings (YOLOv8 6-Class Model) ──────────────────────
-# 0: short-sleeve, 1: long-sleeve, 2: sleeveless, 3: one-shoulder, 4: round-neck, 5: v-neck
+# ── Deep Learning Class Mappings (YOLOv8 11-Class Model) ─────────────────────
+# 0: crop-top, 1: blouse, 2: t-shirt
+# 3: round-neck, 4: v-neck, 5: off-the-shoulder, 6: one-shoulder, 7: square-neck
+# 8: sleeveless, 9: short-sleeve, 10: long-sleeve
 
 YOLO_CLASS_NAMES = {
-    0: "short-sleeve",
-    1: "long-sleeve",
-    2: "sleeveless",
-    3: "one-shoulder",
-    4: "round-neck",
-    5: "v-neck"
-}
-
-SLEEVE_MAP = {
-    0: "short sleeve",
-    1: "long sleeve",
-    2: "sleeveless",
-    3: "single sleeve"
-}
-
-NECKLINE_MAP = {
-    3: "one-shoulder",
-    4: "round neck",
-    5: "v-neck"
+    0: "crop-top",
+    1: "blouse",
+    2: "t-shirt",
+    3: "round-neck",
+    4: "v-neck",
+    5: "off-the-shoulder",
+    6: "one-shoulder",
+    7: "square-neck",
+    8: "sleeveless",
+    9: "short-sleeve",
+    10: "long-sleeve"
 }
 
 GARMENT_TYPE_MAP = {
-    0: "t-shirt",
+    0: "crop-top",
     1: "blouse",
-    2: "crop-top",
-    3: "crop-top"
+    2: "t-shirt"
+}
+
+NECKLINE_MAP = {
+    3: "round neck",
+    4: "v-neck",
+    5: "off-the-shoulder",
+    6: "one-shoulder",
+    7: "square neck"
+}
+
+SLEEVE_MAP = {
+    6: "single sleeve",
+    8: "sleeveless",
+    9: "short sleeve",
+    10: "long sleeve"
 }
 
 # Full standard taxonomy supported by the CAD engine
@@ -136,7 +144,7 @@ def detect_features(image_path):
         # 2. Run inference with YOLOv8 (using realistic confidence threshold to filter out noise)
         results = model.predict(
             source  = image_path,
-            conf    = 0.20,
+            conf    = 0.10,
             iou     = 0.45,
             verbose = False
         )
@@ -146,6 +154,7 @@ def detect_features(image_path):
         detected_neckline = None
         detected_neckline_conf = 0.0
         detected_type = None
+        detected_type_conf = 0.0
 
         if results and len(results) > 0 and len(results[0].boxes) > 0:
             boxes = results[0].boxes
@@ -153,54 +162,55 @@ def detect_features(image_path):
             confidences = boxes.conf.cpu().numpy()
 
             sorted_indices = np.argsort(-confidences)
-            top_sleeve_cls = None
-            top_neck_cls = None
 
             for idx in sorted_indices:
                 cls_id = int(classes[idx])
                 conf_val = float(confidences[idx])
 
-                if cls_id in SLEEVE_MAP and top_sleeve_cls is None and conf_val >= 0.20:
-                    top_sleeve_cls = cls_id
-                    detected_sleeve_conf = conf_val
+                # Garment type detection (crop-top, blouse, t-shirt)
+                if cls_id in GARMENT_TYPE_MAP and detected_type is None and conf_val >= 0.10:
+                    detected_type = GARMENT_TYPE_MAP[cls_id]
+                    detected_type_conf = conf_val
 
-                if cls_id in [4, 5] and top_neck_cls is None and conf_val >= 0.20:
-                    top_neck_cls = cls_id
+                # Neckline detection (round, v-neck, off-the-shoulder, one-shoulder, square)
+                if cls_id in NECKLINE_MAP and detected_neckline is None and conf_val >= 0.10:
+                    detected_neckline = NECKLINE_MAP[cls_id]
                     detected_neckline_conf = conf_val
 
-            if top_sleeve_cls is not None:
-                detected_sleeve = SLEEVE_MAP.get(top_sleeve_cls)
-                detected_type = GARMENT_TYPE_MAP.get(top_sleeve_cls)
+                # Sleeve detection (sleeveless, short, long, single sleeve)
+                if cls_id in SLEEVE_MAP and detected_sleeve is None and conf_val >= 0.10:
+                    detected_sleeve = SLEEVE_MAP[cls_id]
+                    detected_sleeve_conf = conf_val
 
-            if top_sleeve_cls == 3:  # one-shoulder
+            # Special synergy rules
+            if detected_neckline == "one-shoulder" or detected_sleeve == "single sleeve":
                 detected_neckline = "one-shoulder"
                 detected_sleeve = "single sleeve"
-                detected_type = "crop-top"
-            elif top_neck_cls in [4, 5]:
-                detected_neckline = "round neck" if top_neck_cls == 4 else "v-neck"
+
+            # Strapless / Sweetheart detection: off-the-shoulder + sleeveless
+            if detected_neckline == "off-the-shoulder" and detected_sleeve == "sleeveless":
+                detected_neckline = "sweetheart neck"
 
         # 3. Fuse with Geometric and Silhouette Analysis
-        # Geometric analysis captures specific necklines (off-the-shoulder, square, sweetheart, one-shoulder)
-        # and midriff exposure (crop-top) with 100% ground-truth fidelity
-        if geom.get("neckline") in ["off-the-shoulder", "sweetheart neck", "square neck", "one-shoulder"]:
+        if not detected_neckline:
+            detected_neckline = geom.get("neckline", "round neck")
+        elif geom.get("neckline") in ["sweetheart neck", "one-shoulder", "off-the-shoulder"]:
+            # If geometric bare skin strongly indicates sweetheart/off-shoulder/one-shoulder, honor it
             detected_neckline = geom.get("neckline")
 
-        if geom.get("sleeves") in [
+        if not detected_sleeve:
+            detected_sleeve = geom.get("sleeves", "short sleeve")
+        elif geom.get("sleeves") in [
             "puff sleeve", "single sleeve", "bell sleeve", "flared sleeve",
             "bishop sleeve", "balloon sleeve", "cap sleeve", "cold shoulder sleeve",
             "leg-o'-mutton sleeve", "cape sleeve", "butterfly sleeve", "batwing sleeve"
         ]:
             detected_sleeve = geom.get("sleeves")
 
-        if geom.get("is_crop_top"):
-            detected_type = "crop-top"
-
-        if not detected_sleeve:
-            detected_sleeve = geom.get("sleeves", "short sleeve")
-        if not detected_neckline:
-            detected_neckline = geom.get("neckline", "round neck")
         if not detected_type:
             detected_type = geom.get("garment_type", "blouse")
+        elif geom.get("is_crop_top") and detected_type != "crop-top":
+            detected_type = "crop-top"
 
         features = {
             "neckline":     detected_neckline,
@@ -211,7 +221,7 @@ def detect_features(image_path):
             "is_mock":      False
         }
 
-        raw_best = max(detected_sleeve_conf, detected_neckline_conf)
+        raw_best = max(detected_sleeve_conf, detected_neckline_conf, detected_type_conf)
         calibrated_conf = round(min(0.96, max(0.90, 0.91 + raw_best * 0.1)), 4)
         return features, calibrated_conf
 
@@ -260,51 +270,57 @@ def _heuristic_features(image_path):
 
         if is_model_portrait:
             # ── MODE 1: HUMAN MODEL FASHION PORTRAIT ─────────────────────────
-            # A. Midriff bare skin check (Crop-top vs Blouse vs T-shirt)
+            # A. Midriff bare skin and garment silhouette check (Crop-top vs Blouse vs T-shirt)
             midriff_max = 0.0
-            for y_pct in range(48, 74, 2):
+            for y_pct in range(40, 78, 2):
                 y_s = int(h * y_pct / 100)
                 y_e = y_s + int(h * 0.05)
-                belly_skin = float(skin[y_s:y_e, int(w * 0.35):int(w * 0.65)].mean())
+                belly_skin = float(skin[y_s:y_e, int(w * 0.30):int(w * 0.70)].mean())
                 if belly_skin > midriff_max:
                     midriff_max = belly_skin
 
-            is_crop_top = (midriff_max > 0.22)
+            # Also check aspect ratio of primary garment fabric
+            fabric = fg_mask & (~skin)
+            fab_ys, fab_xs = np.where(fabric)
+            fab_aspect = 1.0
+            if len(fab_ys) > 50:
+                fab_aspect = float((fab_ys.max() - fab_ys.min()) / max(10, fab_xs.max() - fab_xs.min()))
 
-            # B. Neckline & Shoulder Analysis
-            y_sh_s, y_sh_e = int(h * 0.24), int(h * 0.42)
+            is_crop_top = (midriff_max > 0.18) or (fab_aspect < 0.82)
+
+            # B. Neckline & Shoulder Analysis (expanded from 12% to 42% for cropped/headless photos)
+            y_sh_s, y_sh_e = int(h * 0.12), int(h * 0.42)
             left_sh_skin = float(skin[y_sh_s:y_sh_e, int(w * 0.18):int(w * 0.38)].mean())
             right_sh_skin = float(skin[y_sh_s:y_sh_e, int(w * 0.62):int(w * 0.82)].mean())
 
             # Maximum horizontal continuous skin coverage across shoulders
             max_sh_span = 0.0
-            for y_pct in range(25, 42, 2):
+            for y_pct in range(12, 42, 2):
                 y_px = int(h * y_pct / 100)
                 cov = float(skin[y_px:y_px+4, int(w * 0.18):int(w * 0.82)].mean())
                 if cov > max_sh_span:
                     max_sh_span = cov
 
             is_one_shoulder = (abs(left_sh_skin - right_sh_skin) > 0.28) and (left_sh_skin > 0.35 or right_sh_skin > 0.35)
-            is_off_shoulder = ((left_sh_skin > 0.25 and right_sh_skin > 0.25) or (max_sh_span > 0.32)) and not is_one_shoulder
+            is_off_shoulder = ((left_sh_skin > 0.18 and right_sh_skin > 0.18) or (max_sh_span > 0.26)) and not is_one_shoulder
 
             # Chest plunge check (V-neck vs round neck)
-            y_ch_s, y_ch_e = int(h * 0.30), int(h * 0.50)
-            chest_skin = float(skin[y_ch_s:y_ch_e, int(w * 0.42):int(w * 0.58)].mean())
+            y_ch_s, y_ch_e = int(h * 0.25), int(h * 0.50)
+            chest_skin = float(skin[y_ch_s:y_ch_e, int(w * 0.40):int(w * 0.60)].mean())
 
             # C. Sleeve Analysis
-            fabric = fg_mask & (~skin)
             y_wri_s, y_wri_e = int(h * 0.60), int(h * 0.82)
             left_wri_fab = float(fabric[y_wri_s:y_wri_e, :int(w * 0.28)].mean())
             right_wri_fab = float(fabric[y_wri_s:y_wri_e, int(w * 0.72):].mean())
-            has_wrist_fabric = (left_wri_fab > 0.22 or right_wri_fab > 0.22)
+            has_wrist_fabric = (left_wri_fab > 0.24 or right_wri_fab > 0.24)
 
-            y_bic_s, y_bic_e = int(h * 0.35), int(h * 0.54)
+            y_bic_s, y_bic_e = int(h * 0.30), int(h * 0.54)
             left_bic_fab = float(fabric[y_bic_s:y_bic_e, :int(w * 0.28)].mean())
             right_bic_fab = float(fabric[y_bic_s:y_bic_e, int(w * 0.72):].mean())
-            has_bicep_fabric = (left_bic_fab > 0.18 or right_bic_fab > 0.18)
+            has_bicep_fabric = (left_bic_fab > 0.22 or right_bic_fab > 0.22)
 
             arm_skin = float(skin[y_bic_s:y_wri_e, :int(w * 0.28)].mean() + skin[y_bic_s:y_wri_e, int(w * 0.72):].mean()) / 2.0
-            is_sleeveless = (arm_skin > 0.22 and not has_bicep_fabric and not has_wrist_fabric)
+            is_sleeveless = (arm_skin > 0.16) or (not has_bicep_fabric and not has_wrist_fabric) or (is_off_shoulder and max_sh_span > 0.40)
 
             # Detect sleeve flare (bell sleeve), gathers (bishop), and cap lengths
             wrist_fab = max(left_wri_fab, right_wri_fab)
