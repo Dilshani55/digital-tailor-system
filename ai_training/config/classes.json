@@ -1,0 +1,138 @@
+{
+  "schema_version": "1.0.0",
+  "model_family": "YOLOv8",
+  "model_type": "single-multi-task-classifier",
+  "number_of_models": 1,
+  "class_counts": {
+    "garment_type": 3,
+    "neckline_type": 10,
+    "sleeve_length": 6,
+    "sleeve_style": 10
+  },
+  "total_label_count": 29,
+  "outputs": {
+    "garment_type": {
+      "class_count": 3,
+      "classes": [
+        "blouse",
+        "t-shirt",
+        "crop-top"
+      ],
+      "class_to_idx": {
+        "blouse": 0,
+        "t-shirt": 1,
+        "crop-top": 2
+      },
+      "idx_to_class": {
+        "0": "blouse",
+        "1": "t-shirt",
+        "2": "crop-top"
+      }
+    },
+    "neckline_type": {
+      "class_count": 10,
+      "classes": [
+        "round-neck",
+        "v-neck",
+        "square-neck",
+        "scoop-neck",
+        "boat-neck",
+        "sweetheart-neck",
+        "halter-neck",
+        "high-neck",
+        "collared-neck",
+        "off-shoulder"
+      ],
+      "class_to_idx": {
+        "round-neck": 0,
+        "v-neck": 1,
+        "square-neck": 2,
+        "scoop-neck": 3,
+        "boat-neck": 4,
+        "sweetheart-neck": 5,
+        "halter-neck": 6,
+        "high-neck": 7,
+        "collared-neck": 8,
+        "off-shoulder": 9
+      },
+      "idx_to_class": {
+        "0": "round-neck",
+        "1": "v-neck",
+        "2": "square-neck",
+        "3": "scoop-neck",
+        "4": "boat-neck",
+        "5": "sweetheart-neck",
+        "6": "halter-neck",
+        "7": "high-neck",
+        "8": "collared-neck",
+        "9": "off-shoulder"
+      }
+    },
+    "sleeve_length": {
+      "class_count": 6,
+      "classes": [
+        "sleeveless",
+        "cap-length",
+        "short-sleeve",
+        "elbow-length",
+        "three-quarter-sleeve",
+        "long-sleeve"
+      ],
+      "class_to_idx": {
+        "sleeveless": 0,
+        "cap-length": 1,
+        "short-sleeve": 2,
+        "elbow-length": 3,
+        "three-quarter-sleeve": 4,
+        "long-sleeve": 5
+      },
+      "idx_to_class": {
+        "0": "sleeveless",
+        "1": "cap-length",
+        "2": "short-sleeve",
+        "3": "elbow-length",
+        "4": "three-quarter-sleeve",
+        "5": "long-sleeve"
+      }
+    },
+    "sleeve_style": {
+      "class_count": 10,
+      "classes": [
+        "none",
+        "regular-sleeve",
+        "puff-sleeve",
+        "bell-sleeve",
+        "bishop-sleeve",
+        "flutter-sleeve",
+        "raglan-sleeve",
+        "dolman-sleeve",
+        "cold-shoulder-sleeve",
+        "kimono-sleeve"
+      ],
+      "class_to_idx": {
+        "none": 0,
+        "regular-sleeve": 1,
+        "puff-sleeve": 2,
+        "bell-sleeve": 3,
+        "bishop-sleeve": 4,
+        "flutter-sleeve": 5,
+        "raglan-sleeve": 6,
+        "dolman-sleeve": 7,
+        "cold-shoulder-sleeve": 8,
+        "kimono-sleeve": 9
+      },
+      "idx_to_class": {
+        "0": "none",
+        "1": "regular-sleeve",
+        "2": "puff-sleeve",
+        "3": "bell-sleeve",
+        "4": "bishop-sleeve",
+        "5": "flutter-sleeve",
+        "6": "raglan-sleeve",
+        "7": "dolman-sleeve",
+        "8": "cold-shoulder-sleeve",
+        "9": "kimono-sleeve"
+      }
+    }
+  }
+}
