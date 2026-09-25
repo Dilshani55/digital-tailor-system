@@ -1,0 +1,21 @@
+{
+  "schema_version": "1.0.0",
+  "eligible_parent_category_ids": [0, 1],
+  "part_category_ids": {
+    "collar": 28,
+    "sleeve": 31,
+    "neckline": 33
+  },
+  "minimum_part_coverage": 0.80,
+  "minimum_score_margin": 0.15,
+  "centre_inside_parent": true,
+  "scoring_weights": {
+    "part_coverage": 0.60,
+    "centre_distance": 0.30,
+    "parent_coverage": 0.10
+  },
+  "ambiguity_policy": "mark_ambiguous_require_manual_review",
+  "multiple_parts_policy": "allow_multiple_parts_if_non_conflicting",
+  "conflict_policy": "flag_conflict_manual_review",
+  "evidence_retention_policy": "retain_full_part_provenance"
+}
