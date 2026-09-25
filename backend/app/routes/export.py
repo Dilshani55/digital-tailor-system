@@ -35,11 +35,13 @@ def calculate_yardage(pattern_id):
 
     data         = request.get_json() or {}
     fabric_width = data.get("fabric_width_cm", 114)
+    cutting_mode = data.get("cutting_mode", "folded")
 
     # Run nesting algorithm
     nester  = NestingAlgorithm(
         pattern_pieces  = pattern.pattern_coordinates,
-        fabric_width_cm = fabric_width
+        fabric_width_cm = fabric_width,
+        cutting_mode    = cutting_mode
     )
     nesting = nester.run()
 
@@ -48,15 +50,32 @@ def calculate_yardage(pattern_id):
     pattern.save()
 
     return jsonify({
-        "message":             "Yardage calculated successfully",
-        "pattern_id":          str(pattern.id),
-        "fabric_width_cm":     nesting["fabric_width_cm"],
-        "fabric_length_cm":    nesting["fabric_length_cm"],
-        "yardage_metres":      nesting["yardage_metres"],
-        "yardage_yards":       nesting["yardage_yards"],
-        "utilisation_percent": nesting["utilisation_percent"],
-        "waste_cm2":           nesting["waste_cm2"],
-        "total_pieces":        nesting["total_pieces"],
+        "message":                      "Yardage calculated successfully",
+        "pattern_id":                   str(pattern.id),
+        "selected_fabric_id":         pattern.selected_fabric_id,
+        "selected_fabric_name":       pattern.selected_fabric_name,
+        "full_bolt_width_cm":         nesting["full_bolt_width_cm"],
+        "usable_width_cm":            nesting["usable_width_cm"],
+        "cutting_mode":               nesting["cutting_mode"],
+        "cutting_method_simple":        nesting["cutting_method_simple"],
+        "fabric_width_cm":            nesting["fabric_width_cm"],
+        "fabric_length_cm":           nesting["fabric_length_cm"],
+        "exact_yardage_metres":         nesting["exact_yardage_metres"],
+        "purchasing_recommended_m":     nesting["purchasing_recommended_m"],
+        "handling_allowance_m":         nesting["handling_allowance_m"],
+        "yardage_metres":             nesting["yardage_metres"],
+        "yardage_yards":              nesting["yardage_yards"],
+        "total_pattern_piece_area_cm2": nesting["total_pattern_piece_area_cm2"],
+        "total_pattern_piece_area":   nesting["total_pattern_piece_area_cm2"],
+        "usable_area_cm2":              nesting["usable_area_cm2"],
+        "utilisation_percent":        nesting["utilisation_percent"],
+        "waste_percent":              nesting["waste_percent"],
+        "waste_cm2":                  nesting["waste_cm2"],
+        "usage_status":                 nesting["usage_status"],
+        "usage_recommendation":         nesting["usage_recommendation"],
+        "total_pieces":               nesting["total_pieces"],
+        "placed_pieces":              nesting["placed_pieces"],
+        "validation_checks":          nesting["validation_checks"],
         "next_step": f"Call /api/export/pdf/{pattern_id} to generate PDF"
     }), 200
 
@@ -96,6 +115,12 @@ def generate_pdf(pattern_id):
         meas_obj   = session.measurement_id
         image_obj  = session.image_id
 
+        if image_obj:
+            image_obj.reload()
+            features = image_obj.detected_features or {}
+        else:
+            features = {}
+
         measurements = {
             "bust_cm":    meas_obj.bust_cm,
             "waist_cm":   meas_obj.waist_cm,
@@ -103,7 +128,7 @@ def generate_pdf(pattern_id):
             "height_cm":  meas_obj.height_cm,
             "fabric_type": meas_obj.fabric_type
         }
-        features = image_obj.detected_features
+
 
         # Regenerate nesting data for PDF layout
         nester  = NestingAlgorithm(

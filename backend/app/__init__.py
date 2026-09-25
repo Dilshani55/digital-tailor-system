@@ -29,6 +29,7 @@ def create_app():
     from app.routes.patterns import patterns_bp
     from app.routes.export import export_bp
     from app.routes.research import research_bp
+    from app.routes.fabric import fabric_bp
 
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
     app.register_blueprint(images_bp, url_prefix='/api/images')
@@ -36,6 +37,7 @@ def create_app():
     app.register_blueprint(patterns_bp, url_prefix='/api/patterns')
     app.register_blueprint(export_bp, url_prefix='/api/export')
     app.register_blueprint(research_bp, url_prefix='/api/research')
+    app.register_blueprint(fabric_bp, url_prefix='/api/fabric')
 
     @app.route('/')
     def index():

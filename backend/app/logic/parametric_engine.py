@@ -2,6 +2,24 @@ import math
 from app.logic.ease_rules import apply_ease, get_neckline_depth, get_sleeve_length
 
 
+def calculate_shoelace_area(points):
+    """
+    Computes polygon area using Gauss's Shoelace formula.
+    points: list of (x, y) tuples or lists
+    """
+    if not points or len(points) < 3:
+        return 0.0
+    n = len(points)
+    area = 0.0
+    for i in range(n):
+        j = (i + 1) % n
+        x1, y1 = points[i][0], points[i][1]
+        x2, y2 = points[j][0], points[j][1]
+        area += x1 * y2
+        area -= x2 * y1
+    return abs(area) / 2.0
+
+
 class ParametricEngine:
     """
     Generates 2D garment pattern block coordinates from body measurements
@@ -115,6 +133,8 @@ class ParametricEngine:
         # ── Assemble pattern piece as ordered polygon ─────────────────────────
         piece = {
             "name": "Back Bodice",
+            "cut_count": 1,
+            "cut_on_fold": True,
             "seam_allowance_cm": 1.5,
             "points": {
                 "A":  A,    # nape of neck
@@ -200,14 +220,23 @@ class ParametricEngine:
                 A1[0] * 0.45,
                 self.front_neck_depth * 0.40
             )
+        elif neckline_type == "square neck":
+            # Winifred Aldrich Square Neckline corner point
+            neck_curve = (
+                A1[0],
+                self.front_neck_depth
+            )
         else:
             neck_curve = (
                 A1[0] * 0.3,
                 self.front_neck_depth * 0.7
             )
 
+
         piece = {
             "name": "Front Bodice",
+            "cut_count": 1,
+            "cut_on_fold": True,
             "seam_allowance_cm": 1.5,
             "points": {
                 "A_TOP":    A_top,
@@ -448,10 +477,22 @@ class ParametricEngine:
             outline = piece["outline"]
             xs = [p[0] for p in outline]
             ys = [p[1] for p in outline]
+            min_x, max_x = min(xs), max(xs)
+            min_y, max_y = min(ys), max(ys)
             piece["bounding_box"] = {
-                "width_cm":  round(max(xs) - min(xs), 2),
-                "height_cm": round(max(ys) - min(ys), 2)
+                "width_cm":  round(max_x - min_x, 2),
+                "height_cm": round(max_y - min_y, 2)
             }
+
+            if "cut_on_fold" not in piece:
+                piece["cut_on_fold"] = (piece["name"] in ["Back Bodice", "Front Bodice"])
+            if "cut_count" not in piece:
+                piece["cut_count"] = 1 if piece["cut_on_fold"] else 2
+            if "seam_allowance_cm" not in piece:
+                piece["seam_allowance_cm"] = 1.5
+
+            poly_area = calculate_shoelace_area(outline)
+            piece["polygon_area_cm2"] = round(poly_area, 2)
 
         notes = self._build_notes()
 

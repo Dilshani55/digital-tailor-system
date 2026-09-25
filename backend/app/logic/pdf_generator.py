@@ -228,7 +228,8 @@ class PDFGenerator:
         c.setFillColor(WHITE)
         c.setFont("Helvetica-Bold", 11)
         c.drawString(self.MARGIN + 0.3*cm, y + 0.1*cm,
-                     "Detected Garment Features (YOLOv8)")
+                     "Garment Features & Specifications (Confirmed Design)")
+
         y -= 1.0 * cm
 
         feature_rows = [

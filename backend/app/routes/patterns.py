@@ -6,6 +6,7 @@ from app.models.pattern_result import PatternResult
 from app.models.session import Session
 from app.models.user import User
 from app.logic.parametric_engine import ParametricEngine
+from app.logic.fabric_recommendation import validate_fabric_id, get_fabric_by_id
 
 patterns_bp = Blueprint("patterns", __name__)
 
@@ -31,6 +32,17 @@ def generate_pattern():
     measurement_id = str(data["measurement_id"]).strip("<>")
     image_id = str(data["image_id"]).strip("<>")
 
+    # Validate fabric selection if provided
+    raw_fabric_id = data.get("fabric_id") or data.get("selected_fabric_id") or "cotton-poplin"
+    if validate_fabric_id(raw_fabric_id):
+        selected_fab_def = get_fabric_by_id(raw_fabric_id)
+        selected_fabric_id = selected_fab_def["id"]
+        selected_fabric_name = selected_fab_def["name"]
+    else:
+        # Fallback to default cotton poplin if unrecognised string
+        selected_fabric_id = "cotton-poplin"
+        selected_fabric_name = "Cotton Poplin"
+
     # 2. Fetch measurement profile
     try:
         measurement = MeasurementProfile.objects(
@@ -44,22 +56,44 @@ def generate_pattern():
         return jsonify({"error": "Measurement profile not found"}), 404
 
     # 3. Fetch design image and its features
-    try:
+    custom_features = data.get("detected_features") or {}
+
+    if image_id in ["manual", "manual-selection", "none"]:
         design_image = DesignImage.objects(
-            id      = image_id,
-            user_id = user
+            user_id   = user,
+            file_path = "manual_selection.png"
         ).first()
-    except Exception:
-        return jsonify({"error": "Invalid image_id format"}), 400
+        if not design_image:
+            design_image = DesignImage(
+                user_id           = user,
+                file_path         = "manual_selection.png",
+                detected_features = custom_features,
+                confidence_score  = 1.0
+            )
+            design_image.save()
+        elif custom_features and isinstance(custom_features, dict):
+            updated_features = dict(design_image.detected_features or {})
+            updated_features.update(custom_features)
+            design_image.update(set__detected_features=updated_features)
+            design_image.reload()
+    else:
+        try:
+            design_image = DesignImage.objects(
+                id      = image_id,
+                user_id = user
+            ).first()
+        except Exception:
+            return jsonify({"error": "Invalid image_id format"}), 400
 
-    if not design_image:
-        return jsonify({"error": "Design image not found"}), 404
+        if not design_image:
+            return jsonify({"error": "Design image not found"}), 404
 
-    # Check if user passed custom/modified features from frontend dropdowns
-    custom_features = data.get("detected_features")
-    if custom_features and isinstance(custom_features, dict):
-        design_image.detected_features = custom_features
-        design_image.save()
+        if custom_features and isinstance(custom_features, dict):
+            updated_features = dict(design_image.detected_features or {})
+            updated_features.update(custom_features)
+            design_image.update(set__detected_features=updated_features)
+            design_image.reload()
+
 
     if not design_image.detected_features:
         return jsonify({
@@ -97,7 +131,9 @@ def generate_pattern():
             session_id          = session,
             pattern_coordinates = pattern["pattern_pieces"],
             yardage_metres      = 0.0,   # filled by nesting algorithm in Part 8
-            garment_type        = pattern["garment_type"]
+            garment_type        = pattern["garment_type"],
+            selected_fabric_id  = selected_fabric_id,
+            selected_fabric_name= selected_fabric_name
         )
         pattern_result.save()
 
@@ -107,12 +143,14 @@ def generate_pattern():
 
         # 10. Return pattern data
         return jsonify({
-            "message":       "Pattern generated successfully",
-            "pattern_id":    str(pattern_result.id),
-            "session_id":    str(session.id),
-            "garment_type":  pattern["garment_type"],
-            "fabric_type":   pattern["fabric_type"],
-            "pieces_count":  len(pattern["pattern_pieces"]),
+            "message":             "Pattern generated successfully",
+            "pattern_id":          str(pattern_result.id),
+            "session_id":          str(session.id),
+            "garment_type":        pattern["garment_type"],
+            "fabric_type":         pattern["fabric_type"],
+            "selected_fabric_id":   selected_fabric_id,
+            "selected_fabric_name": selected_fabric_name,
+            "pieces_count":        len(pattern["pattern_pieces"]),
             "pieces": [
                 {
                     "name":         p["name"],

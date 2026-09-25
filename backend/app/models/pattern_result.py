@@ -9,4 +9,6 @@ class PatternResult(Document):
     pattern_coordinates = ListField(DictField(), default=list)
     yardage_metres = FloatField(default=0.0)
     garment_type = StringField(default="blouse")
+    selected_fabric_id = StringField(default="cotton-poplin")
+    selected_fabric_name = StringField(default="Cotton Poplin")
     generated_at = DateTimeField(default=lambda: datetime.now(timezone.utc))
