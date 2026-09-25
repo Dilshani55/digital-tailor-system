@@ -1,0 +1,124 @@
+{
+  "info": {
+    "description": "Fashionpedia Synthetic Mini Test Fixture",
+    "version": "1.0"
+  },
+  "images": [
+    {
+      "id": 1001,
+      "file_name": "000001001.jpg",
+      "coco_url": "http://images.cocodataset.org/val2017/000001001.jpg",
+      "width": 1024,
+      "height": 1024
+    },
+    {
+      "id": 1002,
+      "file_name": "000001002.jpg",
+      "coco_url": "http://images.cocodataset.org/val2017/000001002.jpg",
+      "width": 1024,
+      "height": 1024
+    },
+    {
+      "id": 1003,
+      "file_name": "000001003.jpg",
+      "coco_url": "http://images.cocodataset.org/val2017/000001003.jpg",
+      "width": 1024,
+      "height": 1024
+    },
+    {
+      "id": 1004,
+      "file_name": "000001004.jpg",
+      "coco_url": "http://images.cocodataset.org/val2017/000001004.jpg",
+      "width": 1024,
+      "height": 1024
+    }
+  ],
+  "categories": [
+    {"id": 0, "name": "shirt, blouse", "supercategory": "upperbody"},
+    {"id": 1, "name": "top, t-shirt, sweatshirt", "supercategory": "upperbody"},
+    {"id": 4, "name": "jacket", "supercategory": "upperbody"},
+    {"id": 6, "name": "pants", "supercategory": "lowerbody"}
+  ],
+  "attributes": [
+    {"id": 8, "name": "crop (top)", "supercategory": "nickname"},
+    {"id": 156, "name": "sleeveless", "supercategory": "length"},
+    {"id": 157, "name": "short (length)", "supercategory": "length"},
+    {"id": 182, "name": "round (neck)", "supercategory": "neckline type"},
+    {"id": 183, "name": "v-neck", "supercategory": "neckline type"},
+    {"id": 209, "name": "puff (sleeve)", "supercategory": "nickname"}
+  ],
+  "annotations": [
+    {
+      "id": 1,
+      "image_id": 1001,
+      "category_id": 0,
+      "bbox": [50.0, 50.0, 200.0, 250.0],
+      "attribute_ids": [8, 183, 157, 209],
+      "comment": "Instance 1: Training ready (crop-top via attr 8 + v-neck + short-sleeve + puff-sleeve)"
+    },
+    {
+      "id": 2,
+      "image_id": 1001,
+      "category_id": 0,
+      "bbox": [300.0, 50.0, 150.0, 180.0],
+      "attribute_ids": [156, 183],
+      "comment": "Instance 2: Shares image_id 1001 (split isolation test), sleeveless deriving sleeve_style none, candidate mapping blouse"
+    },
+    {
+      "id": 3,
+      "image_id": 1002,
+      "category_id": 0,
+      "bbox": [10.0, 10.0, 100.0, 120.0],
+      "attribute_ids": [183, 157, 209],
+      "comment": "Instance 3: Candidate mapping blouse (Cat 0), manual_review"
+    },
+    {
+      "id": 4,
+      "image_id": 1002,
+      "category_id": 0,
+      "bbox": [10.0, 10.0, 0.0, 0.0],
+      "attribute_ids": [8, 183, 157, 209],
+      "comment": "Instance 4: Invalid zero bbox -> rejected"
+    },
+    {
+      "id": 5,
+      "image_id": 1003,
+      "category_id": 0,
+      "bbox": [50.0, 50.0, 150.0, 150.0],
+      "attribute_ids": [182, 183, 157, 209],
+      "comment": "Instance 5: Conflicting neckline attributes (182 round + 183 v-neck) -> manual_review"
+    },
+    {
+      "id": 6,
+      "image_id": 1003,
+      "category_id": 0,
+      "bbox": [50.0, 50.0, 150.0, 150.0],
+      "attribute_ids": [157, 209],
+      "comment": "Instance 6: Missing neckline head -> manual_review"
+    },
+    {
+      "id": 7,
+      "image_id": 1004,
+      "category_id": 6,
+      "bbox": [50.0, 50.0, 150.0, 150.0],
+      "attribute_ids": [8, 157],
+      "comment": "Instance 7: Irrelevant lower-body category (pants with Attr 8) -> ignored by pipeline"
+    },
+    {
+      "id": 8,
+      "image_id": 1004,
+      "category_id": 0,
+      "bbox": [50.0, 50.0, 150.0, 150.0],
+      "attribute_ids": [8, 183, 157, 209, 9999],
+      "comment": "Instance 8: Contains unknown attribute ID 9999, should handle gracefully"
+    },
+    {
+      "id": 9,
+      "image_id": 1004,
+      "category_id": 4,
+      "bbox": [50.0, 50.0, 150.0, 150.0],
+      "attribute_ids": [8, 183, 157, 209],
+      "comment": "Instance 9: Jacket category 4 containing Attr 8 -> cannot become crop-top sample"
+    }
+  ]
+}

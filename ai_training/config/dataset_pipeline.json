@@ -1,0 +1,33 @@
+{
+  "schema_version": "1.0.0",
+  "random_seed": 42,
+  "target_heads": [
+    "garment_type",
+    "neckline_type",
+    "sleeve_length",
+    "sleeve_style"
+  ],
+  "accepted_category_ids": [0, 1, 2, 3, 4, 5],
+  "crop_top_precedence_rule": "If Attribute ID 8 'crop (top)' is present in attribute_ids, garment_type is assigned as crop-top regardless of Category 0 or 1.",
+  "required_labels_policy": "Each training_ready sample must contain exactly one valid label for every one of the four heads.",
+  "ambiguity_policy": "Reject or route to manual_review if conflicting labels exist for the same head.",
+  "missing_label_policy": "Route to manual_review or rejected if required head labels are missing.",
+  "candidate_mapping_policy": "Instances relying on candidate_mapping categories or attributes must be assigned to manual_review.",
+  "bbox_validation_rules": {
+    "min_width": 1.0,
+    "min_height": 1.0,
+    "numeric_format": "[x, y, width, height]"
+  },
+  "source_grouping_strategy": "Group by source_image_id to prevent cross-split leakage.",
+  "split_ratios": {
+    "train": 0.70,
+    "val": 0.15,
+    "test": 0.15
+  },
+  "split_assignment_strategy": "Deterministic SHA-256 hash of (str(source_image_id) + '_' + str(seed)) modulo 100.",
+  "minimum_crop_dimensions": {
+    "min_width": 10,
+    "min_height": 10
+  },
+  "manifest_schema_version": "1.0.0"
+}
