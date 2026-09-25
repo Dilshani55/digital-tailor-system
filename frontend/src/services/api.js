@@ -83,4 +83,11 @@ export const researchAPI = {
   getCSVUrl:      ()     => `${BASE_URL}/research/export/csv`
 };
 
+// ── FABRIC RECOMMENDATION ─────────────────────────────────────────────────────
+export const fabricAPI = {
+  getRecommendations: (data) => api.post('/fabric/recommend', data),
+  getCatalog:         ()     => api.get('/fabric/catalog'),
+  getOne:             (id)   => api.get(`/fabric/${id}`)
+};
+
 export default api;

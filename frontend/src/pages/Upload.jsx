@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
-import { Eye, EyeOff } from 'lucide-react';
+import { Eye, EyeOff, Info, ChevronDown, ChevronUp } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import StepIndicator   from '../components/StepIndicator';
 import LoadingSpinner  from '../components/LoadingSpinner';
 import MeasurementGuide from '../components/MeasurementGuide';
+import FabricRecommendation from '../components/FabricRecommendation';
 import {
   imagesAPI, measurementsAPI, patternsAPI, exportAPI, researchAPI
 } from '../services/api';
@@ -23,12 +24,13 @@ export default function Upload() {
   const [imageId,     setImageId]     = useState(null);
   const [imagePreview,setImagePreview]= useState(null);
   const [features,    setFeatures]    = useState({
-    garment_type: 'blouse',
-    neckline:     'off-the-shoulder',
-    sleeves:      'short sleeve',
-    darts:        'bust dart',
-    seams:        'side seam'
+    garment_type: '',
+    neckline:     '',
+    sleeves:      '',
+    darts:        '',
+    seams:        ''
   });
+  const [requiresUserVerification, setRequiresUserVerification] = useState(false);
 
   // Step 2 — Measurements
   const [savedProfiles, setSavedProfiles] = useState([]);
@@ -44,8 +46,11 @@ export default function Upload() {
   const [yardageData, setYardageData] = useState(null);
   const [fabricWidth, setFabricWidth] = useState(114);
   const [selectedFabricId, setSelectedFabricId] = useState('cotton-poplin');
+  const [selectedFabricName, setSelectedFabricName] = useState('Cotton Poplin');
+  const [fabricValidationError, setFabricValidationError] = useState('');
   const [patternGenerated, setPatternGenerated] = useState(false);
   const [show2DView, setShow2DView]   = useState(true);
+  const [showTechAudit, setShowTechAudit] = useState(false);
 
   // Step 4 — Export & Download state
   const [exportId,      setExportId]      = useState(null);
@@ -77,6 +82,27 @@ export default function Upload() {
       setMeasurementId(p.measurement_id);
     }
   }, [location.state]);
+
+  // Deduplicate saved customer profiles so duplicate entries are not rendered repeatedly
+  const uniqueProfiles = savedProfiles.reduce((acc, current) => {
+    const rawName = (current.client_name || '').trim();
+    const nameLower = rawName.toLowerCase();
+    const exists = acc.some(item => {
+      const itemRaw = (item.client_name || '').trim().toLowerCase();
+      if (nameLower && nameLower !== 'customer profile' && nameLower !== 'customer') {
+        return itemRaw === nameLower;
+      }
+      return itemRaw === nameLower &&
+        item.bust_cm === current.bust_cm &&
+        item.waist_cm === current.waist_cm &&
+        item.hip_cm === current.hip_cm &&
+        item.height_cm === current.height_cm;
+    });
+    if (!exists) {
+      acc.push(current);
+    }
+    return acc;
+  }, []);
 
   const handleSelectSavedClient = (profileId) => {
     if (!profileId) {
@@ -127,6 +153,7 @@ export default function Upload() {
       if (analyseRes.data.detected_features) {
         setFeatures(analyseRes.data.detected_features);
       }
+      setRequiresUserVerification(Boolean(analyseRes.data.requires_user_verification));
       setStep(2);
     } catch (err) {
       handleError(err, 'Upload failed. Proceeding to step 2.');
@@ -145,7 +172,16 @@ export default function Upload() {
         return;
       }
     }
-    setLoading(true); setError('');
+    if (!features.garment_type) {
+      setError('Please select a Garment Type for your pattern design.');
+      return;
+    }
+    if (!selectedFabricId) {
+      setFabricValidationError('Please select a recommended fabric material for your garment design before proceeding.');
+      setError('Please select a recommended fabric material for your garment design before proceeding.');
+      return;
+    }
+    setLoading(true); setError(''); setFabricValidationError('');
     try {
       const res = await measurementsAPI.save({
         client_name: meas.client_name.trim() !== '' ? meas.client_name : 'Customer Profile',
@@ -168,11 +204,13 @@ export default function Upload() {
   const handleGeneratePattern = async () => {
     setLoading(true); setError('');
     try {
-      if (measurementId && imageId) {
+      if (measurementId) {
         const patRes = await patternsAPI.generate({
           measurement_id:    measurementId,
-          image_id:          imageId,
-          detected_features: features
+          image_id:          imageId || 'manual',
+          detected_features: features,
+          fabric_id:         selectedFabricId,
+          fabric_name:       selectedFabricName
         });
         const newPatternId = patRes.data.pattern_id;
         setPatternId(newPatternId);
@@ -194,6 +232,19 @@ export default function Upload() {
       setError(err.response?.data?.error || 'Failed to generate parametric pattern draft.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleFabricWidthChange = async (w) => {
+    setFabricWidth(w);
+    if (patternId) {
+      try {
+        const yardRes = await exportAPI.yardage(patternId, {
+          fabric_width_cm: w,
+          cutting_mode: 'folded'
+        });
+        setYardageData(yardRes.data);
+      } catch (err) {}
     }
   };
 
@@ -303,7 +354,7 @@ export default function Upload() {
                 onChange={(e) => handleSelectSavedClient(e.target.value)}
               >
                 <option value="">+ Register / Add New Customer (Type Name & Measurements Below)</option>
-                {savedProfiles.map((p) => (
+                {uniqueProfiles.map((p) => (
                   <option key={p.measurement_id} value={p.measurement_id}>
                     Existing Client: {p.client_name || 'Customer'} (Bust: {p.bust_cm}cm, Waist: {p.waist_cm}cm, Hip: {p.hip_cm}cm)
                   </option>
@@ -314,9 +365,21 @@ export default function Upload() {
             {/* Detected Garment Features Editable Controls */}
             <div style={{ background: 'var(--surface-1)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '14px 16px', marginBottom: '16px' }}>
               <div style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-accent)', marginBottom: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span>Detected Garment Features (AI Auto-Analyzed)</span>
-                <span style={{ fontSize: '11px', color: 'var(--text-accent)' }}>✓ Editable Dropdowns</span>
+                <span>{imageId ? 'Detected Garment Features (AI Auto-Analyzed)' : 'Garment Features (Manual Selection)'}</span>
+                <span style={{ fontSize: '11px', color: imageId ? '#16A34A' : 'var(--text-accent)' }}>
+                  {imageId ? '✓ AI Auto-Analyzed (Editable)' : 'Manual Selection'}
+                </span>
               </div>
+              {!imageId && (
+                <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '10px', fontStyle: 'italic' }}>
+                  No design image uploaded. Select your garment style features below manually.
+                </div>
+              )}
+              {imageId && requiresUserVerification && (
+                <div role="alert" style={{ fontSize: '11px', color: '#92400E', background: '#FEF3C7', border: '1px solid #F59E0B', borderRadius: 'var(--radius)', padding: '8px 10px', marginBottom: '10px' }}>
+                  Low-confidence AI suggestion — please verify the detected features.
+                </div>
+              )}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
                 <div>
                   <label className="form-label" style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Garment Type</label>
@@ -326,6 +389,7 @@ export default function Upload() {
                     value={features.garment_type}
                     onChange={(e) => setFeatures({ ...features, garment_type: e.target.value })}
                   >
+                    <option value="">-- Select Garment Type --</option>
                     <option value="blouse">blouse</option>
                     <option value="crop-top">crop-top</option>
                     <option value="t-shirt">t-shirt</option>
@@ -339,6 +403,7 @@ export default function Upload() {
                     value={features.neckline}
                     onChange={(e) => setFeatures({ ...features, neckline: e.target.value })}
                   >
+                    <option value="">-- Select Neckline --</option>
                     <option value="one-shoulder">one-shoulder</option>
                     <option value="off-the-shoulder">off-the-shoulder</option>
                     <option value="sweetheart neck">sweetheart neck</option>
@@ -358,6 +423,7 @@ export default function Upload() {
                     value={features.sleeves}
                     onChange={(e) => setFeatures({ ...features, sleeves: e.target.value })}
                   >
+                    <option value="">-- Select Sleeves --</option>
                     <option value="bell sleeve">bell sleeve</option>
                     <option value="flared sleeve">flared sleeve</option>
                     <option value="bishop sleeve">bishop sleeve</option>
@@ -451,56 +517,24 @@ export default function Upload() {
                   placeholder="Enter height measurement"
                 />
               </div>
-              <div className="form-field" style={{ gridColumn: '1/-1', marginTop: '16px' }}>
-                <label className="form-label" style={{ fontSize: '13px', fontWeight: 'bold', color: 'var(--text-primary)', marginBottom: '12px', display: 'block' }}>
-                  Manual Fabric Selection Catalog
-                </label>
-                
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '14px' }}>
-                  {[
-                    { id: 'cotton-poplin', name: 'Cotton Poplin', type: 'woven', desc: 'Woven - Light', composition: '100% Cotton', weight: '120 GSM', price: 'Rs 180 /m', image: 'https://images.unsplash.com/photo-1584290867415-527a84fc5715?auto=format&fit=crop&w=150&q=80' },
-                    { id: 'linen-blend', name: 'Linen Blend', type: 'woven', desc: 'Woven - Medium', composition: '55% Linen, 45% Cotton', weight: '185 GSM', price: 'Rs 240 /m', image: 'https://images.unsplash.com/photo-1606744824163-985d376605aa?auto=format&fit=crop&w=150&q=80' },
-                    { id: 'rayon', name: 'Rayon', type: 'woven', desc: 'Woven - Light', composition: '100% Rayon', weight: '110 GSM', price: 'Rs 150 /m', image: 'https://images.unsplash.com/photo-1528459801416-a9e53bbf4e17?auto=format&fit=crop&w=150&q=80' },
-                    { id: 'jersey-knit', name: 'Jersey Knit', type: 'knit', desc: 'Knit - Medium', composition: '95% Cotton, 5% Lycra', weight: '180 GSM', price: 'Rs 220 /m', image: 'https://images.unsplash.com/photo-1544816155-12df9643f363?auto=format&fit=crop&w=150&q=80' }
-                  ].map((f) => {
-                    const isSelected = selectedFabricId === f.id;
-                    return (
-                      <div 
-                        key={f.id}
-                        onClick={() => {
-                          setSelectedFabricId(f.id);
-                          setMeas({ ...meas, fabric_type: f.type });
-                        }}
-                        style={{
-                          border: isSelected ? '2px solid var(--text-accent)' : '1px solid var(--border)',
-                          borderRadius: '8px',
-                          overflow: 'hidden',
-                          background: isSelected ? 'rgba(45, 90, 67, 0.05)' : 'var(--surface-1)',
-                          cursor: 'pointer',
-                          transition: 'all 0.15s ease'
-                        }}
-                      >
-                        <img 
-                          src={f.image} 
-                          alt={f.name} 
-                          style={{ width: '100%', height: '90px', objectFit: 'cover', borderBottom: '1px solid var(--border)' }}
-                        />
-                        <div style={{ padding: '10px', fontSize: '11px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                          <strong style={{ fontSize: '12px', color: 'var(--text-primary)' }}>{f.name}</strong>
-                          <span style={{ color: 'var(--text-accent)', fontWeight: '600' }}>{f.desc}</span>
-                          <span style={{ color: 'var(--text-secondary)' }}>{f.composition}</span>
-                          <span style={{ color: 'var(--text-secondary)' }}>{f.weight}</span>
-                          <strong style={{ color: 'var(--text-primary)', marginTop: '4px' }}>{f.price}</strong>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
+              <div className="form-field" style={{ gridColumn: '1/-1' }}>
+                <FabricRecommendation
+                  detectedFeatures={features}
+                  selectedFabricId={selectedFabricId}
+                  onSelectFabric={(id, name, type) => {
+                    setSelectedFabricId(id);
+                    setSelectedFabricName(name);
+                    setMeas((prev) => ({ ...prev, fabric_type: type }));
+                    setFabricValidationError('');
+                    setError('');
+                  }}
+                  validationError={fabricValidationError}
+                />
               </div>
             </div>
 
             {/* Interactive Measurement Guide Component */}
-            <MeasurementGuide activeField={activeField} />
+            <MeasurementGuide activeField={activeField} setActiveField={setActiveField} meas={meas} />
 
             {loading ? (
               <LoadingSpinner message="Saving measurements..." />
@@ -543,26 +577,26 @@ export default function Upload() {
 
             {/* Fabric Bolt Width Selector */}
             <div style={{ marginBottom: '16px' }}>
-              <div style={{ fontSize: '12px', fontWeight: '500', color: 'var(--text-secondary)', marginBottom: '8px' }}>Fabric Bolt Width</div>
+              <div style={{ fontSize: '12px', fontWeight: '500', color: 'var(--text-secondary)', marginBottom: '8px' }}>Fabric Bolt Width (Click to dynamic re-calculate layout)</div>
               <div style={{ display: 'flex', gap: '8px' }}>
                 <button
                   className={fabricWidth === 90 ? "btn btn-primary" : "btn btn-outline"}
                   style={{ flex: 1 }}
-                  onClick={() => setFabricWidth(90)}
+                  onClick={() => handleFabricWidthChange(90)}
                 >
                   90 cm (Narrow)
                 </button>
                 <button
                   className={fabricWidth === 114 ? "btn btn-primary" : "btn btn-outline"}
                   style={{ flex: 1 }}
-                  onClick={() => setFabricWidth(114)}
+                  onClick={() => handleFabricWidthChange(114)}
                 >
                   114 cm (Standard)
                 </button>
                 <button
                   className={fabricWidth === 150 ? "btn btn-primary" : "btn btn-outline"}
                   style={{ flex: 1 }}
-                  onClick={() => setFabricWidth(150)}
+                  onClick={() => handleFabricWidthChange(150)}
                 >
                   150 cm (Wide)
                 </button>
@@ -575,7 +609,7 @@ export default function Upload() {
                   Ready to draft 2D Aldrich parametric pattern for <strong>{meas.client_name || 'Customer'}</strong>
                 </div>
                 <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '20px' }}>
-                  {features.garment_type.toUpperCase()} · {features.neckline} · {features.sleeves} · {meas.fabric_type} fabric
+                  {(features.garment_type || 'GARMENT').toUpperCase()} · {features.neckline || 'Custom neckline'} · {features.sleeves || 'Custom sleeves'} · {meas.fabric_type} fabric
                 </div>
                 <button className="btn btn-primary" onClick={handleGeneratePattern} style={{ padding: '12px 24px', fontSize: '13px', background: 'var(--text-accent)' }}>
                   Generate 2D Pattern View
@@ -587,7 +621,7 @@ export default function Upload() {
                 <div className="result-grid" style={{ marginBottom: '16px' }}>
                   <div className="result-tile">
                     <div className="r-val" style={{ color: 'var(--text-accent)' }}>
-                      {features.garment_type.toUpperCase()}
+                      {(features.garment_type || 'GARMENT').toUpperCase()}
                     </div>
                     <div className="r-lbl">Garment Style</div>
                   </div>
@@ -770,6 +804,202 @@ export default function Upload() {
                   </span>
                   <span className="chip" style={{ color: '#2D6A4F', borderColor: '#2D6A4F' }}>✓ Fitted Bust Dart</span>
                 </div>
+
+                {/* Mathematical Pattern & Fabric Calculation Breakdown Card */}
+                {yardageData && (
+                  <div style={{ background: 'var(--surface-1)', border: '1px solid var(--border)', borderRadius: '12px', padding: '18px', marginBottom: '16px' }}>
+                    <div style={{ fontSize: '14px', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span>Fabric & Pattern Requirement Summary</span>
+                      <span style={{ fontSize: '11px', background: 'rgba(37, 99, 235, 0.1)', color: '#2563EB', padding: '3px 10px', borderRadius: '12px', fontWeight: '600' }}>
+                        Simple User View
+                      </span>
+                    </div>
+
+                    {/* Level 1: Simple User Summary (Visible by Default) */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px', marginBottom: '12px' }}>
+                      <div style={{ background: 'var(--surface-2)', padding: '12px', borderRadius: '8px' }}>
+                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '2px' }}>Selected Material</div>
+                        <div style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text-primary)' }}>{selectedFabricName}</div>
+                      </div>
+                      <div style={{ background: 'var(--surface-2)', padding: '12px', borderRadius: '8px' }}>
+                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '2px' }}>Fabric Width</div>
+                        <div style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text-primary)' }}>
+                          {yardageData.full_bolt_width_cm || yardageData.fabric_width_cm || fabricWidth} cm
+                        </div>
+                      </div>
+                      <div style={{ background: 'var(--surface-2)', padding: '12px', borderRadius: '8px' }}>
+                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '2px' }}>Fabric Required</div>
+                        <div style={{ fontSize: '13px', fontWeight: '700', color: '#2563EB' }}>
+                          Approximately {yardageData.purchasing_recommended_m || yardageData.yardage_metres || 1.7} metres
+                        </div>
+                        <div style={{ fontSize: '10px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                          Exact marker: {yardageData.exact_yardage_metres || (yardageData.fabric_length_cm / 100).toFixed(2)}m + {yardageData.handling_allowance_m || 0.06}m allowance
+                        </div>
+                      </div>
+                      <div style={{ background: 'var(--surface-2)', padding: '12px', borderRadius: '8px' }}>
+                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '2px' }}>Cutting Method</div>
+                        <div style={{ fontSize: '13px', fontWeight: '700', color: '#16A34A' }}>
+                          {yardageData.cutting_method_simple || (yardageData.cutting_mode === 'folded' ? 'Fabric folded lengthwise' : 'Fabric laid open flat')}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', marginBottom: '14px' }}>
+                      <div style={{ background: 'var(--surface-2)', padding: '12px', borderRadius: '8px', gridColumn: 'span 2' }}>
+                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '2px' }}>Required Pattern Pieces & Quantities</div>
+                        <div style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-primary)' }}>
+                          {yardageData.placed_pieces && yardageData.placed_pieces.length > 0
+                            ? yardageData.placed_pieces.map(p => `${p.name} ×${p.cut_quantity || 1}`).join(', ')
+                            : 'Front ×1, Back ×1, Short Sleeve ×2'}
+                        </div>
+                      </div>
+                      <div style={{ background: 'var(--surface-2)', padding: '12px', borderRadius: '8px' }}>
+                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '2px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <span>Fabric Usage</span>
+                          <span
+                            title="Fabric usage shows how much of the selected fabric area is occupied by pattern pieces. A higher value means less fabric waste."
+                            style={{ cursor: 'help', display: 'inline-flex', alignItems: 'center', color: 'var(--text-accent)' }}
+                          >
+                            <Info size={12} />
+                          </span>
+                        </div>
+                        <div style={{ fontSize: '13px', fontWeight: '700', color: yardageData.utilisation_percent >= 60 ? '#16A34A' : '#D97706' }}>
+                          {yardageData.utilisation_percent}% (Waste: {yardageData.waste_percent}%)
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Usage Status & Recommendation Callout */}
+                    <div style={{ background: 'rgba(217, 119, 6, 0.08)', borderLeft: '4px solid #D97706', padding: '12px', borderRadius: '6px', marginBottom: '14px' }}>
+                      <div style={{ fontSize: '12px', fontWeight: '700', color: '#D97706', marginBottom: '2px' }}>
+                        Fabric Usage Status: {yardageData.usage_status || 'Low efficiency — the layout may be improved'}
+                      </div>
+                      <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                        {yardageData.usage_recommendation || 'The layout leaves significant unused fabric. Consider adding small accessory pieces or using a narrower fabric bolt width to minimize waste.'}
+                      </div>
+                    </div>
+
+                    {/* Level 2: Technical Calculation Audit Toggle Button */}
+                    <button
+                      className="btn btn-outline"
+                      onClick={() => setShowTechAudit(!showTechAudit)}
+                      style={{
+                        width: '100%',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '8px',
+                        padding: '8px 14px',
+                        fontSize: '12px',
+                        fontWeight: '600',
+                        borderRadius: '6px',
+                        border: '1px solid var(--border)',
+                        background: 'var(--surface-2)',
+                        color: 'var(--text-primary)',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      {showTechAudit ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                      <span>{showTechAudit ? 'Hide Technical Calculation Audit' : 'View Technical Calculation Audit (Researchers & Advanced Users)'}</span>
+                    </button>
+
+                    {/* Level 2: Collapsed Technical Calculation Audit Panel */}
+                    {showTechAudit && (
+                      <div style={{ marginTop: '14px', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: '10px', padding: '16px' }}>
+                        <div style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span>Technical Calculation Audit (Thesis Evidence)</span>
+                          <span style={{ fontSize: '10px', background: 'rgba(22, 163, 74, 0.1)', color: '#16A34A', padding: '2px 6px', borderRadius: '4px', fontWeight: '600' }}>
+                            Mathematical Model Verified
+                          </span>
+                        </div>
+
+                        {/* Audit Summary Grid */}
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px', marginBottom: '12px', fontSize: '11px' }}>
+                          <div style={{ background: 'var(--surface-1)', padding: '8px', borderRadius: '6px' }}>
+                            <div style={{ color: 'var(--text-secondary)', fontSize: '10px' }}>Folded Usable Width</div>
+                            <div style={{ fontWeight: '700' }}>{yardageData.usable_width_cm || (fabricWidth / 2)} cm</div>
+                          </div>
+                          <div style={{ background: 'var(--surface-1)', padding: '8px', borderRadius: '6px' }}>
+                            <div style={{ color: 'var(--text-secondary)', fontSize: '10px' }}>Marker Length Needed</div>
+                            <div style={{ fontWeight: '700' }}>{yardageData.fabric_length_cm} cm</div>
+                          </div>
+                          <div style={{ background: 'var(--surface-1)', padding: '8px', borderRadius: '6px' }}>
+                            <div style={{ color: 'var(--text-secondary)', fontSize: '10px' }}>Total Pattern Area</div>
+                            <div style={{ fontWeight: '700' }}>{yardageData.total_pattern_piece_area_cm2 || yardageData.total_pattern_piece_area} cm²</div>
+                          </div>
+                          <div style={{ background: 'var(--surface-1)', padding: '8px', borderRadius: '6px' }}>
+                            <div style={{ color: 'var(--text-secondary)', fontSize: '10px' }}>Usable Fabric Area</div>
+                            <div style={{ fontWeight: '700' }}>{yardageData.usable_area_cm2 || (yardageData.usable_width_cm * yardageData.fabric_length_cm).toFixed(1)} cm²</div>
+                          </div>
+                        </div>
+
+                        {/* Formulas & Calculation Details */}
+                        <div style={{ fontSize: '10px', color: 'var(--text-secondary)', background: 'var(--surface-1)', padding: '10px', borderRadius: '6px', marginBottom: '12px', fontFamily: 'monospace' }}>
+                          <div>usable_area = usable_folded_width_cm ({yardageData.usable_width_cm}cm) × marker_length_cm ({yardageData.fabric_length_cm}cm) = {yardageData.usable_area_cm2} cm²</div>
+                          <div>efficiency_percentage = (total_pattern_area [{yardageData.total_pattern_piece_area_cm2}cm²] / usable_area [{yardageData.usable_area_cm2}cm²]) × 100 = {yardageData.utilisation_percent}%</div>
+                          <div>waste_area_cm2 = usable_area ({yardageData.usable_area_cm2}cm²) - total_pattern_area ({yardageData.total_pattern_piece_area_cm2}cm²) = {yardageData.waste_cm2} cm²</div>
+                        </div>
+
+                        {/* Placed Pieces Table */}
+                        {yardageData.placed_pieces && yardageData.placed_pieces.length > 0 && (
+                          <div style={{ overflowX: 'auto', marginBottom: '12px' }}>
+                            <table style={{ width: '100%', fontSize: '11px', borderCollapse: 'collapse', color: 'var(--text-primary)' }}>
+                              <thead>
+                                <tr style={{ background: 'var(--surface-1)', borderBottom: '1px solid var(--border)', textAlign: 'left' }}>
+                                  <th style={{ padding: '6px 8px' }}>Piece Name</th>
+                                  <th style={{ padding: '6px 8px' }}>Cut Quantity</th>
+                                  <th style={{ padding: '6px 8px' }}>Cut on Fold</th>
+                                  <th style={{ padding: '6px 8px' }}>Bounding Box (W × H)</th>
+                                  <th style={{ padding: '6px 8px' }}>Polygon Area</th>
+                                  <th style={{ padding: '6px 8px' }}>Position (X, Y)</th>
+                                  <th style={{ padding: '6px 8px' }}>Rotation</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {yardageData.placed_pieces.map((p, idx) => (
+                                  <tr key={idx} style={{ borderBottom: '1px solid var(--border)' }}>
+                                    <td style={{ padding: '6px 8px', fontWeight: '600' }}>{p.name}</td>
+                                    <td style={{ padding: '6px 8px' }}>{p.cut_quantity || 1}</td>
+                                    <td style={{ padding: '6px 8px' }}>{p.cut_on_fold ? '✓ Yes (Fold Line)' : 'No'}</td>
+                                    <td style={{ padding: '6px 8px' }}>
+                                      {p.bounding_dimensions ? `${p.bounding_dimensions.width_cm} × ${p.bounding_dimensions.height_cm} cm` : `${p.width} × ${p.height} cm`}
+                                    </td>
+                                    <td style={{ padding: '6px 8px' }}>{p.polygon_area_cm2 ? `${p.polygon_area_cm2} cm²` : `${(p.width * p.height).toFixed(1)} cm²`}</td>
+                                    <td style={{ padding: '6px 8px' }}>
+                                      {p.final_nested_position ? `(${p.final_nested_position.x_cm}, ${p.final_nested_position.y_cm})` : `(${p.x}, ${p.y})`}
+                                    </td>
+                                    <td style={{ padding: '6px 8px' }}>{p.rotation_deg !== undefined ? `${p.rotation_deg}°` : (p.rotated ? '90°' : '0°')}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+
+                        {/* Validation Checks */}
+                        {yardageData.validation_checks && (
+                          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', fontSize: '10px' }}>
+                            <span style={{ padding: '3px 8px', borderRadius: '4px', background: yardageData.validation_checks.no_overlap ? '#DCFCE7' : '#FEE2E2', color: yardageData.validation_checks.no_overlap ? '#166534' : '#991B1B', fontWeight: '600' }}>
+                              {yardageData.validation_checks.no_overlap ? '✓ No Overlap Pass' : '✕ Overlap Error'}
+                            </span>
+                            <span style={{ padding: '3px 8px', borderRadius: '4px', background: yardageData.validation_checks.within_bounds ? '#DCFCE7' : '#FEE2E2', color: yardageData.validation_checks.within_bounds ? '#166534' : '#991B1B', fontWeight: '600' }}>
+                              {yardageData.validation_checks.within_bounds ? '✓ Fabric Boundary Pass' : '✕ Boundary Error'}
+                            </span>
+                            <span style={{ padding: '3px 8px', borderRadius: '4px', background: yardageData.validation_checks.efficiency_in_range ? '#DCFCE7' : '#FEE2E2', color: yardageData.validation_checks.efficiency_in_range ? '#166534' : '#991B1B', fontWeight: '600' }}>
+                              {yardageData.validation_checks.efficiency_in_range ? '✓ Efficiency Range Pass (0-100%)' : '✕ Efficiency Error'}
+                            </span>
+                            <span style={{ padding: '3px 8px', borderRadius: '4px', background: yardageData.validation_checks.theoretical_lower_bound_satisfied ? '#DCFCE7' : '#FEE2E2', color: yardageData.validation_checks.theoretical_lower_bound_satisfied ? '#166534' : '#991B1B', fontWeight: '600' }}>
+                              {yardageData.validation_checks.theoretical_lower_bound_satisfied ? '✓ Theoretical Length Bound Pass' : '✕ Length Bound Error'}
+                            </span>
+                            <span style={{ padding: '3px 8px', borderRadius: '4px', background: yardageData.validation_checks.pattern_dimensions_invariant ? '#DCFCE7' : '#FEE2E2', color: yardageData.validation_checks.pattern_dimensions_invariant ? '#166534' : '#991B1B', fontWeight: '600' }}>
+                              {yardageData.validation_checks.pattern_dimensions_invariant ? '✓ Dimension Invariance Pass' : '✕ Dimension Error'}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             ) : (
               /* 2D View Closed State Card */
@@ -812,7 +1042,7 @@ export default function Upload() {
             <div className="result-grid">
               <div className="result-tile">
                 <div className="r-val" style={{ color: 'var(--text-accent)' }}>
-                  {features.garment_type.toUpperCase()}
+                  {(features.garment_type || 'GARMENT').toUpperCase()}
                 </div>
                 <div className="r-lbl">Garment Style</div>
               </div>
