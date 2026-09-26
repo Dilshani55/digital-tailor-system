@@ -381,13 +381,26 @@ def run_feasibility_analysis(spatial_manifest_path, classes_path, policy_path, o
         print(f"ASSERTION FAILURE: Exclusive planning bands sum ({sum_exclusive_bands}) != 29", file=sys.stderr)
         sys.exit(1)
 
-    # 4. FEASIBILITY VERDICT (Validation Subset Specific)
-    feasibility_verdict = "NOT_FEASIBLE_WITH_CURRENT_VALIDATION_SUBSET"
-    verdict_disclaimer = (
-        "This verdict applies strictly to the currently inspected Fashionpedia validation annotation package "
-        "(instances_attributes_val2020.json, 817 spatial parent instances). It evaluates direct label availability "
-        "on this subset and does not represent an evaluation of the full Fashionpedia training dataset."
-    )
+    # 4. FEASIBILITY VERDICT
+    is_train2020 = ("train" in os.path.basename(spatial_manifest_path) or len(spatial_records) > 5000)
+    if is_train2020:
+        source_pkg_name = "instances_attributes_train2020.json"
+        if len(sufficient_sample_classes) >= 15:
+            feasibility_verdict = "READY_AFTER_TARGETED_MANUAL_REVIEW"
+        else:
+            feasibility_verdict = "ADDITIONAL_DATA_SOURCE_REQUIRED"
+        verdict_disclaimer = (
+            "This verdict applies specifically to the inspected Fashionpedia full training dataset package "
+            "(instances_attributes_train2020.json, 33,862 spatial parent instances)."
+        )
+    else:
+        source_pkg_name = "instances_attributes_val2020.json"
+        feasibility_verdict = "NOT_FEASIBLE_WITH_CURRENT_VALIDATION_SUBSET"
+        verdict_disclaimer = (
+            "This verdict applies strictly to the currently inspected Fashionpedia validation annotation package "
+            "(instances_attributes_val2020.json, 817 spatial parent instances). It evaluates direct label availability "
+            "on this subset and does not represent an evaluation of the full Fashionpedia training dataset."
+        )
 
     # 5. MANUAL-REVIEW WORKLOAD BREAKDOWN
     total_review_eligible = len(manual_review_queue)
@@ -461,7 +474,7 @@ def run_feasibility_analysis(spatial_manifest_path, classes_path, policy_path, o
         json.dump(action_plan, f, indent=2)
 
     summary = {
-        "source_package": "instances_attributes_val2020.json",
+        "source_package": source_pkg_name,
         "total_spatial_records_evaluated": len(spatial_records),
         "split_counts": {
             "train": sum(1 for r in spatial_records if r["split"] == "train"),

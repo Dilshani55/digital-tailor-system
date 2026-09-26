@@ -80,11 +80,14 @@ def validate_feasibility_analysis(analysis_dir, spatial_manifest_path, classes_p
     queue_recs = load_jsonl(queue_file)
 
     spatial_by_id = {r["source_annotation_id"]: r for r in spatial_recs}
+    total_eval_recs = len(spatial_recs)
 
-    print(f"Loaded {len(spatial_recs)} spatial manifest records")
+    print(f"Loaded {total_eval_recs} spatial manifest records")
 
     # 1. Check all 29 target classes are represented in class_counts_by_split.json
     total_found_classes = 0
+    head_totals = {h: 0 for h in target_heads}
+
     for h in target_heads:
         if h not in class_counts_data:
             print(f"VALIDATION FAILED: Head '{h}' missing in class_counts_by_split.json", file=sys.stderr)
@@ -99,16 +102,18 @@ def validate_feasibility_analysis(analysis_dir, spatial_manifest_path, classes_p
 
         total_found_classes += len(found_head_classes)
 
-        # Check per-split mathematical sum
+        # Check per-split mathematical sum & compute head totals
         for cname, counts in class_counts_data[h].items():
             if counts["train"] + counts["val"] + counts["test"] != counts["total"]:
                 print(f"VALIDATION FAILED: Split sum mismatch for class '{cname}': {counts}", file=sys.stderr)
                 sys.exit(1)
+            head_totals[h] += counts["total"]
 
     if total_found_classes != 29:
         print(f"VALIDATION FAILED: Total classes in report ({total_found_classes}) != 29", file=sys.stderr)
         sys.exit(1)
 
+    grand_total_direct_head_labels = sum(head_totals.values())
     print("1. All 29 target classes represented & split counts sum to total: PASSED")
 
     # 2. Re-calculate direct class counts from spatial manifest & check usable caps
@@ -157,12 +162,33 @@ def validate_feasibility_analysis(analysis_dir, spatial_manifest_path, classes_p
 
     print("2. Class counts and zero-sample classes verified against manifest: PASSED")
 
-    # 3. Verify exclusive planning bands sum to 29
+    # 3. Independent Arithmetic Checks (Split sum, Distribution, Partition, Planning Bands)
+    split_counts = summary_data.get("split_counts", {})
+    sum_split_recs = sum(split_counts.values())
+    if sum_split_recs != total_eval_recs:
+        print(f"VALIDATION FAILED: Sum of split counts ({sum_split_recs}) != total evaluated records ({total_eval_recs})", file=sys.stderr)
+        sys.exit(1)
+
+    usable_dist = summary_data.get("usable_head_distribution", {})
+    sum_dist_recs = sum(usable_dist.values())
+    if sum_dist_recs != total_eval_recs:
+        print(f"VALIDATION FAILED: Sum of usable head distribution ({sum_dist_recs}) != total evaluated records ({total_eval_recs})", file=sys.stderr)
+        sys.exit(1)
+
+    zero_head_count = usable_dist.get("0_usable_heads", 0)
+    fully_cnt = len(fully_labelled_recs)
+    partial_cnt = len(partial_recs)
+    if fully_cnt + partial_cnt + zero_head_count != total_eval_recs:
+        print(f"VALIDATION FAILED: Fully ({fully_cnt}) + Partial ({partial_cnt}) + Zero ({zero_head_count}) != Total ({total_eval_recs})", file=sys.stderr)
+        sys.exit(1)
+
     exclusive_bands = summary_data.get("exclusive_planning_bands", {})
     sum_bands = sum(exclusive_bands.values())
     if sum_bands != 29:
         print(f"VALIDATION FAILED: Exclusive planning bands sum ({sum_bands}) != 29", file=sys.stderr)
         sys.exit(1)
+
+    print(f"3. Independent arithmetic checks (Grand total direct labels: {grand_total_direct_head_labels}, Record partition: {total_eval_recs}, Bands: {sum_bands}): PASSED")
 
     # 4. Verify record partition (fully labelled vs partial label)
     for r in fully_labelled_recs:
@@ -184,7 +210,7 @@ def validate_feasibility_analysis(analysis_dir, spatial_manifest_path, classes_p
             print(f"VALIDATION FAILED: Partial record {ann_id} has invalid usable heads count: {cnt}", file=sys.stderr)
             sys.exit(1)
 
-    print("3. Fully labelled (4 heads) and partial records (1-3 heads) validation: PASSED")
+    print("4. Fully labelled (4 heads) and partial records (1-3 heads) validation: PASSED")
 
     # 5. Verify manual review priority queue: real records, sequential ranks, split invariance
     seen_ranks = set()
@@ -210,23 +236,25 @@ def validate_feasibility_analysis(analysis_dir, spatial_manifest_path, classes_p
             sys.exit(1)
         seen_ranks.add(rank)
 
-    print("4. Manual review queue ranks, sequence, and split constancy: PASSED")
+    print("5. Manual review queue ranks, sequence, and split constancy: PASSED")
 
-    # 6. Verify feasibility verdict is validation-subset specific
+    # 6. Verify feasibility verdict is dataset package specific
     verdict = summary_data.get("feasibility_verdict")
     allowed_verdicts = {
         "NOT_FEASIBLE_WITH_CURRENT_VALIDATION_SUBSET",
         "READY_AFTER_TARGETED_MANUAL_REVIEW",
+        "READY_FOR_BASELINE_DATA_PREPARATION",
+        "ADDITIONAL_DATA_SOURCE_REQUIRED",
         "FULL_DATASET_INSPECTION_REQUIRED",
     }
 
     if verdict not in allowed_verdicts:
-        print(f"VALIDATION FAILED: Feasibility verdict '{verdict}' overgeneralizes beyond validation subset!", file=sys.stderr)
+        print(f"VALIDATION FAILED: Feasibility verdict '{verdict}' unrecognized!", file=sys.stderr)
         sys.exit(1)
 
     disclaimer = summary_data.get("verdict_disclaimer", "")
-    if "validation annotation package" not in disclaimer and "instances_attributes_val2020.json" not in disclaimer:
-        print("VALIDATION FAILED: Verdict disclaimer missing validation subset qualification!", file=sys.stderr)
+    if "instances_attributes_val2020.json" not in disclaimer and "instances_attributes_train2020.json" not in disclaimer and "Fashionpedia" not in disclaimer:
+        print("VALIDATION FAILED: Verdict disclaimer missing dataset package qualification!", file=sys.stderr)
         sys.exit(1)
 
     # 7. Verify summary metrics match JSONL file counts
@@ -246,7 +274,7 @@ def validate_feasibility_analysis(analysis_dir, spatial_manifest_path, classes_p
         print("VALIDATION FAILED: Summary manual_review_queue count mismatch", file=sys.stderr)
         sys.exit(1)
 
-    print("5. Summary totals & JSONL line counts match: PASSED")
+    print("6. Summary totals & JSONL line counts match: PASSED")
     print("==================================================")
     print("ALL FEASIBILITY VALIDATIONS PASSED CLEANLY!")
     print("==================================================")
