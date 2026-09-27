@@ -20,12 +20,13 @@ from collections import Counter, defaultdict
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Build final multi-task dataset for Digital Tailor M9B")
+    parser = argparse.ArgumentParser(description="Build final multi-task dataset for Digital Tailor M9B/M10")
     parser.add_argument("--labelling-dir", default="ai_training/data/labelling_official", help="Directory with M8/M9 labelling outputs")
     parser.add_argument("--human-review-dir", default="ai_training/data/human_review", help="Directory with human decisions and queue")
     parser.add_argument("--processed-dir", default="ai_training/data/processed", help="Directory with spatial manifests")
     parser.add_argument("--raw-images-dir", default="ai_training/data/raw/fashionpedia/images", help="Directory with extracted raw images")
     parser.add_argument("--policy", default="ai_training/config/final_dataset_policy.json", help="Path to final_dataset_policy.json")
+    parser.add_argument("--weak-policy", default="ai_training/config/weak_label_policy.json", help="Path to weak_label_policy.json")
     parser.add_argument("--classes", default="ai_training/config/classes.json", help="Path to classes.json")
     parser.add_argument("--output-dir", default="ai_training/data/final_multitask", help="Output directory for final dataset")
     return parser.parse_args()
@@ -305,7 +306,7 @@ def compute_file_sha256(filepath):
     return h.hexdigest()
 
 
-def process_spatial_record(record_uid, spatial_rec, crops_by_uid, queue_by_uid, decisions_by_uid, pseudo_by_uid, image_path_map, policy, class_to_idx):
+def process_spatial_record(record_uid, spatial_rec, crops_by_uid, queue_by_uid, decisions_by_uid, pseudo_by_uid, image_path_map, policy, weak_policy, class_to_idx, weak_class_counts):
     part = spatial_rec["source_partition"]
     ann_id = spatial_rec["source_annotation_id"]
     img_id = spatial_rec["source_image_id"]
@@ -397,6 +398,115 @@ def process_spatial_record(record_uid, spatial_rec, crops_by_uid, queue_by_uid, 
             head_prov[h] = "missing/masked"
             head_conf[h] = None
 
+    # M10 Automatic Training-Label Completion (Train Split Only)
+    weak_label_details = []
+    if split == "train" and weak_policy and weak_policy.get("enabled", True):
+        attached_parts = spatial_rec.get("attached_parts", [])
+        parent_attrs = set(spatial_rec.get("fashionpedia_attribute_ids", []))
+        part_attrs = set(aid for p in attached_parts for aid in p.get("part_attribute_ids", []))
+        all_attrs = parent_attrs | part_attrs
+
+        collar_parts = [p for p in attached_parts if p.get("part_type") == "collar" or p.get("part_category_id") == 28]
+        sleeve_parts = [p for p in attached_parts if p.get("part_type") == "sleeve" or p.get("part_category_id") == 31]
+
+        caps = weak_policy.get("class_balancing_caps", {})
+
+        # Rule 1: collared-neck (neckline_type)
+        if head_masks["neckline_type"] == 0:
+            if weak_class_counts.get("collared-neck", 0) < caps.get("collared-neck", 500):
+                if collar_parts:
+                    conflicting_necklines = all_attrs & {182, 183, 187, 189, 190, 191, 194, 197, 202}
+                    if not conflicting_necklines:
+                        head_labels["neckline_type"] = "collared-neck"
+                        head_indices["neckline_type"] = class_to_idx["neckline_type"]["collared-neck"]
+                        head_masks["neckline_type"] = 1
+                        head_prov["neckline_type"] = "fashionpedia_rule_derived"
+                        head_conf["neckline_type"] = weak_policy.get("confidence", 0.85)
+                        weak_class_counts["collared-neck"] = weak_class_counts.get("collared-neck", 0) + 1
+                        weak_label_details.append({
+                            "head": "neckline_type",
+                            "label": "collared-neck",
+                            "rule": "collared-neck",
+                            "evidence": "category_28_collar_part"
+                        })
+
+        # Rule 2: cap-length (sleeve_length)
+        if head_masks["sleeve_length"] == 0:
+            if weak_class_counts.get("cap-length", 0) < caps.get("cap-length", 500):
+                if 207 in all_attrs:
+                    conflicting_lengths = all_attrs & {156, 158, 159, 160}
+                    if not conflicting_lengths:
+                        head_labels["sleeve_length"] = "cap-length"
+                        head_indices["sleeve_length"] = class_to_idx["sleeve_length"]["cap-length"]
+                        head_masks["sleeve_length"] = 1
+                        head_prov["sleeve_length"] = "fashionpedia_rule_derived"
+                        head_conf["sleeve_length"] = weak_policy.get("confidence", 0.85)
+                        weak_class_counts["cap-length"] = weak_class_counts.get("cap-length", 0) + 1
+                        weak_label_details.append({
+                            "head": "sleeve_length",
+                            "label": "cap-length",
+                            "rule": "cap-length",
+                            "evidence": "attribute_207_cap_sleeve"
+                        })
+
+        # Rule 3: sleeve_style:none (sleeve_style)
+        if head_masks["sleeve_style"] == 0:
+            if weak_class_counts.get("none", 0) < caps.get("none", 500):
+                is_sleeveless = (head_masks["sleeve_length"] == 1 and
+                                 head_labels["sleeve_length"] == "sleeveless" and
+                                 head_prov["sleeve_length"] in ("fashionpedia_direct", "human_verified"))
+                if is_sleeveless:
+                    head_labels["sleeve_style"] = "none"
+                    head_indices["sleeve_style"] = class_to_idx["sleeve_style"]["none"]
+                    head_masks["sleeve_style"] = 1
+                    head_prov["sleeve_style"] = "fashionpedia_rule_derived"
+                    head_conf["sleeve_style"] = weak_policy.get("confidence", 0.85)
+                    weak_class_counts["none"] = weak_class_counts.get("none", 0) + 1
+                    weak_label_details.append({
+                        "head": "sleeve_style",
+                        "label": "none",
+                        "rule": "none",
+                        "evidence": "derived_from_sleeveless_length"
+                    })
+
+        # Rule 4: regular-sleeve (sleeve_style)
+        if head_masks["sleeve_style"] == 0:
+            if weak_class_counts.get("regular-sleeve", 0) < caps.get("regular-sleeve", 500):
+                if 204 in all_attrs:
+                    special_styles = all_attrs & {206, 209, 210, 211, 213, 214, 216}
+                    if not special_styles:
+                        head_labels["sleeve_style"] = "regular-sleeve"
+                        head_indices["sleeve_style"] = class_to_idx["sleeve_style"]["regular-sleeve"]
+                        head_masks["sleeve_style"] = 1
+                        head_prov["sleeve_style"] = "fashionpedia_rule_derived"
+                        head_conf["sleeve_style"] = weak_policy.get("confidence", 0.85)
+                        weak_class_counts["regular-sleeve"] = weak_class_counts.get("regular-sleeve", 0) + 1
+                        weak_label_details.append({
+                            "head": "sleeve_style",
+                            "label": "regular-sleeve",
+                            "rule": "regular-sleeve",
+                            "evidence": "attribute_204_set_in_sleeve"
+                        })
+
+        # Rule 5: flutter-sleeve (sleeve_style)
+        if head_masks["sleeve_style"] == 0:
+            if weak_class_counts.get("flutter-sleeve", 0) < caps.get("flutter-sleeve", 500):
+                if 211 in all_attrs:
+                    other_styles = (all_attrs & {206, 209, 210, 213, 214, 216})
+                    if not other_styles:
+                        head_labels["sleeve_style"] = "flutter-sleeve"
+                        head_indices["sleeve_style"] = class_to_idx["sleeve_style"]["flutter-sleeve"]
+                        head_masks["sleeve_style"] = 1
+                        head_prov["sleeve_style"] = "fashionpedia_rule_derived"
+                        head_conf["sleeve_style"] = weak_policy.get("confidence", 0.85)
+                        weak_class_counts["flutter-sleeve"] = weak_class_counts.get("flutter-sleeve", 0) + 1
+                        weak_label_details.append({
+                            "head": "sleeve_style",
+                            "label": "flutter-sleeve",
+                            "rule": "flutter-sleeve",
+                            "evidence": "attribute_211_circular_flounce"
+                        })
+
     total_masks = sum(head_masks.values())
     if total_masks == 0 and not exclusion_reasons:
         exclusion_reasons.append("no_permitted_labels_across_all_heads")
@@ -405,6 +515,8 @@ def process_spatial_record(record_uid, spatial_rec, crops_by_uid, queue_by_uid, 
     if total_masks > 0:
         if "human_verified" in head_prov.values() or "fashionpedia_direct" in head_prov.values():
             sample_weight = 1.0
+        elif "fashionpedia_rule_derived" in head_prov.values():
+            sample_weight = policy["sample_weights"].get("fashionpedia_rule_derived", 0.8)
         elif "accepted_pseudo_label" in head_prov.values():
             sample_weight = policy["sample_weights"].get("accepted_pseudo_label", 0.5)
 
@@ -428,6 +540,8 @@ def process_spatial_record(record_uid, spatial_rec, crops_by_uid, queue_by_uid, 
         "confidence": head_conf,
         "sample_weight": sample_weight,
         "human_verified": g_hv,
+        "weak_label": any(p == "fashionpedia_rule_derived" for p in head_prov.values()),
+        "weak_label_details": weak_label_details,
         "exclusion_reasons": exclusion_reasons,
         "attached_parts": attached_parts,
     }
@@ -439,6 +553,11 @@ def main():
     with open(args.policy, "r", encoding="utf-8") as f:
         policy = json.load(f)
 
+    weak_policy = None
+    if args.weak_policy and os.path.exists(args.weak_policy):
+        with open(args.weak_policy, "r", encoding="utf-8") as f:
+            weak_policy = json.load(f)
+
     classes_data, heads, class_to_idx, idx_to_class = load_classes_config(args.classes)
 
     spatial_by_uid, train2020_count, val2020_count = load_spatial_manifests(args.processed_dir)
@@ -449,10 +568,15 @@ def main():
     crops_by_uid = load_crop_manifest_by_uid(args.labelling_dir, spatial_by_uid)
     image_path_map = load_partition_image_path_map(args.raw_images_dir)
 
-    # Process all 34,679 spatial parent records by record_uid
+    # Process all 34,679 spatial parent records by record_uid in deterministic order
+    weak_class_counts = Counter()
     all_processed = []
-    for record_uid, sp_rec in spatial_by_uid.items():
-        proc = process_spatial_record(record_uid, sp_rec, crops_by_uid, queue_by_uid, decisions_by_uid, pseudo_by_uid, image_path_map, policy, class_to_idx)
+    for record_uid in sorted(spatial_by_uid.keys()):
+        sp_rec = spatial_by_uid[record_uid]
+        proc = process_spatial_record(
+            record_uid, sp_rec, crops_by_uid, queue_by_uid, decisions_by_uid,
+            pseudo_by_uid, image_path_map, policy, weak_policy, class_to_idx, weak_class_counts
+        )
         all_processed.append(proc)
 
     if len(all_processed) != 34679:
@@ -508,7 +632,7 @@ def main():
 
     print(f"Wrote final JSONL files: train={len(train_records)}, val={len(val_records)}, test={len(test_records)}, excluded={len(excluded_records)}.")
 
-    # 4-head 29-label Coverage Audit
+    # 4-head 28-label Coverage Audit
     coverage_by_label = {}
     for h in heads:
         for c in classes_data["outputs"][h]["classes"]:
@@ -520,6 +644,7 @@ def main():
                 "masked_count": 0,
                 "human_verified_count": 0,
                 "direct_evidence_count": 0,
+                "rule_derived_count": 0,
                 "pseudo_label_count": 0,
                 "by_split": {"train": 0, "val": 0, "test": 0},
             }
@@ -538,6 +663,8 @@ def main():
                     coverage_by_label[key]["human_verified_count"] += 1
                 elif prov == "fashionpedia_direct":
                     coverage_by_label[key]["direct_evidence_count"] += 1
+                elif prov == "fashionpedia_rule_derived":
+                    coverage_by_label[key]["rule_derived_count"] += 1
                 elif prov == "accepted_pseudo_label":
                     coverage_by_label[key]["pseudo_label_count"] += 1
             else:
@@ -548,7 +675,7 @@ def main():
     for key, cov_info in coverage_by_label.items():
         if cov_info["usable_count"] != sum(cov_info["by_split"].values()):
             raise ValueError(f"Error: Usable count for {key} does not equal sum of split counts.")
-        if cov_info["usable_count"] != cov_info["human_verified_count"] + cov_info["direct_evidence_count"] + cov_info["pseudo_label_count"]:
+        if cov_info["usable_count"] != cov_info["human_verified_count"] + cov_info["direct_evidence_count"] + cov_info["rule_derived_count"] + cov_info["pseudo_label_count"]:
             raise ValueError(f"Error: Usable count for {key} does not equal sum of provenance counts.")
 
     blouse_cov = coverage_by_label["garment_type:blouse"]

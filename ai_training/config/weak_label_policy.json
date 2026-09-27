@@ -1,0 +1,58 @@
+{
+  "schema_version": "1.0.0",
+  "policy_name": "Automatic Training-Label Completion Policy",
+  "enabled": true,
+  "allowed_split": "train",
+  "provenance": "fashionpedia_rule_derived",
+  "sample_weight": 0.8,
+  "confidence": 0.85,
+  "class_balancing_caps": {
+    "collared-neck": 500,
+    "regular-sleeve": 500,
+    "cap-length": 500,
+    "none": 500,
+    "flutter-sleeve": 500
+  },
+  "rules": {
+    "collared-neck": {
+      "head": "neckline_type",
+      "target_label": "collared-neck",
+      "source_evidence_type": "collar_part_category_28",
+      "preferred_attributes": [163, 164],
+      "conflicting_attributes": [182, 183, 187, 189, 190, 191, 194, 197, 202],
+      "description": "Derive collared-neck from spatially associated Category 28 collar parts, preferring shirt (163) or polo (164) collars, rejecting conflicting necklines."
+    },
+    "cap-length": {
+      "head": "sleeve_length",
+      "target_label": "cap-length",
+      "source_evidence_type": "attribute_207_cap_sleeve",
+      "evidence_attributes": [207],
+      "conflicting_attributes": [156, 158, 159, 160],
+      "description": "Derive cap-length from sleeve-part Attribute 207 cap (sleeve), rejecting conflicting sleeve-lengths."
+    },
+    "none": {
+      "head": "sleeve_style",
+      "target_label": "none",
+      "source_evidence_type": "derived_from_sleeveless",
+      "required_length_label": "sleeveless",
+      "allowed_length_provenance": ["fashionpedia_direct", "human_verified"],
+      "description": "Derive sleeve_style none strictly when sleeve_length is sleeveless with direct or human-verified provenance."
+    },
+    "regular-sleeve": {
+      "head": "sleeve_style",
+      "target_label": "regular-sleeve",
+      "source_evidence_type": "attribute_204_set_in_sleeve",
+      "evidence_attributes": [204],
+      "conflicting_attributes": [206, 209, 210, 211, 213, 214, 216],
+      "description": "Derive regular-sleeve from sleeve-part Attribute 204 set-in sleeve when no special sleeve-style attributes are present."
+    },
+    "flutter-sleeve": {
+      "head": "sleeve_style",
+      "target_label": "flutter-sleeve",
+      "source_evidence_type": "attribute_211_circular_flounce",
+      "evidence_attributes": [211],
+      "conflicting_attributes": [206, 209, 210, 213, 214, 216],
+      "description": "Derive flutter-sleeve from sleeve-part Attribute 211 circular flounce (sleeve) without conflicting special sleeve-styles."
+    }
+  }
+}

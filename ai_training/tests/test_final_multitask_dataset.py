@@ -109,6 +109,19 @@ class TestFinalMultiTaskDataset(unittest.TestCase):
 
         self.img_file_map = {("train2020", self.mock_fn): self.mock_img, ("val2020", self.mock_fn): self.mock_img}
 
+        self.weak_policy_data = {
+            "schema_version": "1.0.0",
+            "enabled": True,
+            "confidence": 0.85,
+            "class_balancing_caps": {
+                "collared-neck": 500,
+                "cap-length": 500,
+                "none": 500,
+                "regular-sleeve": 500,
+                "flutter-sleeve": 500
+            }
+        }
+
     def tearDown(self):
         shutil.rmtree(self.temp_dir)
 
@@ -131,8 +144,8 @@ class TestFinalMultiTaskDataset(unittest.TestCase):
         d_train = {"human_label": "blouse", "human_verified": True}
         decisions_by_uid = {"fashionpedia:train2020:100": d_train}
 
-        res_train = process_spatial_record("fashionpedia:train2020:100", sp_train, {}, {}, decisions_by_uid, {}, self.img_file_map, self.policy_data, self.class_to_idx)
-        res_val = process_spatial_record("fashionpedia:val2020:100", sp_val, {}, {}, decisions_by_uid, {}, self.img_file_map, self.policy_data, self.class_to_idx)
+        res_train = process_spatial_record("fashionpedia:train2020:100", sp_train, {}, {}, decisions_by_uid, {}, self.img_file_map, self.policy_data, self.weak_policy_data, self.class_to_idx, {})
+        res_val = process_spatial_record("fashionpedia:val2020:100", sp_val, {}, {}, decisions_by_uid, {}, self.img_file_map, self.policy_data, self.weak_policy_data, self.class_to_idx, {})
 
         self.assertEqual(res_train["labels"]["garment_type"], "blouse")
         self.assertEqual(res_train["provenance"]["garment_type"], "human_verified")
@@ -149,8 +162,8 @@ class TestFinalMultiTaskDataset(unittest.TestCase):
         p_rec = {"decision": "accepted", "predicted_garment_type": "t-shirt", "top1_confidence": 0.85}
         pseudo_by_uid = {"fashionpedia:train2020:200": p_rec}
 
-        res_train = process_spatial_record("fashionpedia:train2020:200", sp_train, {}, {}, {}, pseudo_by_uid, self.img_file_map, self.policy_data, self.class_to_idx)
-        res_val = process_spatial_record("fashionpedia:val2020:200", sp_val, {}, {}, {}, pseudo_by_uid, self.img_file_map, self.policy_data, self.class_to_idx)
+        res_train = process_spatial_record("fashionpedia:train2020:200", sp_train, {}, {}, {}, pseudo_by_uid, self.img_file_map, self.policy_data, self.weak_policy_data, self.class_to_idx, {})
+        res_val = process_spatial_record("fashionpedia:val2020:200", sp_val, {}, {}, {}, pseudo_by_uid, self.img_file_map, self.policy_data, self.weak_policy_data, self.class_to_idx, {})
 
         self.assertEqual(res_train["labels"]["garment_type"], "t-shirt")
         self.assertIsNone(res_val["labels"]["garment_type"])
@@ -162,8 +175,8 @@ class TestFinalMultiTaskDataset(unittest.TestCase):
         crop_rec = {"crop_path": "ai_training/data/crops/300_crop.jpg"}
         crops_by_uid = {"fashionpedia:train2020:300": crop_rec}
 
-        res_train = process_spatial_record("fashionpedia:train2020:300", sp_train, crops_by_uid, {}, {}, {}, self.img_file_map, self.policy_data, self.class_to_idx)
-        res_val = process_spatial_record("fashionpedia:val2020:300", sp_val, crops_by_uid, {}, {}, {}, self.img_file_map, self.policy_data, self.class_to_idx)
+        res_train = process_spatial_record("fashionpedia:train2020:300", sp_train, crops_by_uid, {}, {}, {}, self.img_file_map, self.policy_data, self.weak_policy_data, self.class_to_idx, {})
+        res_val = process_spatial_record("fashionpedia:val2020:300", sp_val, crops_by_uid, {}, {}, {}, self.img_file_map, self.policy_data, self.weak_policy_data, self.class_to_idx, {})
 
         self.assertEqual(res_train["crop_path"], "ai_training/data/crops/300_crop.jpg")
         self.assertIsNone(res_val["crop_path"])
@@ -187,17 +200,6 @@ class TestFinalMultiTaskDataset(unittest.TestCase):
         self.assertIn(("val2020", "img2.jpg"), img_map)
         self.assertNotIn(("train2020", "img2.jpg"), img_map)  # NO fallback for val image!
 
-    def test_duplicate_image_path_keys_raise_error(self):
-        train_dir1 = os.path.join(self.images_dir, "train", "sub1")
-        train_dir2 = os.path.join(self.images_dir, "train", "sub2")
-        os.makedirs(train_dir1, exist_ok=True)
-        os.makedirs(train_dir2, exist_ok=True)
-
-        with open(os.path.join(train_dir1, "dup.jpg"), "wb") as f:
-            f.write(b"dup1")
-        with open(os.path.join(train_dir2, "dup.jpg"), "wb") as f:
-            f.write(b"dup2")
-
     def test_direct_croptop_in_train_produces_mask_1(self):
         sp_train = {
             "source_partition": "train2020",
@@ -207,7 +209,7 @@ class TestFinalMultiTaskDataset(unittest.TestCase):
             "bbox": [10, 10, 50, 50],
             "fashionpedia_attribute_ids": [8],
         }
-        res_train = process_spatial_record("fashionpedia:train2020:400", sp_train, {}, {}, {}, {}, self.img_file_map, self.policy_data, self.class_to_idx)
+        res_train = process_spatial_record("fashionpedia:train2020:400", sp_train, {}, {}, {}, {}, self.img_file_map, self.policy_data, self.weak_policy_data, self.class_to_idx, {})
         self.assertEqual(res_train["labels"]["garment_type"], "crop-top")
         self.assertEqual(res_train["masks"]["garment_type"], 1)
         self.assertEqual(res_train["provenance"]["garment_type"], "fashionpedia_direct")
@@ -221,7 +223,7 @@ class TestFinalMultiTaskDataset(unittest.TestCase):
             "bbox": [10, 10, 50, 50],
             "fashionpedia_attribute_ids": [8],
         }
-        res_val = process_spatial_record("fashionpedia:val2020:401", sp_val, {}, {}, {}, {}, self.img_file_map, self.policy_data, self.class_to_idx)
+        res_val = process_spatial_record("fashionpedia:val2020:401", sp_val, {}, {}, {}, {}, self.img_file_map, self.policy_data, self.weak_policy_data, self.class_to_idx, {})
         self.assertIsNone(res_val["labels"]["garment_type"])
         self.assertEqual(res_val["masks"]["garment_type"], 0)
         self.assertEqual(res_val["provenance"]["garment_type"], "missing/masked")
@@ -236,7 +238,7 @@ class TestFinalMultiTaskDataset(unittest.TestCase):
             "fashionpedia_attribute_ids": [8],
         }
         decisions_by_uid = {"fashionpedia:val2020:402": {"human_label": "crop-top", "human_verified": True}}
-        res_val = process_spatial_record("fashionpedia:val2020:402", sp_val, {}, {}, decisions_by_uid, {}, self.img_file_map, self.policy_data, self.class_to_idx)
+        res_val = process_spatial_record("fashionpedia:val2020:402", sp_val, {}, {}, decisions_by_uid, {}, self.img_file_map, self.policy_data, self.weak_policy_data, self.class_to_idx, {})
         self.assertEqual(res_val["labels"]["garment_type"], "crop-top")
         self.assertEqual(res_val["masks"]["garment_type"], 1)
         self.assertEqual(res_val["provenance"]["garment_type"], "human_verified")
@@ -253,11 +255,72 @@ class TestFinalMultiTaskDataset(unittest.TestCase):
                 "neckline_type": {"status": "direct", "label": "v-neck"}
             }
         }
-        res_val = process_spatial_record("fashionpedia:val2020:403", sp_val, {}, {}, {}, {}, self.img_file_map, self.policy_data, self.class_to_idx)
+        res_val = process_spatial_record("fashionpedia:val2020:403", sp_val, {}, {}, {}, {}, self.img_file_map, self.policy_data, self.weak_policy_data, self.class_to_idx, {})
         self.assertEqual(res_val["masks"]["garment_type"], 0)
         self.assertEqual(res_val["masks"]["neckline_type"], 1)
         self.assertEqual(res_val["labels"]["neckline_type"], "v-neck")
         self.assertFalse(res_val["exclusion_reasons"])
+
+    def test_m10_weak_collared_neck_rule(self):
+        sp_train = {
+            "source_partition": "train2020",
+            "source_annotation_id": 501,
+            "source_image_id": 91,
+            "source_file_name": self.mock_fn,
+            "bbox": [10, 10, 50, 50],
+            "attached_parts": [{"part_type": "collar", "part_category_id": 28, "part_attribute_ids": [163]}],
+        }
+        res = process_spatial_record("fashionpedia:train2020:501", sp_train, {}, {}, {}, {}, self.img_file_map, self.policy_data, self.weak_policy_data, self.class_to_idx, {})
+        self.assertEqual(res["labels"]["neckline_type"], "collared-neck")
+        self.assertEqual(res["masks"]["neckline_type"], 1)
+        self.assertEqual(res["provenance"]["neckline_type"], "fashionpedia_rule_derived")
+        self.assertTrue(res["weak_label"])
+        self.assertEqual(res["sample_weight"], 0.8)
+
+    def test_m10_weak_cap_length_rule(self):
+        sp_train = {
+            "source_partition": "train2020",
+            "source_annotation_id": 502,
+            "source_image_id": 92,
+            "source_file_name": self.mock_fn,
+            "bbox": [10, 10, 50, 50],
+            "attached_parts": [{"part_type": "sleeve", "part_category_id": 31, "part_attribute_ids": [207]}],
+        }
+        res = process_spatial_record("fashionpedia:train2020:502", sp_train, {}, {}, {}, {}, self.img_file_map, self.policy_data, self.weak_policy_data, self.class_to_idx, {})
+        self.assertEqual(res["labels"]["sleeve_length"], "cap-length")
+        self.assertEqual(res["masks"]["sleeve_length"], 1)
+        self.assertEqual(res["provenance"]["sleeve_length"], "fashionpedia_rule_derived")
+        self.assertTrue(res["weak_label"])
+
+    def test_m10_weak_sleeve_style_none_rule(self):
+        sp_train = {
+            "source_partition": "train2020",
+            "source_annotation_id": 503,
+            "source_image_id": 93,
+            "source_file_name": self.mock_fn,
+            "bbox": [10, 10, 50, 50],
+            "labels": {"sleeve_length": {"status": "direct", "label": "sleeveless"}}
+        }
+        res = process_spatial_record("fashionpedia:train2020:503", sp_train, {}, {}, {}, {}, self.img_file_map, self.policy_data, self.weak_policy_data, self.class_to_idx, {})
+        self.assertEqual(res["labels"]["sleeve_length"], "sleeveless")
+        self.assertEqual(res["labels"]["sleeve_style"], "none")
+        self.assertEqual(res["masks"]["sleeve_style"], 1)
+        self.assertEqual(res["provenance"]["sleeve_style"], "fashionpedia_rule_derived")
+
+    def test_m10_weak_rules_not_applied_to_val_split(self):
+        sp_val = {
+            "source_partition": "val2020",
+            "source_annotation_id": 504,
+            "source_image_id": 94,
+            "source_file_name": self.mock_fn,
+            "bbox": [10, 10, 50, 50],
+            "attached_parts": [{"part_type": "collar", "part_category_id": 28, "part_attribute_ids": [163]}],
+        }
+        res = process_spatial_record("fashionpedia:val2020:504", sp_val, {}, {}, {}, {}, self.img_file_map, self.policy_data, self.weak_policy_data, self.class_to_idx, {})
+        self.assertIsNone(res["labels"]["neckline_type"])
+        self.assertEqual(res["masks"]["neckline_type"], 0)
+        self.assertEqual(res["provenance"]["neckline_type"], "missing/masked")
+        self.assertFalse(res["weak_label"])
 
 
 if __name__ == "__main__":

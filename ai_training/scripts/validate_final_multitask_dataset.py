@@ -201,7 +201,7 @@ def validate_dataset(dataset_dir, human_review_dir, processed_dir, policy_path, 
         if part == "val2020" and not ("val" in img_path.lower() or "test" in img_path.lower()):
             raise ValueError(f"Assertion Error: val2020 record {r['record_uid']} resolves to non-val/test image path: {img_path}")
 
-    # Direct JSONL Manifest Coverage Recount & Arithmetic Identies Assertion
+    # Direct JSONL Manifest Coverage Recount & Arithmetic Identities Assertion
     manifest_recount = {}
     for h in heads:
         for c in classes_data["outputs"][h]["classes"]:
@@ -212,6 +212,7 @@ def validate_dataset(dataset_dir, human_review_dir, processed_dir, policy_path, 
                 "usable_count": 0,
                 "human_verified_count": 0,
                 "direct_evidence_count": 0,
+                "rule_derived_count": 0,
                 "pseudo_label_count": 0,
                 "by_split": {"train": 0, "val": 0, "test": 0}
             }
@@ -230,10 +231,16 @@ def validate_dataset(dataset_dir, human_review_dir, processed_dir, policy_path, 
                         manifest_recount[key]["human_verified_count"] += 1
                     elif prov == "fashionpedia_direct":
                         manifest_recount[key]["direct_evidence_count"] += 1
+                    elif prov == "fashionpedia_rule_derived":
+                        if split != "train":
+                            raise ValueError(f"Assertion Error: Weak/rule-derived label found in non-train split '{split}' for record {r['record_uid']}")
+                        if not r.get("weak_label"):
+                            raise ValueError(f"Assertion Error: Record with rule-derived label must have weak_label=True for record {r['record_uid']}")
+                        manifest_recount[key]["rule_derived_count"] += 1
                     elif prov == "accepted_pseudo_label":
                         manifest_recount[key]["pseudo_label_count"] += 1
 
-    # ASSERTION 10 & 11: 29 Taxonomy Classes Coverage & Zero-Sample Reporting
+    # ASSERTION 10 & 11: 28 Taxonomy Classes Coverage & Zero-Sample Reporting
     summary_path = os.path.join(dataset_dir, "coverage_summary.json")
     if not os.path.exists(summary_path):
         raise ValueError(f"Missing summary file at {summary_path}")
@@ -250,7 +257,7 @@ def validate_dataset(dataset_dir, human_review_dir, processed_dir, policy_path, 
         summary_info = cov.get(key)
         if not summary_info:
             raise ValueError(f"Assertion Error: Class {key} missing from coverage_summary.json")
-        for fld in ["usable_count", "human_verified_count", "direct_evidence_count", "pseudo_label_count"]:
+        for fld in ["usable_count", "human_verified_count", "direct_evidence_count", "rule_derived_count", "pseudo_label_count"]:
             if recount_info[fld] != summary_info[fld]:
                 raise ValueError(f"Assertion Error: Mismatch for {key} field '{fld}': recount={recount_info[fld]} vs summary={summary_info[fld]}")
         if recount_info["by_split"] != summary_info["by_split"]:
@@ -259,7 +266,7 @@ def validate_dataset(dataset_dir, human_review_dir, processed_dir, policy_path, 
         # Arithmetic identity checks
         if summary_info["usable_count"] != sum(summary_info["by_split"].values()):
             raise ValueError(f"Assertion Error: {key} usable count does not equal sum of splits!")
-        if summary_info["usable_count"] != summary_info["human_verified_count"] + summary_info["direct_evidence_count"] + summary_info["pseudo_label_count"]:
+        if summary_info["usable_count"] != summary_info["human_verified_count"] + summary_info["direct_evidence_count"] + summary_info["rule_derived_count"] + summary_info["pseudo_label_count"]:
             raise ValueError(f"Assertion Error: {key} usable count does not equal sum of provenance counts!")
 
     # Garment-specific exact counts & provenance assertions
@@ -304,10 +311,10 @@ def validate_dataset(dataset_dir, human_review_dir, processed_dir, policy_path, 
         raise ValueError(f"Assertion Error: Total gold evaluation garment labels must equal 250, got {val_garment_active + test_garment_active}")
 
     zero_classes = summary_data["zero_sample_classes"]
-    if len(zero_classes) != 5:
-        raise ValueError(f"Assertion Error 11: Expected 5 zero-sample classes, got {len(zero_classes)}: {zero_classes}")
+    if len(zero_classes) != 0:
+        raise ValueError(f"Assertion Error 11: Expected 0 zero-sample classes after M10 weak completion, got {len(zero_classes)}: {zero_classes}")
 
-    print("Assertion 10 & 11 (28 Taxonomy Classes, Direct JSONL Recounting & Zero-Sample Reporting): PASSED")
+    print("Assertion 10 & 11 (28 Taxonomy Classes, Direct JSONL Recounting & M10 Weak Completion): PASSED")
 
 
     # ASSERTION 12: Checksums Validation
