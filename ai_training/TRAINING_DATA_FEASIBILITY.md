@@ -4,6 +4,8 @@
 
 Milestone **AI-5** evaluates the training feasibility of the Digital Tailor System single multi-task model (`garment_type`, `neckline_type`, `sleeve_length`, `sleeve_style`) across 29 target classes using the Fashionpedia spatial dataset manifest.
 
+> **Taxonomy Update Note**: This historical report evaluated a 29-class taxonomy. The active dataset taxonomy has since been updated to 28 classes by removing the unsupported `sleeve_style:cold-shoulder-sleeve` class, while preserving `neckline_type:off-shoulder`.
+
 No image archives were downloaded, no cropping was performed, no model training was executed, and no code outside `ai_training/` was modified.
 
 ---

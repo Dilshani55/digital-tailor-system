@@ -121,13 +121,12 @@ class TestTrainingFeasibility(unittest.TestCase):
         self.assertIn("sleeve_length", rec70["conflicting_heads"])
 
     def test_zero_sample_classes_retained_in_report(self):
-        # All 29 target classes must be present in class_counts_by_split.json
+        # All 28 target classes must be present in class_counts_by_split.json
         total_cls_count = sum(len(self.class_counts[h]) for h in self.class_counts)
-        self.assertEqual(total_cls_count, 29)
+        self.assertEqual(total_cls_count, 28)
 
-        # Unsupported label cold-shoulder-sleeve must be present with count 0
-        self.assertIn("cold-shoulder-sleeve", self.class_counts["sleeve_style"])
-        self.assertEqual(self.class_counts["sleeve_style"]["cold-shoulder-sleeve"]["total"], 0)
+        # Removed label cold-shoulder-sleeve must be absent from active taxonomy
+        self.assertNotIn("cold-shoulder-sleeve", self.class_counts["sleeve_style"])
 
     def test_split_preservation(self):
         # Splits in queue and analysis must match spatial manifest
@@ -227,11 +226,11 @@ class TestTrainingFeasibility(unittest.TestCase):
         list_len = len(self.zero_classes_data["zero_sample_classes"])
         self.assertEqual(tot_cnt, list_len)
 
-    def test_four_exclusive_planning_bands_sum_to_29(self):
-        # Four exclusive planning bands in summary must sum to 29
+    def test_four_exclusive_planning_bands_sum_to_28(self):
+        # Four exclusive planning bands in summary must sum to 28
         bands = self.summary["exclusive_planning_bands"]
         sum_bands = sum(bands.values())
-        self.assertEqual(sum_bands, 29)
+        self.assertEqual(sum_bands, 28)
 
     def test_validator_rejects_impossible_per_head_totals(self):
         # Corrupt class counts so head total exceeds usable records

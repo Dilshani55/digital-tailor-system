@@ -1,7 +1,8 @@
 # Fashionpedia Ontology Inspection & 29-Label Mapping Report
 
-> **Milestone AI-3 Metadata Mapping Report**  
+> **Milestone AI-3 Metadata Mapping Report**
 > *Note: This document presents the official metadata inspection of the Fashionpedia ontology and records evidence-based label mappings for all 29 target classes in the Digital Tailor System YOLOv8 multi-task model.*
+> **Taxonomy Update Note**: The original inspection evaluated 29 classes with 1 unsupported class (`cold-shoulder-sleeve`). The active taxonomy has been finalized to 28 classes by removing `cold-shoulder-sleeve` and reindexing `sleeve_style` from 0 to 8 (`kimono-sleeve` is index 8).
 
 ---
 

@@ -580,7 +580,7 @@ def main():
     zero_sample_classes = [k for k, v in coverage_by_label.items() if v["usable_count"] == 0]
 
     rare_classes = [k for k, v in coverage_by_label.items() if 0 < v["usable_count"] < 20]
-    unsupported_classes = ["sleeve_style:cold-shoulder-sleeve"]
+    unsupported_classes = []
 
     # Supervised heads count per record (1, 2, 3, 4)
     supervised_heads_dist = Counter(sum(r["masks"].values()) for r in usable_records)

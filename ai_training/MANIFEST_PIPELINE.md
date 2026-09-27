@@ -3,6 +3,8 @@
 ## Overview
 
 Milestone **AI-4A** implements a deterministic, auditable, metadata-only preparation pipeline for converting Fashionpedia instance annotations into training candidate manifests for the Digital Tailor System four-head classification architecture:
+
+> **Taxonomy Update Note**: This historical document evaluated a 29-class taxonomy. The active dataset taxonomy has since been updated to 28 classes by removing the unsupported `sleeve_style:cold-shoulder-sleeve` class, while preserving `neckline_type:off-shoulder`.
 1. `garment_type`
 2. `neckline_type`
 3. `sleeve_length`

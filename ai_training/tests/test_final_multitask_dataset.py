@@ -47,9 +47,9 @@ class TestFinalMultiTaskDataset(unittest.TestCase):
                 "garment_type": 3,
                 "neckline_type": 10,
                 "sleeve_length": 6,
-                "sleeve_style": 10
+                "sleeve_style": 9
             },
-            "total_label_count": 29,
+            "total_label_count": 28,
             "outputs": {
                 "garment_type": {
                     "class_count": 3,
@@ -70,10 +70,10 @@ class TestFinalMultiTaskDataset(unittest.TestCase):
                     "idx_to_class": {"0": "sleeveless", "1": "cap-length", "2": "short-sleeve", "3": "elbow-length", "4": "three-quarter-sleeve", "5": "long-sleeve"}
                 },
                 "sleeve_style": {
-                    "class_count": 10,
-                    "classes": ["none", "regular-sleeve", "puff-sleeve", "bell-sleeve", "bishop-sleeve", "flutter-sleeve", "raglan-sleeve", "dolman-sleeve", "cold-shoulder-sleeve", "kimono-sleeve"],
-                    "class_to_idx": {"none": 0, "regular-sleeve": 1, "puff-sleeve": 2, "bell-sleeve": 3, "bishop-sleeve": 4, "flutter-sleeve": 5, "raglan-sleeve": 6, "dolman-sleeve": 7, "cold-shoulder-sleeve": 8, "kimono-sleeve": 9},
-                    "idx_to_class": {"0": "none", "1": "regular-sleeve", "2": "puff-sleeve", "3": "bell-sleeve", "4": "bishop-sleeve", "5": "flutter-sleeve", "6": "raglan-sleeve", "7": "dolman-sleeve", "8": "cold-shoulder-sleeve", "9": "kimono-sleeve"}
+                    "class_count": 9,
+                    "classes": ["none", "regular-sleeve", "puff-sleeve", "bell-sleeve", "bishop-sleeve", "flutter-sleeve", "raglan-sleeve", "dolman-sleeve", "kimono-sleeve"],
+                    "class_to_idx": {"none": 0, "regular-sleeve": 1, "puff-sleeve": 2, "bell-sleeve": 3, "bishop-sleeve": 4, "flutter-sleeve": 5, "raglan-sleeve": 6, "dolman-sleeve": 7, "kimono-sleeve": 8},
+                    "idx_to_class": {"0": "none", "1": "regular-sleeve", "2": "puff-sleeve", "3": "bell-sleeve", "4": "bishop-sleeve", "5": "flutter-sleeve", "6": "raglan-sleeve", "7": "dolman-sleeve", "8": "kimono-sleeve"}
                 }
             }
         }

@@ -7,9 +7,9 @@
     "garment_type": 3,
     "neckline_type": 10,
     "sleeve_length": 6,
-    "sleeve_style": 10
+    "sleeve_style": 9
   },
-  "total_label_count": 29,
+  "total_label_count": 28,
   "outputs": {
     "garment_type": {
       "class_count": 3,
@@ -96,7 +96,7 @@
       }
     },
     "sleeve_style": {
-      "class_count": 10,
+      "class_count": 9,
       "classes": [
         "none",
         "regular-sleeve",
@@ -106,7 +106,6 @@
         "flutter-sleeve",
         "raglan-sleeve",
         "dolman-sleeve",
-        "cold-shoulder-sleeve",
         "kimono-sleeve"
       ],
       "class_to_idx": {
@@ -118,8 +117,7 @@
         "flutter-sleeve": 5,
         "raglan-sleeve": 6,
         "dolman-sleeve": 7,
-        "cold-shoulder-sleeve": 8,
-        "kimono-sleeve": 9
+        "kimono-sleeve": 8
       },
       "idx_to_class": {
         "0": "none",
@@ -130,8 +128,7 @@
         "5": "flutter-sleeve",
         "6": "raglan-sleeve",
         "7": "dolman-sleeve",
-        "8": "cold-shoulder-sleeve",
-        "9": "kimono-sleeve"
+        "8": "kimono-sleeve"
       }
     }
   }

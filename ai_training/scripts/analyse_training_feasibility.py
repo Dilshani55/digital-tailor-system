@@ -54,13 +54,13 @@ def run_feasibility_analysis(spatial_manifest_path, classes_path, policy_path, o
         print(f"ERROR: Failed to parse input JSON files: {e}", file=sys.stderr)
         sys.exit(1)
 
-    # 1. TAXONOMY VERIFICATION (Strictly 29 classes from classes.json)
+    # 1. TAXONOMY VERIFICATION (Strictly 28 classes from classes.json)
     target_heads = list(classes_data["outputs"].keys())
     all_classes_by_head = {h: classes_data["outputs"][h]["classes"] for h in target_heads}
     total_target_classes = sum(len(classes_data["outputs"][h]["classes"]) for h in target_heads)
 
-    if total_target_classes != 29:
-        print(f"ERROR: Expected 29 total target classes in classes.json, found {total_target_classes}", file=sys.stderr)
+    if total_target_classes != 28:
+        print(f"ERROR: Expected 28 total target classes in classes.json, found {total_target_classes}", file=sys.stderr)
         sys.exit(1)
 
     forbidden_source_terms = {"shirt", "top", "sweatshirt"}
@@ -75,7 +75,7 @@ def run_feasibility_analysis(spatial_manifest_path, classes_path, policy_path, o
     min_recommended = thresholds.get("minimum_recommended_samples", 100)
     imbalance_warning_ratio = thresholds.get("imbalance_warning_ratio", 5.0)
 
-    # Initialize class count structures (guaranteeing all 29 classes exist across train/val/test/total)
+    # Initialize class count structures (guaranteeing all 28 classes exist across train/val/test/total)
     class_counts_by_split = {h: {} for h in target_heads}
     record_ids_by_head_class = {h: defaultdict(set) for h in target_heads}
 
@@ -373,12 +373,12 @@ def run_feasibility_analysis(spatial_manifest_path, classes_path, policy_path, o
             else:
                 exclusive_planning_bands["sufficient_100_plus"].append(info)
 
-    # Validate that exclusive planning bands sum to exactly 29
+    # Validate that exclusive planning bands sum to exactly 28
     exclusive_band_counts = {k: len(v) for k, v in exclusive_planning_bands.items()}
     sum_exclusive_bands = sum(exclusive_band_counts.values())
 
-    if sum_exclusive_bands != 29:
-        print(f"ASSERTION FAILURE: Exclusive planning bands sum ({sum_exclusive_bands}) != 29", file=sys.stderr)
+    if sum_exclusive_bands != 28:
+        print(f"ASSERTION FAILURE: Exclusive planning bands sum ({sum_exclusive_bands}) != 28", file=sys.stderr)
         sys.exit(1)
 
     # 4. FEASIBILITY VERDICT
@@ -494,7 +494,7 @@ def run_feasibility_analysis(spatial_manifest_path, classes_path, policy_path, o
             "workload_statement": workload_statement,
         },
         "class_classification": {
-            "total_classes": 29,
+            "total_classes": 28,
             "zero_sample_classes": len(zero_sample_classes),
             "below_baseline_threshold": len(below_baseline_threshold_classes),
             "below_recommended_threshold": len(below_recommended_threshold_classes),
@@ -523,7 +523,7 @@ def run_feasibility_analysis(spatial_manifest_path, classes_path, policy_path, o
     print(f"  - 2 Usable Heads (Partial):         {usable_head_distribution['2_usable_heads']}")
     print(f"  - 1 Usable Head  (Partial):         {usable_head_distribution['1_usable_head']}")
     print(f"  - 0 Usable Heads (Unusable):        {usable_head_distribution['0_usable_heads']}")
-    print(f"Exclusive Planning Bands (Total = 29):")
+    print(f"Exclusive Planning Bands (Total = 28):")
     print(f"  - Zero Samples (0):                {exclusive_band_counts['zero']}")
     print(f"  - Below Baseline (1-19):           {exclusive_band_counts['below_baseline_1_19']}")
     print(f"  - Below Recommended (20-99):       {exclusive_band_counts['below_recommended_20_99']}")

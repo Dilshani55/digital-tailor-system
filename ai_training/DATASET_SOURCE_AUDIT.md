@@ -1,7 +1,8 @@
 # Digital Tailor System — Official Dataset-Source Audit
 
-> **Milestone AI-2 Audit Document**  
+> **Milestone AI-2 Audit Document**
 > *Note: This document provides an official audit of external fashion dataset candidates for the Digital Tailor System YOLOv8 multi-task model. No dataset has been downloaded, ingested, or approved yet.*
+> **Taxonomy Update Note**: This historical audit evaluated a 29-class taxonomy. The active dataset taxonomy has since been updated to 28 classes by removing the unsupported `sleeve_style:cold-shoulder-sleeve` class, while preserving `neckline_type:off-shoulder`.
 
 ---
 

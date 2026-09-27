@@ -69,7 +69,7 @@ Out of the 34,679 evaluated spatial parent records:
 
 ---
 
-## Detailed 29-Class Taxonomy Coverage Audit
+## Detailed 28-Class Taxonomy Coverage Audit
 
 | Head | Class | Total Usable | Train | Val | Test | Provenance Breakdown |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -100,7 +100,6 @@ Out of the 34,679 evaluated spatial parent records:
 | **sleeve_style** | `flutter-sleeve` | **0** | 0 | 0 | 0 | Masked (Candidate Mapping) |
 | **sleeve_style** | `raglan-sleeve` | 450 | 315 | 63 | 72 | 450 Direct |
 | **sleeve_style** | `dolman-sleeve` | 229 | 167 | 32 | 30 | 229 Direct |
-| **sleeve_style** | `cold-shoulder-sleeve` | **0** | 0 | 0 | 0 | Masked (Unsupported) |
 | **sleeve_style** | `kimono-sleeve` | 99 | 67 | 12 | 20 | 99 Direct |
 
 ---
@@ -120,7 +119,7 @@ Out of the 34,679 evaluated spatial parent records:
 **`READY_FOR_PARTIAL_COVERAGE_BASELINE_ONLY`**
 
 *Rationale*:
-All four heads are functional and partial-label masked-loss training is supported. However, six taxonomy classes (`collared-neck`, `cap-length`, `none`, `regular-sleeve`, `flutter-sleeve`, `cold-shoulder-sleeve`) currently have zero direct positive training samples due to candidate-mapping or unsupported status in the Fashionpedia ontology. Therefore, the dataset is ready for baseline multi-task model training on supported classes, but is NOT ready for full 29-class training.
+All four heads are functional and partial-label masked-loss training is supported. However, five taxonomy classes (`collared-neck`, `cap-length`, `none`, `regular-sleeve`, `flutter-sleeve`) currently have zero direct positive training samples due to candidate-mapping status in the Fashionpedia ontology. Therefore, the dataset is ready for baseline multi-task model training on supported classes, but is NOT ready for full 28-class training.
 
 ---
 

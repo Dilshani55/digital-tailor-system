@@ -242,8 +242,8 @@ def validate_dataset(dataset_dir, human_review_dir, processed_dir, policy_path, 
         summary_data = json.load(f)
 
     cov = summary_data["coverage_by_label"]
-    if len(cov) != 29:
-        raise ValueError(f"Assertion Error 10: Coverage summary must contain all 29 target classes, got {len(cov)}.")
+    if len(cov) != 28:
+        raise ValueError(f"Assertion Error 10: Coverage summary must contain all 28 target classes, got {len(cov)}.")
 
     # Match coverage_summary.json against direct JSONL recount
     for key, recount_info in manifest_recount.items():
@@ -304,10 +304,10 @@ def validate_dataset(dataset_dir, human_review_dir, processed_dir, policy_path, 
         raise ValueError(f"Assertion Error: Total gold evaluation garment labels must equal 250, got {val_garment_active + test_garment_active}")
 
     zero_classes = summary_data["zero_sample_classes"]
-    if len(zero_classes) != 6:
-        raise ValueError(f"Assertion Error 11: Expected 6 zero-sample classes, got {len(zero_classes)}: {zero_classes}")
+    if len(zero_classes) != 5:
+        raise ValueError(f"Assertion Error 11: Expected 5 zero-sample classes, got {len(zero_classes)}: {zero_classes}")
 
-    print("Assertion 10 & 11 (29 Taxonomy Classes, Direct JSONL Recounting & Zero-Sample Reporting): PASSED")
+    print("Assertion 10 & 11 (28 Taxonomy Classes, Direct JSONL Recounting & Zero-Sample Reporting): PASSED")
 
 
     # ASSERTION 12: Checksums Validation

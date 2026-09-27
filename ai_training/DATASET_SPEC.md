@@ -1,7 +1,8 @@
 # Digital Tailor System — Dataset Specification & Protocol
 
-> **Milestone AI-1 Definition Document**  
+> **Milestone AI-1 Definition Document**
 > *Note: This document defines the dataset specifications, class taxonomies, and quality protocols for Milestone AI-1. The dataset itself has not yet been collected, downloaded, or reviewed in this repository.*
+> **Taxonomy Update Note**: The initial specification defined 29 classes. The active taxonomy is now 28 classes (`garment_type`: 3, `neckline_type`: 10, `sleeve_length`: 6, `sleeve_style`: 9) following the removal of `cold-shoulder-sleeve`. `off-shoulder` neckline remains active.
 
 ---
 

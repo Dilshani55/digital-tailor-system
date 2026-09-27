@@ -4,10 +4,10 @@
   "source_file": "instances_attributes_val2020.json",
   "source_sha256": "f831f415edad12d52acde8b138fe7ebd1592b57bf0dcd6a3b63ba8cabd208223",
   "summary": {
-    "total_target_labels": 29,
+    "total_target_labels": 28,
     "direct_count": 21,
     "candidate_mapping_count": 7,
-    "unsupported_count": 1
+    "unsupported_count": 0
   },
   "outputs": {
     "garment_type": [
@@ -414,14 +414,6 @@
         ],
         "mapping_rule": "Direct match with Attribute ID 213 'dolman (sleeve), batwing (sleeve)'.",
         "evidence_note": "Fashionpedia Attribute ID 213 explicitly identifies dolman sleeve."
-      },
-      {
-        "target_label": "cold-shoulder-sleeve",
-        "status": "unsupported",
-        "mapping_logic": null,
-        "source_evidence": [],
-        "mapping_rule": "No source label exists in Fashionpedia for cold-shoulder sleeve cutouts.",
-        "evidence_note": "Unsupported in Fashionpedia taxonomy; requires external data or manual annotation."
       },
       {
         "target_label": "kimono-sleeve",

@@ -54,8 +54,8 @@ def validate_feasibility_analysis(analysis_dir, spatial_manifest_path, classes_p
     all_classes_by_head = {h: classes_data["outputs"][h]["classes"] for h in target_heads}
     total_taxonomy_count = sum(len(classes_data["outputs"][h]["classes"]) for h in target_heads)
 
-    if total_taxonomy_count != 29:
-        print(f"VALIDATION FAILED: Total target classes ({total_taxonomy_count}) != 29", file=sys.stderr)
+    if total_taxonomy_count != 28:
+        print(f"VALIDATION FAILED: Total target classes ({total_taxonomy_count}) != 28", file=sys.stderr)
         sys.exit(1)
 
     if len(all_classes_by_head.get("garment_type", [])) != 3:
@@ -109,12 +109,12 @@ def validate_feasibility_analysis(analysis_dir, spatial_manifest_path, classes_p
                 sys.exit(1)
             head_totals[h] += counts["total"]
 
-    if total_found_classes != 29:
-        print(f"VALIDATION FAILED: Total classes in report ({total_found_classes}) != 29", file=sys.stderr)
+    if total_found_classes != 28:
+        print(f"VALIDATION FAILED: Total classes in report ({total_found_classes}) != 28", file=sys.stderr)
         sys.exit(1)
 
     grand_total_direct_head_labels = sum(head_totals.values())
-    print("1. All 29 target classes represented & split counts sum to total: PASSED")
+    print("1. All 28 target classes represented & split counts sum to total: PASSED")
 
     # 2. Re-calculate direct class counts from spatial manifest & check usable caps
     recalc_counts = {h: {c: {"train": 0, "val": 0, "test": 0, "total": 0} for c in all_classes_by_head[h]} for h in target_heads}
@@ -184,8 +184,8 @@ def validate_feasibility_analysis(analysis_dir, spatial_manifest_path, classes_p
 
     exclusive_bands = summary_data.get("exclusive_planning_bands", {})
     sum_bands = sum(exclusive_bands.values())
-    if sum_bands != 29:
-        print(f"VALIDATION FAILED: Exclusive planning bands sum ({sum_bands}) != 29", file=sys.stderr)
+    if sum_bands != 28:
+        print(f"VALIDATION FAILED: Exclusive planning bands sum ({sum_bands}) != 28", file=sys.stderr)
         sys.exit(1)
 
     print(f"3. Independent arithmetic checks (Grand total direct labels: {grand_total_direct_head_labels}, Record partition: {total_eval_recs}, Bands: {sum_bands}): PASSED")
