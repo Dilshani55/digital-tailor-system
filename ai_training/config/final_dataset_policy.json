@@ -1,0 +1,53 @@
+{
+  "schema_version": "1.1.0",
+  "policy_name": "Digital Tailor Multi-Task Final Dataset Policy",
+  "readiness_verdict": "READY_FOR_PARTIAL_COVERAGE_BASELINE_ONLY",
+  "allowed_garment_labels": [
+    "blouse",
+    "t-shirt",
+    "crop-top"
+  ],
+  "heads": [
+    "garment_type",
+    "neckline_type",
+    "sleeve_length",
+    "sleeve_style"
+  ],
+  "provenance_priority": [
+    "human_verified",
+    "fashionpedia_direct",
+    "accepted_pseudo_label",
+    "missing/masked"
+  ],
+  "allowed_evidence_per_split": {
+    "train": [
+      "human_verified",
+      "fashionpedia_direct",
+      "accepted_pseudo_label"
+    ],
+    "val": [
+      "human_verified",
+      "fashionpedia_direct"
+    ],
+    "test": [
+      "human_verified",
+      "fashionpedia_direct"
+    ]
+  },
+  "sample_weights": {
+    "human_verified": 1.0,
+    "fashionpedia_direct": 1.0,
+    "accepted_pseudo_label": 0.5,
+    "missing/masked": 0.0
+  },
+  "exclusion_rules": {
+    "human_reject": true,
+    "human_uncertain": true,
+    "unsupported_class": true,
+    "no_permitted_labels": true
+  },
+  "minimum_gold_evaluation_count_warning_threshold": 50,
+  "deterministic": true,
+  "seed": 42,
+  "checksums_required": true
+}
