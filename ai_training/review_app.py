@@ -26,7 +26,7 @@ from flask import Flask, jsonify, request, send_file, render_template_string
 app = Flask(__name__)
 
 # Configurable paths
-DATA_DIR = os.path.join(os.path.dirname(__file__), "data", "labelling")
+DATA_DIR = os.path.join(os.path.dirname(__file__), "data", "labelling_official")
 HUMAN_REVIEW_FILE = os.path.join(DATA_DIR, "human_review.jsonl")
 
 HTML_TEMPLATE = """

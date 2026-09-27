@@ -1,4 +1,4 @@
-# AI-Assisted Garment Labelling & Targeted Acquisition (Milestone AI-6B)
+# AI-Assisted Garment Labelling & Official Crop Generation (Milestone M8)
 
 ## 1. Overview & Motivation
 
@@ -15,114 +15,150 @@ All other categories (jackets, coats, dresses, pants, jumpsuits, men's apparel, 
 
 ---
 
-## 2. Targeted Image Candidate Acquisition
+## 2. Superseding original_url with Official CVDF Image Acquisition
 
-To avoid downloading the entire ~30GB Fashionpedia image archive, Milestone AI-6B performs **targeted acquisition** of a small candidate subset:
-- Maximum download limit: **450 images** (~150 candidates per target class).
-- Source: Fashionpedia `instances_attributes_train2020.json` original Flickr URLs.
+In earlier prototypes (AI-6B), candidate images were fetched from Flickr using Fashionpedia annotation `original_url` values. However, empirical audit revealed that Flickr images suffered from resolution modifications (e.g. 1024x768 vs official 640x480), causing coordinate errors and geometry mismatches on 119 out of 450 crops (26.4% failure rate).
 
-### Candidate Selection Rules:
-1. **`crop-top` pool** (Precedence): Category 0 or 1 with exact Attribute ID 8 `crop (top)`.
-2. **`t-shirt` pool**: Category 1 with exact Attribute ID 0 `classic (t-shirt)` or Attribute ID 4 `ringer (t-shirt)` (without Attr 8).
-3. **`blouse` pool**: Category 0 (`shirt, blouse`) without Attr 8.
-4. **Out-of-scope exclusion**: Parent categories other than 0 and 1 are strictly excluded.
-5. **Split Preservation**: Records maintain their exact original dataset split (`train`, `val`, `test`). No records are moved across splits.
+**Milestone M8 completely supersedes `original_url` acquisition:**
+- **Zero original_url usage**: All crops are extracted directly from official CVDF Fashionpedia archives (`train2020.zip` and `val_test2020.zip`).
+- **Official images root**: `ai_training/data/raw/fashionpedia/images/` (`train/` and `test/` subdirectories containing 48,823 official images).
+- **100% Geometry Guarantee**:
+  - Image files are decoded with PIL **without EXIF transpose**.
+  - Decoded dimensions (`decoded_w`, `decoded_h`) MUST equal annotation metadata (`annotation_w`, `annotation_h`) 100%.
+  - Fashionpedia bounding boxes `[x, y, w, h]` are applied directly without rescaling.
+  - A configurable **5% context margin** is applied around valid bounding boxes.
+  - Boundary-touching boxes are clipped numerically at outer image bounds (`[0, 0, img_w, img_h]`).
+- **Empirical Verification**:
+  - **Diagnostic run (450 candidates)**: 450 / 450 successful crops (100% success rate, 0 missing source, 0 dimension mismatches).
+  - **Expanded run (3,000 candidates)**: 3,000 / 3,000 successful crops (100% success rate, 0 missing source, 0 dimension mismatches).
 
 ---
 
-## 3. Zero-Shot AI Pseudo-Labelling with CLIP
+## 3. Direct Evidence vs. Candidate Evidence Rules
 
-A pretrained vision-language model (`openai/clip-vit-base-patch32`) is used as an external pseudo-labeller to evaluate cropped garment candidate regions.
+Candidate queue selection enforces strict ontology and attribute rules:
 
-### Multi-Prompt Formulations:
-- **Blouse**:
+1. **`crop-top` Direct Evidence (Precedence)**:
+   - Fashionpedia Category 0 or 1 with exact Attribute 8 `crop (top)`.
+   - Direct evidence has highest priority and overrides base garment categories.
+   - If CLIP pseudo-labelling disagrees with direct `crop-top` evidence, the record is routed to `manual_review` for human inspection rather than being silently rejected.
+
+2. **`t-shirt` Candidate Evidence**:
+   - Fashionpedia Category 1 (`top, t-shirt, sweatshirt`) with Attribute 0 (`classic`) or 4 (`ringer`), without Attr 8.
+   - Treated as candidate evidence, not automatically verified ground truth.
+
+3. **`blouse` Candidate Evidence**:
+   - Fashionpedia Category 0 (`shirt, blouse`) without Attr 8.
+   - Treated as candidate evidence, not automatically verified ground truth.
+
+4. **Out-of-Scope Exclusion**:
+   - Jackets (Cat 4), dresses (Cat 2), pants (Cat 3), coats, jumpsuits, and men's garments are strictly excluded.
+   - Source terms (`shirt`, `top`, `sweatshirt`) are source ontology terms and are **never** used as project target labels.
+
+---
+
+## 4. Zero-Shot AI Pseudo-Labelling with CLIP
+
+Zero-shot inference using `openai/clip-vit-base-patch32` performs screening of official cropped garment candidate regions.
+
+### Natural Language Prompt Formulations:
+- **`blouse`**:
   - *"a women’s blouse"*
+  - *"a women’s casual blouse"*
   - *"a feminine blouse for women"*
   - *"a women’s tailored blouse"*
-- **T-shirt**:
+- **`t-shirt`**:
   - *"a women’s t-shirt"*
-  - *"a short-sleeved women’s tee shirt"*
+  - *"a short-sleeve women’s t-shirt"*
   - *"a casual women’s t-shirt"*
-- **Crop-top**:
+  - *"a short-sleeved women’s tee shirt"*
+- **`crop-top`**:
   - *"a women’s crop top"*
-  - *"a cropped top for women"*
+  - *"a cropped women’s top"*
   - *"a women’s cropped blouse or t-shirt"*
-- **Reject / Out-of-Scope**:
+- **`reject` (Out-of-Scope)**:
   - *"a men’s shirt"*
+  - *"a men’s t-shirt"*
   - *"a sweatshirt or hoodie"*
-  - *"a dress, jacket or coat"*
-  - *"not a women’s blouse, t-shirt or crop top"*
-  - *"an unclear or unsuitable garment image"*
+  - *"a jacket"*
+  - *"a dress"*
+  - *"an unclear or non-garment image"*
 
-### Decision & Acceptance Rules:
-To accept an AI-assisted pseudo-label, all four conditions must be satisfied:
-1. **Top-1 Class**: Must be a target class (`blouse`, `t-shirt`, `crop-top`).
-2. **Confidence Threshold**: Top-1 class aggregated probability $\ge 0.60$.
-3. **Top-1 / Top-2 Margin**: Margin $\ge 0.10$.
-4. **Multi-Prompt Agreement**: At least 2 prompt formulations within the top-1 class must rank higher than competing non-top-1 prompts.
+### Decision Rules & Acceptance Criteria:
+A pseudo-label is **accepted** only when all four conditions pass:
+1. **Top-1 Class**: Is one of `blouse`, `t-shirt`, or `crop-top`.
+2. **Confidence Threshold**: Aggregated class probability $\ge 0.60$.
+3. **Margin Threshold**: Top-1 minus Top-2 margin $\ge 0.10$.
+4. **Multi-Prompt Agreement**: At least 2 prompt formulations within the Top-1 class rank higher than non-Top-1 prompts.
 
-Records failing any of these criteria are routed to `review_required.jsonl`. Records classified as `reject` are routed to `rejected.jsonl`.
-
----
-
-## 4. Why AI Pseudo-Labels Are Not Ground Truth
-
-AI-assisted pseudo-labels serve as a screening mechanism to filter raw candidate crops.
-- Every generated pseudo-label explicitly retains:
-  - `label_origin`: `"ai_assisted_pseudo_label"`
-  - `human_verified`: `false`
-- Zero-shot vision-language models can exhibit domain shift, background sensitivity, or misclassification on atypical fashion items.
-- Unverified AI pseudo-labels are **never** treated as ground truth for model training without human spot-checking.
+Records with low confidence, low margin, prompt disagreement, or direct evidence conflicts are routed to `manual_review.jsonl`. Confident out-of-scope predictions are routed to `rejected.jsonl`.
 
 ---
 
-## 5. Human Spot-Checking & Quality Review
+## 5. Human Verification & Leakage Prevention
 
-A standalone review web app is provided under `ai_training/review_app.py`:
-- Built with Flask for isolated local review.
-- Renders one crop at a time with AI prediction details, top-2 class, confidence, margin, and source evidence.
-- Prioritizes **15 accepted predictions per target class** for human spot-checking.
-- Saves verified decisions incrementally to `ai_training/data/labelling/human_review.jsonl` with `human_verified: true`.
+- **`human_verified: false`**: Every AI pseudo-label explicitly sets `human_verified=false` and `label_origin="ai_assisted_pseudo_label"`.
+- **Split Preservation**: Source image split assignments (`train`, `val`, `test`) are strictly preserved. No `source_image_id` crosses splits.
+- **Git Ignore**: All raw images, crops, manifests, and model outputs under `ai_training/data/` remain 100% Git-ignored.
 
-### Command to Start Review App:
+---
+
+## 6. Execution Commands
+
 ```bash
-python ai_training/review_app.py --port 5000
+# 1. Selection (Expanded 3,000 Candidates)
+python ai_training/scripts/select_labelling_candidates.py \
+  --spatial-manifest ai_training/data/processed/fashionpedia_spatial_manifest/all_instances_spatial.jsonl ai_training/data/processed/fashionpedia_train_spatial_manifest/all_instances_spatial.jsonl \
+  --annotations ai_training/data/raw/fashionpedia/instances_attributes_val2020.json ai_training/data/raw/fashionpedia/instances_attributes_train2020.json \
+  --classes ai_training/config/classes.json \
+  --config ai_training/config/ai_assisted_labelling.json \
+  --output-dir ai_training/data/labelling_official/ \
+  --per-class-target 1000 \
+  --output-prefix expanded_
+
+# 2. Crop Generation (3,000 Official Crops)
+python ai_training/scripts/create_selected_crops.py \
+  --queue ai_training/data/labelling_official/expanded_candidate_queue.jsonl \
+  --annotations ai_training/data/raw/fashionpedia/instances_attributes_val2020.json ai_training/data/raw/fashionpedia/instances_attributes_train2020.json \
+  --official-images-root ai_training/data/raw/fashionpedia/images \
+  --config ai_training/config/ai_assisted_labelling.json \
+  --output-dir ai_training/data/images/fashionpedia_official_expanded/crops/ \
+  --manifest-dir ai_training/data/labelling_official/ \
+  --manifest-prefix expanded_
+
+# 3. CLIP Zero-Shot Pseudo-Labelling
+python ai_training/scripts/ai_assisted_label.py \
+  --crop-manifest ai_training/data/labelling_official/expanded_crop_manifest.jsonl \
+  --config ai_training/config/ai_assisted_labelling.json \
+  --output-dir ai_training/data/labelling_official/ \
+  --batch-size 32
+
+# 4. Validation
+python ai_training/scripts/validate_candidate_selection.py \
+  --queue ai_training/data/labelling_official/expanded_candidate_queue.jsonl \
+  --classes ai_training/config/classes.json \
+  --config ai_training/config/ai_assisted_labelling.json \
+  --max-target 3000
+
+python ai_training/scripts/validate_ai_labels.py \
+  --labelling-dir ai_training/data/labelling_official/ \
+  --classes ai_training/config/classes.json \
+  --config ai_training/config/ai_assisted_labelling.json
 ```
 
 ---
 
-## 6. Reproducibility & Pipeline Execution
+## 7. Class Distribution & Validation Summary
 
-All steps are deterministic:
-- Random Seed: `42`
-- Pipeline commands:
+| Dataset / Run | Candidates | Successful Crops | Accepted Pseudo-Labels | Manual Review | Rejected AI | Failed |
+|---|---|---|---|---|---|---|
+| **Diagnostic (450)** | 450 | 450 (100%) | - | - | - | 0 |
+| **Expanded (3,000)** | 3,000 | 3,000 (100%) | 1,270 | 983 | 747 | 0 |
 
-```bash
-# 1. Selection
-python ai_training/scripts/select_labelling_candidates.py --spatial-manifest ai_training/data/processed/fashionpedia_train_spatial_manifest/all_instances_spatial.jsonl --annotations ai_training/data/raw/fashionpedia/instances_attributes_train2020.json --classes ai_training/config/classes.json --config ai_training/config/ai_assisted_labelling.json --output-dir ai_training/data/labelling
-
-# 2. Download
-python ai_training/scripts/download_selected_images.py --queue ai_training/data/labelling/candidate_queue.jsonl --config ai_training/config/ai_assisted_labelling.json --output-dir ai_training/data/images/fashionpedia_selected/original --manifest-dir ai_training/data/labelling
-
-# 3. Crop
-python ai_training/scripts/create_selected_crops.py --download-manifest ai_training/data/labelling/download_manifest.jsonl --queue ai_training/data/labelling/candidate_queue.jsonl --config ai_training/config/ai_assisted_labelling.json --output-dir ai_training/data/images/fashionpedia_selected/crops --manifest-dir ai_training/data/labelling
-
-# 4. CLIP Labelling
-python ai_training/scripts/ai_assisted_label.py --crop-manifest ai_training/data/labelling/crop_manifest.jsonl --config ai_training/config/ai_assisted_labelling.json --output-dir ai_training/data/labelling
-
-# 5. Validation
-python ai_training/scripts/validate_candidate_selection.py --queue ai_training/data/labelling/candidate_queue.jsonl --classes ai_training/config/classes.json --config ai_training/config/ai_assisted_labelling.json
-python ai_training/scripts/validate_ai_labels.py --labelling-dir ai_training/data/labelling --classes ai_training/config/classes.json --config ai_training/config/ai_assisted_labelling.json
-```
-
----
-
-## 7. Status & Next Steps
+### Breakdown of Accepted Pseudo-Labels (1,270 Total):
+- **`blouse`**: 464
+- **`t-shirt`**: 85
+- **`crop-top`**: 721
 
 > [!NOTE]
-> The final YOLOv8-based multi-head garment detection and classification model **has not been trained**. Milestone AI-6B establishes the verified crop acquisition and pseudo-labelling pipeline.
-
-**Next Steps**:
-1. Conduct human spot-checks using `python ai_training/review_app.py`.
-2. Generate final approved training crops and segmentations.
-3. Train the multi-task YOLOv8 head model on approved crops.
+> Final YOLOv8 multi-head model training has NOT been started. All outputs remain uncommitted and ignored by Git.

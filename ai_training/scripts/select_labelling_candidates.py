@@ -3,7 +3,7 @@
 select_labelling_candidates.py
 
 Selects a deterministic, balanced candidate subset from Fashionpedia spatial manifest
-and raw metadata for AI-assisted garment labelling (Milestone AI-6B).
+and raw metadata for official AI-assisted garment labelling (Milestone M8).
 
 Target classes:
 - blouse (Fashionpedia Cat 0 shirt, blouse without Attr 8 crop)
@@ -12,7 +12,7 @@ Target classes:
 
 Excludes jackets, pants, dresses, coats, jumpsuits, and other out-of-scope categories.
 Preserves existing project splits (train/val/test).
-Outputs candidate_queue.jsonl and candidate_summary.json.
+Outputs candidate queue JSONL and selection summary JSON.
 """
 
 import argparse
@@ -23,30 +23,34 @@ from collections import defaultdict, Counter
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Select candidate subset for AI-assisted labelling")
-    parser.add_argument("--spatial-manifest", required=True, help="Path to all_instances_spatial.jsonl")
-    parser.add_argument("--annotations", required=True, help="Path to raw instances_attributes_train2020.json")
+    parser = argparse.ArgumentParser(description="Select candidate subset for official AI-assisted labelling")
+    parser.add_argument("--spatial-manifest", nargs="+", required=True, help="Path(s) to all_instances_spatial.jsonl")
+    parser.add_argument("--annotations", nargs="+", required=True, help="Path(s) to raw instances_attributes_train2020.json / val2020.json")
     parser.add_argument("--classes", required=True, help="Path to config/classes.json")
     parser.add_argument("--config", required=True, help="Path to config/ai_assisted_labelling.json")
     parser.add_argument("--output-dir", required=True, help="Directory to output candidate queue and summary")
+    parser.add_argument("--per-class-target", type=int, default=None, help="Target count per class (overrides config if set)")
+    parser.add_argument("--output-prefix", default="", help="Prefix for output filenames (e.g., 'expanded_' or 'diagnostic_')")
     return parser.parse_args()
 
 
-def load_raw_image_metadata(annotations_path):
-    print(f"Loading raw annotations metadata from {annotations_path}...")
-    with open(annotations_path, "r", encoding="utf-8") as f:
-        data = json.load(f)
-
+def load_raw_image_metadata(annotations_paths):
+    if isinstance(annotations_paths, str):
+        annotations_paths = [annotations_paths]
     image_meta = {}
-    for img in data.get("images", []):
-        img_id = img.get("id")
-        if img_id is not None:
-            image_meta[img_id] = {
-                "file_name": img.get("file_name"),
-                "original_url": img.get("original_url"),
-                "width": img.get("width"),
-                "height": img.get("height"),
-            }
+    for ann_path in annotations_paths:
+        print(f"Loading raw annotations metadata from {ann_path}...")
+        with open(ann_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        for img in data.get("images", []):
+            img_id = img.get("id")
+            if img_id is not None:
+                image_meta[img_id] = {
+                    "file_name": img.get("file_name"),
+                    "width": img.get("width"),
+                    "height": img.get("height"),
+                }
     print(f"Loaded metadata for {len(image_meta)} raw images.")
     return image_meta
 
@@ -90,7 +94,7 @@ def determine_candidate_class(cat_id, attrs):
     # Crop-top precedence rule
     if cat_id in (0, 1) and 8 in attrs_set:
         return "crop-top", f"Fashionpedia Cat {cat_id} with Attr 8 crop (top)"
-    
+
     # T-shirt rule: Cat 1 with Attr 0 (classic) or Attr 4 (ringer)
     if cat_id == 1 and (0 in attrs_set or 4 in attrs_set):
         return "t-shirt", f"Fashionpedia Cat 1 with Attr {sorted(attrs_set.intersection({0, 4}))} t-shirt"
@@ -113,60 +117,65 @@ def main():
         labelling_config = json.load(f)
 
     target_classes = labelling_config.get("target_classes", ["blouse", "t-shirt", "crop-top"])
-    per_class_target = labelling_config.get("per_class_candidate_target", 150)
-    max_download_target = labelling_config.get("max_download_target", 450)
 
-    # Load raw image metadata for original_url lookup
+    if args.per_class_target is not None:
+        per_class_target = args.per_class_target
+    else:
+        per_class_target = labelling_config.get("diagnostic_per_class_target", 150)
+
+    # Load raw image metadata for file_name and dimensions lookup
     image_meta = load_raw_image_metadata(args.annotations)
 
-    print(f"Reading spatial manifest from {args.spatial_manifest}...")
+    spatial_paths = args.spatial_manifest if isinstance(args.spatial_manifest, list) else [args.spatial_manifest]
     candidates_by_class = defaultdict(list)
     seen_annotation_ids = set()
 
-    with open(args.spatial_manifest, "r", encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            rec = json.loads(line)
+    for s_path in spatial_paths:
+        print(f"Reading spatial manifest from {s_path}...")
+        with open(s_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                rec = json.loads(line)
 
-            ann_id = rec.get("source_annotation_id")
-            if ann_id in seen_annotation_ids:
-                continue
+                ann_id = rec.get("source_annotation_id")
+                if ann_id in seen_annotation_ids:
+                    continue
 
-            cat_id = rec.get("fashionpedia_category_id")
-            attrs = rec.get("fashionpedia_attribute_ids", [])
+                cat_id = rec.get("fashionpedia_category_id")
+                attrs = rec.get("fashionpedia_attribute_ids", [])
 
-            candidate_cls, reason = determine_candidate_class(cat_id, attrs)
-            if candidate_cls is None or candidate_cls not in target_classes:
-                continue
+                candidate_cls, reason = determine_candidate_class(cat_id, attrs)
+                if candidate_cls is None or candidate_cls not in target_classes:
+                    continue
 
-            img_id = rec.get("source_image_id")
-            raw_meta = image_meta.get(img_id, {})
-            original_url = raw_meta.get("original_url") or rec.get("source_url")
-            file_name = raw_meta.get("file_name") or rec.get("source_file_name")
+                img_id = rec.get("source_image_id")
+                raw_meta = image_meta.get(img_id, {})
+                file_name = raw_meta.get("file_name") or rec.get("source_file_name")
 
-            score = compute_selection_score(rec)
+                score = compute_selection_score(rec)
 
-            candidate_record = {
-                "source_image_id": img_id,
-                "source_annotation_id": ann_id,
-                "file_name": file_name,
-                "original_url": original_url,
-                "bbox": rec.get("bbox"),
-                "fashionpedia_category_id": cat_id,
-                "fashionpedia_category_name": rec.get("fashionpedia_category_name"),
-                "fashionpedia_attribute_ids": attrs,
-                "fashionpedia_attribute_names": rec.get("fashionpedia_attribute_names", []),
-                "labels": rec.get("labels", {}),
-                "candidate_garment_type": candidate_cls,
-                "candidate_garment_reason": reason,
-                "split": rec.get("split", "train"),
-                "selection_score": score,
-            }
+                candidate_record = {
+                    "source_image_id": img_id,
+                    "source_annotation_id": ann_id,
+                    "file_name": file_name,
+                    "annotation_width": raw_meta.get("width"),
+                    "annotation_height": raw_meta.get("height"),
+                    "bbox": rec.get("bbox"),
+                    "fashionpedia_category_id": cat_id,
+                    "fashionpedia_category_name": rec.get("fashionpedia_category_name"),
+                    "fashionpedia_attribute_ids": attrs,
+                    "fashionpedia_attribute_names": rec.get("fashionpedia_attribute_names", []),
+                    "labels": rec.get("labels", {}),
+                    "candidate_garment_type": candidate_cls,
+                    "candidate_garment_reason": reason,
+                    "split": rec.get("split", "train"),
+                    "selection_score": score,
+                }
 
-            candidates_by_class[candidate_cls].append(candidate_record)
-            seen_annotation_ids.add(ann_id)
+                candidates_by_class[candidate_cls].append(candidate_record)
+                seen_annotation_ids.add(ann_id)
 
     print(f"Candidate pools collected:")
     for cls in target_classes:
@@ -212,13 +221,13 @@ def main():
     for rank, item in enumerate(final_queue, 1):
         item["selection_rank"] = rank
 
-    # Enforce maximum target limit
-    if len(final_queue) > max_download_target:
-        final_queue = final_queue[:max_download_target]
-
     os.makedirs(args.output_dir, exist_ok=True)
-    queue_path = os.path.join(args.output_dir, "candidate_queue.jsonl")
-    summary_path = os.path.join(args.output_dir, "candidate_summary.json")
+    prefix = args.output_prefix
+    queue_filename = f"{prefix}candidate_queue.jsonl" if prefix else "candidate_queue.jsonl"
+    summary_filename = f"{prefix}selection_summary.json" if prefix else "candidate_summary.json"
+
+    queue_path = os.path.join(args.output_dir, queue_filename)
+    summary_path = os.path.join(args.output_dir, summary_filename)
 
     print(f"Writing candidate queue ({len(final_queue)} records) to {queue_path}...")
     with open(queue_path, "w", encoding="utf-8") as f:
@@ -244,7 +253,6 @@ def main():
         "unique_images_count": len(unique_images),
         "target_classes": target_classes,
         "per_class_candidate_target": per_class_target,
-        "max_download_target": max_download_target,
         "counts_by_class": dict(counts_by_class),
         "counts_by_split": dict(counts_by_split),
         "counts_by_class_and_split": {k: dict(v) for k, v in counts_by_class_and_split.items()},

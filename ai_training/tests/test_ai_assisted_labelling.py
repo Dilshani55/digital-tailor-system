@@ -85,7 +85,8 @@ class TestAIAssistedLabelling(unittest.TestCase):
         img_w, img_h = 500, 500
         margin_pct = 0.05
 
-        coords, err = compute_crop_coordinates(bbox, img_w, img_h, margin_pct)
+        coords, status, err = compute_crop_coordinates(bbox, img_w, img_h, margin_pct)
+        self.assertEqual(status, "success")
         self.assertIsNone(err)
         # Margin x = 200 * 0.05 = 10, Margin y = 200 * 0.05 = 10
         # Expected: left=90, top=90, right=310, bottom=310
@@ -114,18 +115,17 @@ class TestAIAssistedLabelling(unittest.TestCase):
     @patch("ai_training.scripts.ai_assisted_label.CLIPModel")
     @patch("ai_training.scripts.ai_assisted_label.CLIPProcessor")
     def test_ai_label_thresholds_and_disagreement(self, mock_processor, mock_model):
-        """Test low-confidence and prompt disagreement routing to review_required."""
-        from ai_training.scripts.ai_assisted_label import evaluate_crop_with_clip
+        """Test low-confidence and prompt disagreement routing to manual_review."""
+        from ai_training.scripts.ai_assisted_label import process_batch, build_prompt_structure
 
         synth_path = os.path.join(self.temp_dir, "crop.jpg")
         img = Image.new("RGB", (100, 100), color="red")
         img.save(synth_path, format="JPEG")
 
-        # Mock model outputs for 14 prompts
+        # Mock model outputs
         mock_instance = MagicMock()
         mock_model.from_pretrained.return_value = mock_instance
         
-        # Create dummy logits per image
         logits = torch.tensor([[10.0, 9.5, 9.2, 5.0, 4.0, 4.0, 2.0, 2.0, 2.0, 1.0, 1.0, 1.0, 1.0, 1.0]])
         mock_output = MagicMock()
         mock_output.logits_per_image = logits
@@ -141,10 +141,29 @@ class TestAIAssistedLabelling(unittest.TestCase):
             "reject": ["a men's shirt", "a sweatshirt or hoodie", "a dress, jacket or coat", "not a women's blouse, t-shirt or crop top", "an unclear or unsuitable garment image"]
         }
         all_classes = ["blouse", "t-shirt", "crop-top", "reject"]
+        all_prompts, prompt_to_class, class_prompt_indices = build_prompt_structure(prompt_templates, all_classes)
 
-        res, err = evaluate_crop_with_clip(synth_path, mock_instance, mock_proc_instance, prompt_templates, all_classes)
+        crop_records = [{
+            "source_image_id": 1,
+            "source_annotation_id": 101,
+            "crop_path": synth_path,
+            "crop_sha256": "dummy_sha",
+            "status": "success",
+            "candidate_garment_type": "blouse",
+            "candidate_garment_reason": "Cat 0",
+            "split": "train"
+        }]
+
+        config = {
+            "confidence_threshold": 0.60,
+            "minimum_margin": 0.10,
+            "reject_class": "reject"
+        }
+
+        results = process_batch(crop_records, mock_instance, mock_proc_instance, all_prompts, prompt_to_class, class_prompt_indices, all_classes, config)
         
-        self.assertIsNone(err)
+        self.assertEqual(len(results), 1)
+        res = results[0]
         self.assertIn("top1_label", res)
         self.assertIn("top1_confidence", res)
         self.assertIn("margin", res)

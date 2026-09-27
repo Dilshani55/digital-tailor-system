@@ -23,7 +23,8 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Validate candidate queue")
     parser.add_argument("--queue", required=True, help="Path to candidate_queue.jsonl")
     parser.add_argument("--classes", required=True, help="Path to config/classes.json")
-    parser.add_argument("--config", required=True, help="Path to config/ai_assisted_labelling.json")
+    parser.add_argument("--config", required=False, default="ai_training/config/ai_assisted_labelling.json", help="Path to config/ai_assisted_labelling.json")
+    parser.add_argument("--max-target", type=int, default=3000, help="Maximum allowed total candidates in queue")
     return parser.parse_args()
 
 
@@ -38,7 +39,7 @@ def main():
 
     project_garment_classes = set(classes_config.get("outputs", {}).get("garment_type", {}).get("classes", []))
     allowed_target_classes = set(labelling_config.get("target_classes", ["blouse", "t-shirt", "crop-top"]))
-    max_download_target = labelling_config.get("max_download_target", 450)
+    max_download_target = args.max_target or labelling_config.get("expanded_per_class_target", 1000) * 3
     forbidden_source_terms = {"shirt", "top", "sweatshirt"}
 
     if allowed_target_classes != project_garment_classes:
