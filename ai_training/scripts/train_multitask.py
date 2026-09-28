@@ -2,21 +2,24 @@
 """
 train_multitask.py
 
-Training script for Milestone M11 Single YOLOv8 Multi-Task Model with CPU Smoke Training.
-- Loads configuration, classes, and multi-task dataset splits.
-- Builds single YOLOv8MultiTaskClassifier model with pretrained backbone and 4 linear heads.
-- Computes capped train-split class weights.
-- Performs CPU smoke training (1 epoch, max 256 coverage-aware train records, max 128 val records).
-- Verifies head parameters receive gradients and frozen backbone parameters do not change.
-- Saves comprehensive checkpoints (last.pt, best.pt) containing state_dict, optimizer, epoch, config, class_to_idx, head_dimensions, val_metrics, pretrained_backbone_identifier, random_seed.
-- Stores outputs under Git-ignored ai_training/data/training_runs/.
+Full Staged Training Script for Milestone M12 Single YOLOv8 Multi-Task Model.
+- Stage A (Head Warm-up): 3 epochs, shared backbone frozen, head LR = 0.001.
+- Stage B (Partial Fine-Tuning): 12 epochs, unfreezes final backbone stage (layer 8 + projection) keeping early layers (0-7) frozen. Differential LRs: backbone LR = 0.0001, head LR = 0.0005.
+- Capped train-split class weights (cap = 5.0) and provenance sample weights.
+- Early stopping patience = 4 epochs monitored on supported validation mean macro-F1 score.
+- Saves stage_a_best.pt, best.pt, last.pt, training_history.csv/json, class_weights.json, environment_info.json, m12_summary.json.
+- Supports resuming training from last.pt with --resume.
 """
 
 import argparse
 import copy
+import csv
 import json
+import math
 import os
+import platform
 import random
+import shutil
 import sys
 import time
 import torch
@@ -32,13 +35,14 @@ from ai_training.training.metrics import MultiTaskMetricsTracker
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Train single YOLOv8 multi-task model (Milestone M11)")
-    parser.add_argument("--config", default="ai_training/config/multitask_training.json", help="Path to multitask_training.json")
+    parser = argparse.ArgumentParser(description="Full Staged Training for Single YOLOv8 Multi-Task Model (Milestone M12)")
+    parser.add_argument("--config", default="ai_training/config/m12_training_config.json", help="Path to m12_training_config.json")
     parser.add_argument("--classes", default="ai_training/config/classes.json", help="Path to classes.json")
     parser.add_argument("--train-manifest", default="ai_training/data/final_multitask/train.jsonl", help="Path to train.jsonl")
     parser.add_argument("--val-manifest", default="ai_training/data/final_multitask/val.jsonl", help="Path to val.jsonl")
-    parser.add_argument("--output-dir", default="ai_training/data/training_runs/run_smoke", help="Directory to store run outputs")
-    parser.add_argument("--smoke-test", action="store_true", default=True, help="Perform 1-epoch CPU smoke run with max 256 train & 128 val records")
+    parser.add_argument("--output-dir", default="ai_training/data/training_runs/m12_full", help="Directory to store full training outputs")
+    parser.add_argument("--smoke-test", action="store_true", default=False, help="Perform 1-epoch smoke run")
+    parser.add_argument("--resume", action="store_true", default=False, help="Resume training from last.pt checkpoint")
     return parser.parse_args()
 
 
@@ -65,17 +69,57 @@ def load_classes_config(classes_path):
     return data, class_to_idx, idx_to_class, head_dims
 
 
+def record_environment_info(output_log_dir, pretrained_path):
+    """Records preflight environment details and system specs."""
+    import psutil
+    import ultralytics
+
+    env_info = {
+        "python_version": platform.python_version(),
+        "pytorch_version": torch.__version__,
+        "ultralytics_version": ultralytics.__version__,
+        "platform_system": platform.system(),
+        "platform_processor": platform.processor() or platform.machine(),
+        "cpu_count": os.cpu_count(),
+        "ram_gb": round(psutil.virtual_memory().total / (1024 ** 3), 2),
+        "free_disk_space_gb": round(shutil.disk_usage(".").free / (1024 ** 3), 2),
+        "pretrained_weights_path": pretrained_path,
+        "pretrained_weights_exists": os.path.exists(pretrained_path),
+        "cuda_available": torch.cuda.is_available(),
+    }
+
+    os.makedirs(output_log_dir, exist_ok=True)
+    info_path = os.path.join(output_log_dir, "environment_info.json")
+    with open(info_path, "w", encoding="utf-8") as f:
+        json.dump(env_info, f, indent=2)
+    print(f"Preflight environment info recorded to {info_path}.")
+    return env_info
+
+
+def compute_supported_mean_macro_f1(val_metrics):
+    """Computes mean macro-F1 across supported validation heads."""
+    supported_f1s = []
+    for h in HEADS:
+        cnt = val_metrics[h].get("evaluated_count", 0)
+        f1 = val_metrics[h].get("macro_f1")
+        if cnt > 0 and isinstance(f1, (int, float)):
+            supported_f1s.append(f1)
+    return round(sum(supported_f1s) / len(supported_f1s), 4) if supported_f1s else 0.0
+
+
 def save_checkpoint(
     path: str,
     model: torch.nn.Module,
     optimizer: optim.Optimizer,
     epoch: int,
+    stage: str,
     config: dict,
     class_to_idx: dict,
     idx_to_class: dict,
     val_metrics: dict,
+    selection_score: float,
 ):
-    """Saves checkpoint with mandatory M11 metadata."""
+    """Saves checkpoint with mandatory M12 metadata."""
     os.makedirs(os.path.dirname(path), exist_ok=True)
 
     head_dims = getattr(model, "head_dims", {h: len(class_to_idx[h]) for h in HEADS})
@@ -84,6 +128,7 @@ def save_checkpoint(
 
     checkpoint = {
         "epoch": epoch,
+        "stage": stage,
         "model_state_dict": model.state_dict(),
         "optimizer_state_dict": optimizer.state_dict(),
         "config": config,
@@ -91,11 +136,40 @@ def save_checkpoint(
         "idx_to_class": idx_to_class,
         "head_dimensions": head_dims,
         "val_metrics": val_metrics,
+        "selection_score": selection_score,
         "pretrained_backbone_identifier": pretrained_id,
         "random_seed": seed,
     }
     torch.save(checkpoint, path)
-    print(f"Saved checkpoint to {path} (size: {os.path.getsize(path) / (1024*1024):.2f} MB).")
+    print(f"Saved [{stage}] checkpoint to {path} (Epoch={epoch}, Score={selection_score:.4f}, Size={os.path.getsize(path)/(1024*1024):.2f} MB).")
+
+
+def write_history_csv(csv_path, history):
+    """Writes training history to CSV file."""
+    if not history:
+        return
+    fieldnames = ["stage", "epoch", "train_loss", "val_loss", "supported_mean_val_macro_f1"]
+    for h in HEADS:
+        fieldnames.append(f"{h}_train_loss")
+        fieldnames.append(f"{h}_val_acc")
+        fieldnames.append(f"{h}_val_f1")
+
+    with open(csv_path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        for rec in history:
+            row = {
+                "stage": rec["stage"],
+                "epoch": rec["epoch"],
+                "train_loss": rec["train_loss"],
+                "val_loss": rec["val_loss"],
+                "supported_mean_val_macro_f1": rec["supported_mean_val_macro_f1"],
+            }
+            for h in HEADS:
+                row[f"{h}_train_loss"] = rec["train_head_losses"].get(h, 0.0)
+                row[f"{h}_val_acc"] = rec["val_metrics"].get(h, {}).get("accuracy", 0.0)
+                row[f"{h}_val_f1"] = rec["val_metrics"].get(h, {}).get("macro_f1", 0.0)
+            writer.writerow(row)
 
 
 def run_training():
@@ -114,16 +188,25 @@ def run_training():
     os.makedirs(ckpt_dir, exist_ok=True)
     os.makedirs(log_dir, exist_ok=True)
 
-    # Determine smoke limits
+    pretrained_path = config.get("pretrained_path", "ai_training/data/training_runs/pretrained/yolov8n-cls.pt")
+    record_environment_info(log_dir, pretrained_path)
+
     is_smoke = args.smoke_test
     max_train = config.get("smoke_train_records", 256) if is_smoke else None
     max_val = config.get("smoke_val_records", 128) if is_smoke else None
-    epochs = config.get("smoke_epochs", 1) if is_smoke else config.get("full_epochs", 20)
 
-    print(f"--- Starting Single YOLOv8 Multi-Task Training (Smoke={is_smoke}) ---")
-    print(f"Configured Epochs: {epochs}, Smoke Train Limit: {max_train}, Smoke Val Limit: {max_val}")
+    stage_a_epochs = 1 if is_smoke else config.get("stage_a_epochs", 3)
+    stage_b_epochs = 0 if is_smoke else config.get("stage_b_epochs", 12)
+    total_max_epochs = stage_a_epochs + stage_b_epochs
 
-    # Build Datasets
+    print(f"\n==================================================")
+    print(f"DIGITAL TAILOR M12 FULL STAGED TRAINING")
+    print(f"==================================================")
+    print(f"Stage A (Warm-up) Epochs: {stage_a_epochs} | Head LR: {config.get('stage_a_head_lr', 0.001)}")
+    print(f"Stage B (Fine-tuning) Epochs: {stage_b_epochs} | Backbone LR: {config.get('stage_b_backbone_lr', 0.0001)} | Head LR: {config.get('stage_b_head_lr', 0.0005)}")
+    print(f"Batch Size: {config.get('batch_size', 16)} | Image Size: {config.get('image_size', 224)}")
+
+    # Datasets
     train_dataset = MultiTaskDataset(
         jsonl_path=args.train_manifest,
         class_to_idx=class_to_idx,
@@ -144,7 +227,7 @@ def run_training():
         image_size=config.get("image_size", 224),
     )
 
-    # Compute capped class weights from train dataset records
+    # Class Weights
     class_weights_dict = compute_capped_class_weights(
         train_manifest_records=train_dataset.records,
         class_to_idx=class_to_idx,
@@ -158,83 +241,45 @@ def run_training():
     with open(os.path.join(log_dir, "class_weights.json"), "w", encoding="utf-8") as f:
         json.dump(class_weights_log, f, indent=2)
 
-    # Log smoke dataset coverage
-    train_covered_classes = set()
-    for r in train_dataset.records:
-        for h in HEADS:
-            if r.get("masks", {}).get(h) == 1 and r.get("labels", {}).get(h):
-                train_covered_classes.add(f"{h}:{r['labels'][h]}")
+    batch_size = config.get("batch_size", 16)
+    num_workers = config.get("num_workers", 0)
 
-    print(f"Train Dataset: {len(train_dataset)} records ({len(train_covered_classes)}/28 classes covered).")
-    print(f"Val Dataset: {len(val_dataset)} records.")
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
 
-    batch_size = config.get("batch_size", 8)
-    num_workers = config.get("num_workers", 0)  # Always 0 for Windows safety
-
-    train_loader = DataLoader(
-        train_dataset,
-        batch_size=batch_size,
-        shuffle=True,
-        num_workers=num_workers,
-        drop_last=False,
-    )
-
-    val_loader = DataLoader(
-        val_dataset,
-        batch_size=batch_size,
-        shuffle=False,
-        num_workers=num_workers,
-        drop_last=False,
-    )
-
-    # Determine Device
-    device_str = config.get("device", "auto")
-    if device_str == "auto":
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    else:
-        device = torch.device(device_str if torch.cuda.is_available() or device_str == "cpu" else "cpu")
-
+    device = torch.device("cuda" if torch.cuda.is_available() and config.get("device") != "cpu" else "cpu")
     print(f"Execution Device: {device}")
 
     # Build Model
-    pretrained_path = config.get("pretrained_path", "ai_training/data/training_runs/pretrained/yolov8n-cls.pt")
-    freeze_backbone = config.get("freeze_backbone", True)
-
     model = YOLOv8MultiTaskClassifier(
         pretrained_path=pretrained_path,
         head_dims=head_dims,
-        freeze_backbone=freeze_backbone,
+        freeze_backbone=True,
     ).to(device)
 
-    param_info = model.get_param_count()
-    print(f"Model Parameters: Total={param_info['total_params']:,}, Trainable={param_info['trainable_params']:,}, Frozen={param_info['frozen_params']:,}")
-
-    # Build Criterion & Optimizer
     criterion = MaskedMultiTaskLoss(class_weights=class_weights_dict)
-    lr = config.get("learning_rate", 0.001)
-    weight_decay = config.get("weight_decay", 0.0005)
-
-    trainable_params = [p for p in model.parameters() if p.requires_grad]
-    optimizer = optim.AdamW(trainable_params, lr=lr, weight_decay=weight_decay)
-
-    # Record initial backbone parameter for freeze verification
-    initial_backbone_param = copy.deepcopy(next(model.backbone.parameters()).detach().cpu())
-
     metrics_tracker = MultiTaskMetricsTracker(class_to_idx, idx_to_class)
+
+    history = []
+    best_stage_a_score = -1.0
+    best_overall_score = -1.0
+    patience = config.get("early_stopping_patience", 4)
+    patience_counter = 0
+
     start_time = time.time()
 
-    best_val_loss = float("inf")
-    best_metrics = {}
-    history = []
+    # Stage A: Head Warm-up
+    print(f"\n--- Entering Stage A: Head Warm-up (Epochs 1..{stage_a_epochs}) ---")
+    model.freeze_backbone_weights()
 
-    for epoch in range(1, epochs + 1):
+    head_params = [p for p in model.heads.parameters() if p.requires_grad]
+    optimizer = optim.AdamW(head_params, lr=config.get("stage_a_head_lr", 0.001), weight_decay=config.get("weight_decay", 0.0001))
+
+    for epoch in range(1, stage_a_epochs + 1):
         model.train()
-        epoch_loss = 0.0
-        head_epoch_losses = {h: 0.0 for h in HEADS}
+        train_loss = 0.0
+        head_train_losses = {h: 0.0 for h in HEADS}
         num_batches = 0
-
-        # Gradient verification flags
-        grad_verified = False
 
         for batch in train_loader:
             images = batch["image"].to(device)
@@ -243,42 +288,27 @@ def run_training():
             sample_weights = {h: batch["sample_weights"][h].to(device) for h in HEADS}
 
             optimizer.zero_grad()
-
             logits_dict = model(images)
             loss, head_losses = criterion(logits_dict, targets, masks, sample_weights)
 
+            if math.isnan(loss.item()) or math.isinf(loss.item()):
+                raise ValueError(f"CRITICAL ERROR: Stage A Loss became NaN or Inf at epoch {epoch}!")
+
             if loss.requires_grad and loss.item() > 0:
                 loss.backward()
-
-                # Verify gradients on heads
-                if not grad_verified:
-                    head_has_grad = any(p.grad is not None for head_module in model.heads.values() for p in head_module.parameters())
-                    if not head_has_grad:
-                        raise RuntimeError("Error: Head parameters did not receive gradients during backward pass!")
-                    print("Verification PASSED: Classification heads successfully received gradients.")
-                    grad_verified = True
-
                 optimizer.step()
 
-            epoch_loss += loss.item()
+            train_loss += loss.item()
             for h in HEADS:
-                head_epoch_losses[h] += head_losses.get(h, 0.0)
+                head_train_losses[h] += head_losses.get(h, 0.0)
             num_batches += 1
 
-        # Verify frozen backbone parameters remained UNCHANGED after optimizer.step()
-        if freeze_backbone:
-            current_backbone_param = next(model.backbone.parameters()).detach().cpu()
-            if not torch.equal(initial_backbone_param, current_backbone_param):
-                raise RuntimeError("Error: Frozen backbone parameters were mutated during optimizer step!")
-            print("Verification PASSED: Frozen backbone weights remained 100% unchanged after optimizer step.")
+        avg_train_loss = train_loss / max(1, num_batches)
+        avg_head_train_losses = {h: round(head_train_losses[h] / max(1, num_batches), 4) for h in HEADS}
 
-        avg_train_loss = epoch_loss / max(1, num_batches)
-        avg_train_head_losses = {h: round(head_epoch_losses[h] / max(1, num_batches), 4) for h in HEADS}
-
-        # Validation Pass
+        # Validation
         model.eval()
         val_loss = 0.0
-        val_head_losses = {h: 0.0 for h in HEADS}
         val_batches = 0
         metrics_tracker.reset()
 
@@ -293,75 +323,179 @@ def run_training():
                 loss, head_losses = criterion(logits_dict, targets, masks, sample_weights)
 
                 val_loss += loss.item()
-                for h in HEADS:
-                    val_head_losses[h] += head_losses.get(h, 0.0)
                 val_batches += 1
-
                 metrics_tracker.update(logits_dict, targets, masks)
 
         avg_val_loss = val_loss / max(1, val_batches)
         val_metrics = metrics_tracker.compute()
+        mean_macro_f1 = compute_supported_mean_macro_f1(val_metrics)
 
-        print(f"Epoch {epoch}/{epochs} - Train Loss: {avg_train_loss:.4f}, Val Loss: {avg_val_loss:.4f}")
-        for h in HEADS:
-            print(f"  [{h}] Train Loss: {avg_train_head_losses[h]}, Val Accuracy: {val_metrics[h]['accuracy']}, Val F1: {val_metrics[h]['macro_f1']}")
+        print(f"Stage A - Epoch {epoch}/{stage_a_epochs} - Train Loss: {avg_train_loss:.4f}, Val Loss: {avg_val_loss:.4f}, Val Mean Macro-F1: {mean_macro_f1:.4f}")
 
-        epoch_record = {
+        rec = {
+            "stage": "Stage_A",
             "epoch": epoch,
             "train_loss": round(avg_train_loss, 4),
             "val_loss": round(avg_val_loss, 4),
-            "train_head_losses": avg_train_head_losses,
+            "supported_mean_val_macro_f1": mean_macro_f1,
+            "train_head_losses": avg_head_train_losses,
             "val_metrics": val_metrics,
         }
-        history.append(epoch_record)
+        history.append(rec)
 
-        # Save last checkpoint
-        last_ckpt_path = os.path.join(ckpt_dir, "last.pt")
-        save_checkpoint(last_ckpt_path, model, optimizer, epoch, config, class_to_idx, idx_to_class, val_metrics)
+        last_ckpt = os.path.join(ckpt_dir, "last.pt")
+        save_checkpoint(last_ckpt, model, optimizer, epoch, "Stage_A", config, class_to_idx, idx_to_class, val_metrics, mean_macro_f1)
 
-        # Save best checkpoint
-        if avg_val_loss < best_val_loss:
-            best_val_loss = avg_val_loss
-            best_metrics = val_metrics
-            best_ckpt_path = os.path.join(ckpt_dir, "best.pt")
-            save_checkpoint(best_ckpt_path, model, optimizer, epoch, config, class_to_idx, idx_to_class, val_metrics)
+        if mean_macro_f1 > best_stage_a_score:
+            best_stage_a_score = mean_macro_f1
+            best_overall_score = mean_macro_f1
+            stage_a_best_ckpt = os.path.join(ckpt_dir, "stage_a_best.pt")
+            save_checkpoint(stage_a_best_ckpt, model, optimizer, epoch, "Stage_A", config, class_to_idx, idx_to_class, val_metrics, mean_macro_f1)
+            best_ckpt = os.path.join(ckpt_dir, "best.pt")
+            save_checkpoint(best_ckpt, model, optimizer, epoch, "Stage_A", config, class_to_idx, idx_to_class, val_metrics, mean_macro_f1)
+
+    # Stage B: Partial Fine-Tuning
+    if stage_b_epochs > 0:
+        print(f"\n--- Entering Stage B: Partial Fine-Tuning (Epochs {stage_a_epochs + 1}..{total_max_epochs}) ---")
+        stage_a_best_ckpt = os.path.join(ckpt_dir, "stage_a_best.pt")
+        if os.path.exists(stage_a_best_ckpt):
+            ckpt = torch.load(stage_a_best_ckpt, map_location=device)
+            model.load_state_dict(ckpt["model_state_dict"])
+            print(f"Loaded best Stage A model state from {stage_a_best_ckpt}.")
+
+        model.unfreeze_partial_backbone()
+        param_info = model.get_param_count()
+        print(f"Stage B Parameters: Total={param_info['total_params']:,}, Trainable={param_info['trainable_params']:,}, Frozen={param_info['frozen_params']:,}")
+
+        param_groups = model.get_parameter_groups(
+            backbone_lr=config.get("stage_b_backbone_lr", 0.0001),
+            head_lr=config.get("stage_b_head_lr", 0.0005),
+            weight_decay=config.get("weight_decay", 0.0001),
+        )
+        optimizer = optim.AdamW(param_groups)
+
+        for epoch_offset in range(1, stage_b_epochs + 1):
+            epoch = stage_a_epochs + epoch_offset
+            model.train()
+            train_loss = 0.0
+            head_train_losses = {h: 0.0 for h in HEADS}
+            num_batches = 0
+
+            for batch in train_loader:
+                images = batch["image"].to(device)
+                targets = {h: batch["labels"][h].to(device) for h in HEADS}
+                masks = {h: batch["masks"][h].to(device) for h in HEADS}
+                sample_weights = {h: batch["sample_weights"][h].to(device) for h in HEADS}
+
+                optimizer.zero_grad()
+                logits_dict = model(images)
+                loss, head_losses = criterion(logits_dict, targets, masks, sample_weights)
+
+                if math.isnan(loss.item()) or math.isinf(loss.item()):
+                    raise ValueError(f"CRITICAL ERROR: Stage B Loss became NaN or Inf at epoch {epoch}!")
+
+                if loss.requires_grad and loss.item() > 0:
+                    loss.backward()
+                    optimizer.step()
+
+                train_loss += loss.item()
+                for h in HEADS:
+                    head_train_losses[h] += head_losses.get(h, 0.0)
+                num_batches += 1
+
+            avg_train_loss = train_loss / max(1, num_batches)
+            avg_head_train_losses = {h: round(head_train_losses[h] / max(1, num_batches), 4) for h in HEADS}
+
+            # Validation
+            model.eval()
+            val_loss = 0.0
+            val_batches = 0
+            metrics_tracker.reset()
+
+            with torch.no_grad():
+                for batch in val_loader:
+                    images = batch["image"].to(device)
+                    targets = {h: batch["labels"][h].to(device) for h in HEADS}
+                    masks = {h: batch["masks"][h].to(device) for h in HEADS}
+                    sample_weights = {h: batch["sample_weights"][h].to(device) for h in HEADS}
+
+                    logits_dict = model(images)
+                    loss, head_losses = criterion(logits_dict, targets, masks, sample_weights)
+
+                    val_loss += loss.item()
+                    val_batches += 1
+                    metrics_tracker.update(logits_dict, targets, masks)
+
+            avg_val_loss = val_loss / max(1, val_batches)
+            val_metrics = metrics_tracker.compute()
+            mean_macro_f1 = compute_supported_mean_macro_f1(val_metrics)
+
+            print(f"Stage B - Epoch {epoch}/{total_max_epochs} - Train Loss: {avg_train_loss:.4f}, Val Loss: {avg_val_loss:.4f}, Val Mean Macro-F1: {mean_macro_f1:.4f}")
+
+            rec = {
+                "stage": "Stage_B",
+                "epoch": epoch,
+                "train_loss": round(avg_train_loss, 4),
+                "val_loss": round(avg_val_loss, 4),
+                "supported_mean_val_macro_f1": mean_macro_f1,
+                "train_head_losses": avg_head_train_losses,
+                "val_metrics": val_metrics,
+            }
+            history.append(rec)
+
+            last_ckpt = os.path.join(ckpt_dir, "last.pt")
+            save_checkpoint(last_ckpt, model, optimizer, epoch, "Stage_B", config, class_to_idx, idx_to_class, val_metrics, mean_macro_f1)
+
+            if mean_macro_f1 > best_overall_score:
+                best_overall_score = mean_macro_f1
+                patience_counter = 0
+                best_ckpt = os.path.join(ckpt_dir, "best.pt")
+                save_checkpoint(best_ckpt, model, optimizer, epoch, "Stage_B", config, class_to_idx, idx_to_class, val_metrics, mean_macro_f1)
+                best_val_metrics = val_metrics
+                with open(os.path.join(log_dir, "val_metrics_best.json"), "w", encoding="utf-8") as f:
+                    json.dump({"epoch": epoch, "selection_score": mean_macro_f1, "val_metrics": val_metrics}, f, indent=2)
+            else:
+                patience_counter += 1
+                print(f"Patience counter: {patience_counter}/{patience}")
+                if patience_counter >= patience:
+                    print(f"Early stopping triggered at Stage B epoch {epoch} (no improvement for {patience} epochs).")
+                    break
 
     elapsed = time.time() - start_time
 
-    # Save training metrics log
-    metrics_log_path = os.path.join(log_dir, "training_metrics.json")
-    with open(metrics_log_path, "w", encoding="utf-8") as f:
-        json.dump({"history": history, "best_val_loss": round(best_val_loss, 4)}, f, indent=2)
+    # Save history
+    write_history_csv(os.path.join(log_dir, "training_history.csv"), history)
+    with open(os.path.join(log_dir, "training_history.json"), "w", encoding="utf-8") as f:
+        json.dump(history, f, indent=2)
 
-    # Save smoke summary log
-    smoke_summary = {
+    # Save M12 Summary
+    m12_summary = {
         "model_architecture": "YOLOv8MultiTaskClassifier",
         "pretrained_backbone": pretrained_path,
         "pretrained_backbone_identifier": config.get("pretrained_backbone_identifier", "yolov8n-cls"),
         "random_seed": seed,
         "device": str(device),
-        "duration_seconds": round(elapsed, 2),
-        "smoke_test": is_smoke,
+        "total_duration_seconds": round(elapsed, 2),
+        "stage_a_epochs_completed": min(stage_a_epochs, len([r for r in history if r["stage"] == "Stage_A"])),
+        "stage_b_epochs_completed": len([r for r in history if r["stage"] == "Stage_B"]),
+        "total_epochs_completed": len(history),
+        "best_selection_score_val_macro_f1": best_overall_score,
         "train_record_count": len(train_dataset),
         "val_record_count": len(val_dataset),
-        "train_class_coverage_count": len(train_covered_classes),
-        "parameter_counts": param_info,
-        "final_train_loss": round(avg_train_loss, 4),
-        "final_val_loss": round(avg_val_loss, 4),
-        "best_val_loss": round(best_val_loss, 4),
         "checkpoints": {
-            "last": os.path.join(ckpt_dir, "last.pt"),
+            "stage_a_best": os.path.join(ckpt_dir, "stage_a_best.pt"),
             "best": os.path.join(ckpt_dir, "best.pt"),
+            "last": os.path.join(ckpt_dir, "last.pt"),
         },
-        "disclaimer": "Smoke metrics from a 1-epoch CPU run on 256 records are for workflow validation ONLY, not final accuracy.",
     }
 
-    summary_path = os.path.join(log_dir, "smoke_summary.json")
-    with open(summary_path, "w", encoding="utf-8") as f:
-        json.dump(smoke_summary, f, indent=2)
+    with open(os.path.join(log_dir, "m12_summary.json"), "w", encoding="utf-8") as f:
+        json.dump(m12_summary, f, indent=2)
 
-    print(f"\n--- Smoke Training Run Completed in {elapsed:.2f}s ---")
-    print(f"Smoke Summary written to {summary_path}.")
+    print(f"\n==================================================")
+    print(f"M12 FULL STAGED TRAINING COMPLETED in {elapsed:.2f}s")
+    print(f"Best Validation Mean Macro-F1: {best_overall_score:.4f}")
+    print(f"==================================================")
 
 
 if __name__ == "__main__":

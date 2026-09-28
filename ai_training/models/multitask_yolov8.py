@@ -75,11 +75,39 @@ class YOLOv8MultiTaskClassifier(nn.Module):
             param.requires_grad = False
 
     def unfreeze_backbone_weights(self):
-        """Unfreezes shared backbone and projection layers."""
+        """Unfreezes all shared backbone and projection layers."""
         for param in self.backbone.parameters():
             param.requires_grad = True
         for param in self.projection_conv.parameters():
             param.requires_grad = True
+
+    def unfreeze_partial_backbone(self):
+        """
+        Keeps early backbone layers (0-7) frozen.
+        Unfreezes final backbone stage (layer 8) and shared projection layer (projection_conv).
+        """
+        for i in range(8):
+            for param in self.backbone[i].parameters():
+                param.requires_grad = False
+
+        for param in self.backbone[8].parameters():
+            param.requires_grad = True
+
+        for param in self.projection_conv.parameters():
+            param.requires_grad = True
+
+    def get_parameter_groups(self, backbone_lr: float, head_lr: float, weight_decay: float = 0.0001):
+        """Constructs parameter groups for differential learning rates."""
+        backbone_params = [
+            p for p in list(self.backbone.parameters()) + list(self.projection_conv.parameters())
+            if p.requires_grad
+        ]
+        head_params = [p for p in self.heads.parameters() if p.requires_grad]
+
+        return [
+            {"params": backbone_params, "lr": backbone_lr, "weight_decay": weight_decay},
+            {"params": head_params, "lr": head_lr, "weight_decay": weight_decay},
+        ]
 
     def extract_features(self, x: torch.Tensor) -> torch.Tensor:
         """Extracts 1280-dimensional shared feature embedding."""

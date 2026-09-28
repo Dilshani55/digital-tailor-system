@@ -198,7 +198,7 @@ class TestMultiTaskTraining(unittest.TestCase):
         optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 
         from ai_training.scripts.train_multitask import save_checkpoint
-        save_checkpoint(ckpt_path, model, optimizer, epoch=1, config=config, class_to_idx=self.class_to_idx, idx_to_class=self.idx_to_class, val_metrics={})
+        save_checkpoint(ckpt_path, model, optimizer, epoch=1, stage="A", selection_score=0.5, config=config, class_to_idx=self.class_to_idx, idx_to_class=self.idx_to_class, val_metrics={})
 
         loaded_model, ckpt, loaded_config, _, _ = load_and_verify_checkpoint(ckpt_path, torch.device("cpu"))
         self.assertIsNotNone(loaded_model)
