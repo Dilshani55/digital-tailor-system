@@ -5,6 +5,7 @@ import StepIndicator   from '../components/StepIndicator';
 import LoadingSpinner  from '../components/LoadingSpinner';
 import MeasurementGuide from '../components/MeasurementGuide';
 import FabricRecommendation from '../components/FabricRecommendation';
+import PredictionReview from '../components/PredictionReview';
 import {
   imagesAPI, measurementsAPI, patternsAPI, exportAPI, researchAPI
 } from '../services/api';
@@ -19,10 +20,15 @@ export default function Upload() {
   const [error,       setError]       = useState('');
   const [activeField, setActiveField] = useState('bust_cm');
 
-  // Step 1 — Image
+  // Step 1 — Image & Multi-Task AI Predictions (Milestone M14)
   const [imageFile,   setImageFile]   = useState(null);
   const [imageId,     setImageId]     = useState(null);
   const [imagePreview,setImagePreview]= useState(null);
+  const [garmentAttributes, setGarmentAttributes] = useState(null);
+  const [confirmedAttributes, setConfirmedAttributes] = useState(null);
+  const [isAttributesConfirmed, setIsAttributesConfirmed] = useState(false);
+  const [confirmLoading, setConfirmLoading] = useState(false);
+  const [confirmError, setConfirmError] = useState('');
   const [features,    setFeatures]    = useState({
     garment_type: '',
     neckline:     '',
@@ -150,6 +156,16 @@ export default function Upload() {
       setImageId(newImageId);
 
       const analyseRes = await imagesAPI.analyse(newImageId);
+      if (analyseRes.data.garment_attributes) {
+        setGarmentAttributes(analyseRes.data.garment_attributes);
+      }
+      if (analyseRes.data.confirmed_attributes && Object.keys(analyseRes.data.confirmed_attributes).length > 0) {
+        setConfirmedAttributes(analyseRes.data.confirmed_attributes);
+        setIsAttributesConfirmed(true);
+      } else {
+        setConfirmedAttributes(null);
+        setIsAttributesConfirmed(false);
+      }
       if (analyseRes.data.detected_features) {
         setFeatures(analyseRes.data.detected_features);
       }
@@ -163,8 +179,47 @@ export default function Upload() {
     }
   };
 
+  const handleConfirmGarmentAttributes = async (confirmedData) => {
+    if (!imageId) {
+      // Manual mode without uploaded image ID
+      setConfirmedAttributes(confirmedData);
+      setIsAttributesConfirmed(true);
+      setFeatures((prev) => ({
+        ...prev,
+        garment_type: confirmedData.garment_type,
+        neckline: confirmedData.neckline_type,
+        sleeves: confirmedData.sleeve_length,
+        sleeve_style: confirmedData.sleeve_style,
+      }));
+      return;
+    }
+
+    setConfirmLoading(true);
+    setConfirmError('');
+    try {
+      const res = await imagesAPI.confirmAttributes(imageId, confirmedData);
+      setConfirmedAttributes(res.data.confirmed_attributes);
+      setIsAttributesConfirmed(true);
+      setFeatures((prev) => ({
+        ...prev,
+        garment_type: confirmedData.garment_type,
+        neckline: confirmedData.neckline_type,
+        sleeves: confirmedData.sleeve_length,
+        sleeve_style: confirmedData.sleeve_style,
+      }));
+    } catch (err) {
+      setConfirmError(err.response?.data?.error || 'Failed to confirm garment features. Please try again.');
+    } finally {
+      setConfirmLoading(false);
+    }
+  };
+
   // ── STEP 2: Save Measurements ──────────────────────────────────────────────
   const handleSaveMeasurements = async () => {
+    if (!isAttributesConfirmed) {
+      setError('Please review and click "Confirm Design Features" before saving measurements and proceeding.');
+      return;
+    }
     const required = ['bust_cm','waist_cm','hip_cm','height_cm'];
     for (const f of required) {
       if (!meas[f] || String(meas[f]).trim() === '') {
@@ -362,92 +417,14 @@ export default function Upload() {
               </select>
             </div>
 
-            {/* Detected Garment Features Editable Controls */}
-            <div style={{ background: 'var(--surface-1)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '14px 16px', marginBottom: '16px' }}>
-              <div style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-accent)', marginBottom: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span>{imageId ? 'Detected Garment Features (AI Auto-Analyzed)' : 'Garment Features (Manual Selection)'}</span>
-                <span style={{ fontSize: '11px', color: imageId ? '#16A34A' : 'var(--text-accent)' }}>
-                  {imageId ? '✓ AI Auto-Analyzed (Editable)' : 'Manual Selection'}
-                </span>
-              </div>
-              {!imageId && (
-                <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '10px', fontStyle: 'italic' }}>
-                  No design image uploaded. Select your garment style features below manually.
-                </div>
-              )}
-              {imageId && requiresUserVerification && (
-                <div role="alert" style={{ fontSize: '11px', color: '#92400E', background: '#FEF3C7', border: '1px solid #F59E0B', borderRadius: 'var(--radius)', padding: '8px 10px', marginBottom: '10px' }}>
-                  Low-confidence AI suggestion — please verify the detected features.
-                </div>
-              )}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
-                <div>
-                  <label className="form-label" style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Garment Type</label>
-                  <select
-                    className="form-select"
-                    style={{ height: '34px', fontSize: '12px', background: '#FFFFFF', color: 'var(--text-primary)', border: '1px solid var(--border-strong)' }}
-                    value={features.garment_type}
-                    onChange={(e) => setFeatures({ ...features, garment_type: e.target.value })}
-                  >
-                    <option value="">-- Select Garment Type --</option>
-                    <option value="blouse">blouse</option>
-                    <option value="crop-top">crop-top</option>
-                    <option value="t-shirt">t-shirt</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="form-label" style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Neckline</label>
-                  <select
-                    className="form-select"
-                    style={{ height: '34px', fontSize: '12px', background: '#FFFFFF', color: 'var(--text-primary)', border: '1px solid var(--border-strong)' }}
-                    value={features.neckline}
-                    onChange={(e) => setFeatures({ ...features, neckline: e.target.value })}
-                  >
-                    <option value="">-- Select Neckline --</option>
-                    <option value="one-shoulder">one-shoulder</option>
-                    <option value="off-the-shoulder">off-the-shoulder</option>
-                    <option value="sweetheart neck">sweetheart neck</option>
-                    <option value="square neck">square neck</option>
-                    <option value="round neck">round neck</option>
-                    <option value="v-neck">v-neck</option>
-                    <option value="boat neck">boat neck</option>
-                    <option value="collar">collar</option>
-                    <option value="halter neck">halter neck</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="form-label" style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Sleeves</label>
-                  <select
-                    className="form-select"
-                    style={{ height: '34px', fontSize: '12px', background: '#FFFFFF', color: 'var(--text-primary)', border: '1px solid var(--border-strong)' }}
-                    value={features.sleeves}
-                    onChange={(e) => setFeatures({ ...features, sleeves: e.target.value })}
-                  >
-                    <option value="">-- Select Sleeves --</option>
-                    <option value="bell sleeve">bell sleeve</option>
-                    <option value="flared sleeve">flared sleeve</option>
-                    <option value="bishop sleeve">bishop sleeve</option>
-                    <option value="balloon sleeve">balloon sleeve</option>
-                    <option value="puff sleeve">puff sleeve</option>
-                    <option value="cap sleeve">cap sleeve</option>
-                    <option value="short sleeve">short sleeve</option>
-                    <option value="elbow sleeve">elbow sleeve</option>
-                    <option value="three-quarter sleeve">three-quarter sleeve</option>
-                    <option value="long sleeve">long sleeve</option>
-                    <option value="leg-o'-mutton sleeve">leg-o'-mutton sleeve</option>
-                    <option value="cold shoulder sleeve">cold shoulder sleeve</option>
-                    <option value="cape sleeve">cape sleeve</option>
-                    <option value="butterfly sleeve">butterfly sleeve</option>
-                    <option value="slit sleeve">slit sleeve</option>
-                    <option value="batwing sleeve">batwing sleeve</option>
-                    <option value="kimono sleeve">kimono sleeve</option>
-                    <option value="lantern sleeve">lantern sleeve</option>
-                    <option value="single sleeve">single sleeve</option>
-                    <option value="sleeveless">sleeveless</option>
-                  </select>
-                </div>
-              </div>
-            </div>
+            {/* Multi-Task AI Feature Prediction Review & Confirmation (Milestone M14) */}
+            <PredictionReview
+              garmentAttributes={garmentAttributes}
+              confirmedAttributes={confirmedAttributes}
+              onConfirm={handleConfirmGarmentAttributes}
+              isSubmitting={confirmLoading}
+              error={confirmError}
+            />
 
             <div className="form-grid">
               <div className="form-field" style={{ gridColumn: '1/-1' }}>

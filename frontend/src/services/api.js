@@ -53,6 +53,7 @@ export const imagesAPI = {
     headers: { 'Content-Type': 'multipart/form-data' }
   }),
   analyse: (id)       => api.post(`/images/${id}/analyse`),
+  confirmAttributes: (id, data) => api.post(`/images/${id}/confirm-attributes`, data),
   getAll:  ()         => api.get('/images/'),
   getOne:  (id)       => api.get(`/images/${id}`),
   delete:  (id)       => api.delete(`/images/${id}`),

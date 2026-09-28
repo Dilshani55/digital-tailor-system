@@ -173,6 +173,24 @@ class TestMultiTaskIntegration(unittest.TestCase):
         res = predict_multitask_features(self.sample_img_path)
         self.assertIsNotNone(res)
 
+    def test_active_taxonomy_and_cold_shoulder_rejection(self):
+        from app.routes.images import ACTIVE_TAXONOMY
+
+        # Total 28 classes
+        total_classes = sum(len(opts) for opts in ACTIVE_TAXONOMY.values())
+        self.assertEqual(total_classes, 28)
+
+        # Verify active taxonomy values
+        self.assertIn("blouse", ACTIVE_TAXONOMY["garment_type"])
+        self.assertIn("v-neck", ACTIVE_TAXONOMY["neckline_type"])
+        self.assertIn("short-sleeve", ACTIVE_TAXONOMY["sleeve_length"])
+        self.assertIn("bell-sleeve", ACTIVE_TAXONOMY["sleeve_style"])
+
+        # Verify removed cold-shoulder-sleeve is NOT in taxonomy
+        all_labels = [label for head_opts in ACTIVE_TAXONOMY.values() for label in head_opts]
+        self.assertNotIn("cold-shoulder-sleeve", all_labels)
+        self.assertNotIn("cold_shoulder_sleeve", all_labels)
+
 
 if __name__ == "__main__":
     unittest.main()

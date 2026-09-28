@@ -130,6 +130,25 @@ def analyse_image(image_id):
     }), 200
 
 
+from datetime import datetime, timezone
+
+ACTIVE_TAXONOMY = {
+    "garment_type": ["blouse", "t-shirt", "crop-top"],
+    "neckline_type": [
+        "round-neck", "v-neck", "square-neck", "scoop-neck", "boat-neck",
+        "sweetheart-neck", "halter-neck", "high-neck", "collared-neck", "off-shoulder"
+    ],
+    "sleeve_length": [
+        "sleeveless", "cap-length", "short-sleeve", "elbow-length",
+        "three-quarter-sleeve", "long-sleeve"
+    ],
+    "sleeve_style": [
+        "none", "regular-sleeve", "puff-sleeve", "bell-sleeve", "bishop-sleeve",
+        "flutter-sleeve", "raglan-sleeve", "dolman-sleeve", "kimono-sleeve"
+    ]
+}
+
+
 # ── GET IMAGE DETAILS ─────────────────────────────────────────────────────────
 @images_bp.route("/<image_id>", methods=["GET"])
 @jwt_required()
@@ -149,12 +168,74 @@ def get_image(image_id):
         return jsonify({"error": "Unauthorized"}), 403
 
     return jsonify({
-        "image_id":          str(design_image.id),
-        "filename":          design_image.file_path,
-        "detected_features": design_image.detected_features,
-        "garment_attributes": getattr(design_image, "garment_attributes", {}),
-        "confidence_score":  design_image.confidence_score,
-        "uploaded_at":       str(design_image.uploaded_at)
+        "image_id":             str(design_image.id),
+        "filename":             design_image.file_path,
+        "detected_features":    design_image.detected_features,
+        "garment_attributes":   getattr(design_image, "garment_attributes", {}),
+        "confirmed_attributes": getattr(design_image, "confirmed_attributes", {}),
+        "confirmed_at":          str(design_image.confirmed_at) if getattr(design_image, "confirmed_at", None) else None,
+        "confidence_score":     design_image.confidence_score,
+        "uploaded_at":          str(design_image.uploaded_at)
+    }), 200
+
+
+# ── CONFIRM GARMENT ATTRIBUTES (MILESTONE M14) ──────────────────────────────
+@images_bp.route("/<image_id>/confirm-attributes", methods=["POST"])
+@jwt_required()
+def confirm_attributes(image_id):
+    current_user_id = get_jwt_identity()
+
+    image_id = image_id.strip("<>")
+    try:
+        design_image = DesignImage.objects(id=image_id).first()
+    except Exception:
+        return jsonify({"error": "Invalid or missing image_id"}), 400
+
+    if not design_image:
+        return jsonify({"error": "Image not found"}), 404
+
+    if str(design_image.user_id.id) != current_user_id:
+        return jsonify({"error": "Unauthorized"}), 403
+
+    data = request.get_json() or {}
+
+    required_heads = ["garment_type", "neckline_type", "sleeve_length", "sleeve_style"]
+    confirmed_data = {}
+
+    for head in required_heads:
+        val = data.get(head)
+        if not val or not isinstance(val, str):
+            return jsonify({"error": f"Missing or invalid attribute '{head}'"}), 400
+
+        val = val.strip()
+        if val not in ACTIVE_TAXONOMY[head]:
+            return jsonify({
+                "error": f"Invalid attribute value '{val}' for '{head}'. Must be one of the active 28-class taxonomy values."
+            }), 400
+
+        confirmed_data[head] = val
+
+    # Persist confirmed choices separately from raw AI model predictions
+    design_image.confirmed_attributes = confirmed_data
+    design_image.confirmed_at = datetime.now(timezone.utc)
+
+    # Sync into detected_features for downstream CAD/pattern engines
+    updated_features = dict(design_image.detected_features or {})
+    updated_features.update({
+        "garment_type": confirmed_data["garment_type"],
+        "neckline": confirmed_data["neckline_type"],
+        "sleeves": confirmed_data["sleeve_length"],
+        "sleeve_style": confirmed_data["sleeve_style"],
+    })
+    design_image.detected_features = updated_features
+    design_image.save()
+
+    return jsonify({
+        "message": "Garment attributes confirmed successfully",
+        "image_id": str(design_image.id),
+        "confirmed_attributes": confirmed_data,
+        "confirmed_at": str(design_image.confirmed_at),
+        "status": "confirmed"
     }), 200
 
 
