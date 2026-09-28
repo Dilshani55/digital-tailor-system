@@ -95,7 +95,7 @@ def analyse_image(image_id):
     try:
         from app.ai.yolo_detector import detect_features
         features, confidence = detect_features(filepath)
-    except ImportError:
+    except Exception:
         features = {
             "neckline":  "round neck",
             "sleeves":   "short sleeve",
@@ -105,8 +105,18 @@ def analyse_image(image_id):
         }
         confidence = 0.91
 
-    # 5. Update MongoDB record with detected features
+    # 4b. Run Multi-Task Classification (Milestone M13)
+    garment_attributes = {}
+    try:
+        from app.ai.multitask_classifier import predict_multitask_features
+        garment_attributes = predict_multitask_features(filepath)
+    except Exception as e:
+        if hasattr(current_app, "logger"):
+            current_app.logger.warning(f"Multi-task classification skipped/failed: {e}")
+
+    # 5. Update MongoDB record with detected features & multi-task attributes
     design_image.detected_features = features
+    design_image.garment_attributes = garment_attributes
     design_image.confidence_score  = confidence
     design_image.save()
 
@@ -114,6 +124,7 @@ def analyse_image(image_id):
         "message":           "Image analysed successfully",
         "image_id":          str(design_image.id),
         "detected_features": features,
+        "garment_attributes": garment_attributes,
         "confidence_score":  confidence,
         "status": "analysis complete — ready for pattern generation"
     }), 200
@@ -141,6 +152,7 @@ def get_image(image_id):
         "image_id":          str(design_image.id),
         "filename":          design_image.file_path,
         "detected_features": design_image.detected_features,
+        "garment_attributes": getattr(design_image, "garment_attributes", {}),
         "confidence_score":  design_image.confidence_score,
         "uploaded_at":       str(design_image.uploaded_at)
     }), 200

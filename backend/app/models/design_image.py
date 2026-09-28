@@ -8,5 +8,6 @@ class DesignImage(Document):
     user_id = ReferenceField(User, required=True)
     file_path = StringField(required=True)
     detected_features = DictField(default=dict)
+    garment_attributes = DictField(default=dict)
     confidence_score = FloatField(default=0.0)
     uploaded_at = DateTimeField(default=lambda: datetime.now(timezone.utc))
