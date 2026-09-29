@@ -225,6 +225,7 @@ def run_training():
         coverage_aware_sample=is_smoke,
         provenance_weights=config.get("provenance_weights"),
         image_size=config.get("image_size", 224),
+        augmentation=config.get("augmentation", "basic"),
     )
 
     val_dataset = MultiTaskDataset(
@@ -486,6 +487,7 @@ def run_training():
         "random_seed": seed,
         "loss": "focal" if args.focal_gamma > 0 else "class_weighted_cross_entropy",
         "focal_gamma": args.focal_gamma,
+        "augmentation": config.get("augmentation", "basic"),
         "config_path": args.config,
         "train_manifest_sha256": _sha256(args.train_manifest),
         "val_manifest_sha256": _sha256(args.val_manifest),

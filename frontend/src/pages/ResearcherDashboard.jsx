@@ -20,7 +20,9 @@ export default function ResearcherDashboard() {
       const res = await researchAPI.getMetrics();
       setMetrics(res.data);
     } catch (err) {
-      setError('Failed to load researcher metrics.');
+      setError(err.response?.status === 403
+        ? 'Study-wide research data is only available to researcher accounts. Ask the administrator to add your e-mail to RESEARCHER_EMAILS.'
+        : 'Failed to load researcher metrics.');
     } finally {
       setLoading(false);
     }
@@ -48,7 +50,7 @@ export default function ResearcherDashboard() {
       a.click();
       a.remove();
     })
-    .catch(() => alert('Failed to download CSV export.'));
+    .catch((e) => alert(e.response?.status === 403 ? 'Only researcher accounts can export study data.' : 'Failed to download CSV export.'));
   };
 
   if (loading) return <LoadingSpinner message="Querying study datasets..." />;

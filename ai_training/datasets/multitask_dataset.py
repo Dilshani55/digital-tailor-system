@@ -31,8 +31,21 @@ DEFAULT_PROVENANCE_WEIGHTS = {
 HEADS = ["garment_type", "neckline_type", "sleeve_length", "sleeve_style"]
 
 
-def get_default_transforms(image_size=224, is_train=True):
-    """Returns default torchvision transforms for 224x224 input."""
+def get_default_transforms(image_size=224, is_train=True, augmentation="basic"):
+    """
+    Returns torchvision transforms for the model input.
+    augmentation="extended" (training only) adds label-preserving variation: a mild random crop/scale
+    (>= 80 % of the garment crop kept, so neckline and sleeves stay visible) and +-8 degree rotation.
+    """
+    if is_train and augmentation == "extended":
+        return transforms.Compose([
+            transforms.RandomResizedCrop((image_size, image_size), scale=(0.8, 1.0), ratio=(0.85, 1.15)),
+            transforms.RandomHorizontalFlip(p=0.5),
+            transforms.RandomRotation(8),
+            transforms.ColorJitter(brightness=0.15, contrast=0.15, saturation=0.1),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        ])
     if is_train:
         return transforms.Compose([
             transforms.Resize((image_size, image_size)),
@@ -102,6 +115,7 @@ class MultiTaskDataset(Dataset):
         coverage_aware_sample: bool = False,
         provenance_weights: dict = None,
         image_size: int = 224,
+        augmentation: str = "basic",
     ):
         super().__init__()
         self.jsonl_path = jsonl_path
@@ -111,7 +125,7 @@ class MultiTaskDataset(Dataset):
         self.provenance_weights = provenance_weights or DEFAULT_PROVENANCE_WEIGHTS
 
         if transform is None:
-            self.transform = get_default_transforms(image_size, is_train)
+            self.transform = get_default_transforms(image_size, is_train, augmentation)
         else:
             self.transform = transform
 

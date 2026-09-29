@@ -145,6 +145,40 @@ class TestApp(unittest.TestCase):
         self.assertIsNone(bad.headers.get("Access-Control-Allow-Origin"))
 
 
+class TestResearcherOnlyData(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.app = create_app()
+        cls.app.config["TESTING"] = True
+        with cls.app.app_context():
+            cls.headers = {"Authorization": f"Bearer {create_access_token(identity='user-1')}"}
+
+    def test_study_wide_data_is_denied_by_default(self):
+        self.app.config["RESEARCHER_EMAILS"] = ""
+        for path in ("/api/research/metrics", "/api/research/export/csv"):
+            r = self.app.test_client().get(path, headers=self.headers)
+            self.assertEqual(r.status_code, 403, path)
+            self.assertEqual(r.get_json()["error_code"], "RESEARCHER_ONLY")
+
+    def test_only_listed_researcher_emails_pass(self):
+        from app.routes import research as rr
+        self.app.config["RESEARCHER_EMAILS"] = "Boss@Uni.edu, other@uni.edu"
+        with self.app.app_context(), patch.object(rr, "User") as U:
+            U.objects.return_value.first.return_value = MagicMock(email="boss@uni.edu")
+            self.assertTrue(rr._is_researcher("u1"))
+            U.objects.return_value.first.return_value = MagicMock(email="student@uni.edu")
+            self.assertFalse(rr._is_researcher("u2"))
+        self.app.config["RESEARCHER_EMAILS"] = ""
+
+    def test_participants_are_pseudonymised(self):
+        from app.routes import research as rr
+        u = MagicMock()
+        u.id = "abc123"
+        label = rr._pseudonym(u)
+        self.assertRegex(label, r"^P-[0-9a-f]{6}$")
+        self.assertEqual(label, rr._pseudonym(u))
+
+
 class TestSafeImageStorage(unittest.TestCase):
     def setUp(self):
         self.dir = tempfile.mkdtemp()

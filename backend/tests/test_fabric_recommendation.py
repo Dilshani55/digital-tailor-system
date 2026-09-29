@@ -149,3 +149,11 @@ class TestFeatureLabelNormalisation(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestNoInventedCitations(unittest.TestCase):
+    def test_no_invented_citations(self):
+        from app.logic.fabric_recommendation import FABRIC_KNOWLEDGE_BASE
+        for fid, fab in FABRIC_KNOWLEDGE_BASE.items():
+            self.assertNotIn("Aldrich", fab["reference_source"], fid)
+            self.assertNotIn("Handbook", fab["reference_source"], fid)

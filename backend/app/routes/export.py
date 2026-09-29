@@ -10,7 +10,6 @@ from app.models.user import User
 from app.logic.nesting_algorithm import estimate_fabric, NestingError
 from app.logic.pdf_generator import PDFGenerator
 from app.logic.parametric_engine import ParametricEngine
-from app.logic.ease_rules import apply_ease
 from app.logic import measurement_schema as ms
 
 export_bp = Blueprint("export", __name__)

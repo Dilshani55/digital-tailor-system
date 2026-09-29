@@ -1,6 +1,7 @@
 import csv
+import hashlib
 import io
-from flask import Blueprint, request, jsonify, Response
+from flask import Blueprint, request, jsonify, Response, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from app.models.user import User
 from app.models.pattern_result import PatternResult
@@ -10,6 +11,30 @@ from app.logic.research_metrics import (
 )
 
 research_bp = Blueprint("research", __name__)
+
+
+def _researcher_emails():
+    raw = current_app.config.get("RESEARCHER_EMAILS") or ""
+    return {e.strip().lower() for e in raw.split(",") if e.strip()}
+
+
+def _is_researcher(user_id):
+    """Only accounts listed in RESEARCHER_EMAILS may read study-wide data (default: nobody)."""
+    allowed = _researcher_emails()
+    if not allowed:
+        return False
+    user = User.objects(id=user_id).first()
+    return bool(user and user.email.lower() in allowed)
+
+
+def _pseudonym(user):
+    """Stable anonymous label for a participant - names and e-mails never leave the server."""
+    return "P-" + hashlib.sha256(str(user.id).encode("utf-8")).hexdigest()[:6]
+
+
+def _forbidden():
+    return jsonify({"error": "Study-wide research data is only available to researcher accounts.",
+                    "error_code": "RESEARCHER_ONLY"}), 403
 
 
 def _trusted(record, field):
@@ -85,6 +110,8 @@ def submit_feedback():
 @research_bp.route("/metrics", methods=["GET"])
 @jwt_required()
 def get_research_metrics():
+    if not _is_researcher(get_jwt_identity()):
+        return _forbidden()
     records = list(ResearchRecord.objects.all())
     model_eval = load_model_evaluation()
 
@@ -117,7 +144,7 @@ def get_research_metrics():
     for r in records:
         if r.feedback_comment:
             feedback_list.append({
-                "participant": r.user_id.full_name,
+                "participant": _pseudonym(r.user_id),
                 "score": r.feedback_score,
                 "comment": r.feedback_comment,
                 "date": r.created_at.strftime("%Y-%m-%d")
@@ -154,6 +181,8 @@ def get_research_metrics():
 @research_bp.route("/export/csv", methods=["GET"])
 @jwt_required()
 def export_research_csv():
+    if not _is_researcher(get_jwt_identity()):
+        return _forbidden()
     records = ResearchRecord.objects.all()
 
     # Create an in-memory string buffer for CSV
@@ -162,7 +191,7 @@ def export_research_csv():
 
     # Blank cell == not measured (or a legacy record whose value cannot be trusted).
     cw.writerow([
-        "Record ID", "Participant Name", "Garment Type", "Baseline Yardage (m)",
+        "Record ID", "Participant (anonymous id)", "Garment Type", "Baseline Yardage (m)",
         "Optimized Yardage (m)", "Fabric Savings (m)", "Layout Efficiency (%)",
         "AI Feature Correction Rate (%)", "Processing Time (s)",
         "Feedback Usability Score", "Feedback Comment", "Date Created"
@@ -176,7 +205,7 @@ def export_research_csv():
         proc, gen = _trusted(r, "processing_time_sec"), _trusted(r, "pattern_generation_time_sec")
         cw.writerow([
             str(r.id),
-            r.user_id.full_name,
+            _pseudonym(r.user_id),
             garment,
             cell(_trusted(r, "baseline_yardage_m")),
             cell(_trusted(r, "optimized_yardage_m")),

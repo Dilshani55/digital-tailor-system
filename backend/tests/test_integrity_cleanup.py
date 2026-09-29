@@ -229,7 +229,8 @@ class TestResearchApiHasNoInventedMetrics(AppTestCase):
         with patch("app.routes.research.ResearchRecord") as rr, \
              patch("app.routes.research.load_model_evaluation", return_value=model_eval):
             rr.objects.all.return_value = records
-            resp = self.app.test_client().get("/api/research/metrics", headers=self.headers)
+            with patch("app.routes.research._is_researcher", return_value=True):
+                resp = self.app.test_client().get("/api/research/metrics", headers=self.headers)
         self.assertEqual(resp.status_code, 200)
         return resp.get_json()
 
@@ -274,7 +275,8 @@ class TestResearchApiHasNoInventedMetrics(AppTestCase):
     def test_csv_export_blank_for_unmeasured(self):
         with patch("app.routes.research.ResearchRecord") as rr:
             rr.objects.all.return_value = [_record(1, baseline_yardage_m=2.5, layout_efficiency=72.0)]
-            resp = self.app.test_client().get("/api/research/export/csv", headers=self.headers)
+            with patch("app.routes.research._is_researcher", return_value=True):
+                resp = self.app.test_client().get("/api/research/export/csv", headers=self.headers)
         text = resp.get_data(as_text=True)
         self.assertNotIn("2.5", text.splitlines()[1])
         self.assertNotIn("72.0", text.splitlines()[1])

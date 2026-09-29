@@ -20,6 +20,8 @@ class Config:
     ).split(",") if o.strip()]
 
     GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
+    # Comma-separated e-mails allowed to open the researcher dashboard / CSV export (default: nobody)
+    RESEARCHER_EMAILS = os.environ.get("RESEARCHER_EMAILS", "")
 
     # Folders
     BASE_DIR = os.path.abspath(os.path.dirname(__file__))

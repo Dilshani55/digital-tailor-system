@@ -35,7 +35,7 @@ FABRIC_KNOWLEDGE_BASE = {
             "price_note": "Price varies by supplier"
         },
         "recommendation_rules": "Prioritised for structured designs (crop-tops, tailored blouses) requiring sharp seam definition and zero stretch.",
-        "reference_source": "Winifred Aldrich Fabric Selection Guide & Textile Institute Handbook (Woven Technology)",
+        "reference_source": "Author-compiled knowledge base of general textile properties (not taken from a single published standard)",
         "image_license": "Public Domain / CC0 Open Asset (Studio High-Res Macro Scan)"
     },
     "linen-blend": {
@@ -67,7 +67,7 @@ FABRIC_KNOWLEDGE_BASE = {
             "price_note": "Price varies by supplier"
         },
         "recommendation_rules": "Highly suitable for warm-weather tops, relaxed blouses, and structured crop-tops seeking breathable elegance.",
-        "reference_source": "Winifred Aldrich Fabric Selection Guide & Tropical Garment Engineering Standards",
+        "reference_source": "Author-compiled knowledge base of general textile properties (not taken from a single published standard)",
         "image_license": "Public Domain / CC0 Open Asset (Studio High-Res Macro Scan)"
     },
     "rayon": {
@@ -99,7 +99,7 @@ FABRIC_KNOWLEDGE_BASE = {
             "price_note": "Price varies by supplier"
         },
         "recommendation_rules": "Best Match for flowing blouses, flared sleeves, and relaxed draped garments requiring fluid movement.",
-        "reference_source": "Winifred Aldrich Metric Pattern Cutting for Women's Wear & Textile Institute Handbook",
+        "reference_source": "Author-compiled knowledge base of general textile properties (not taken from a single published standard)",
         "image_license": "Public Domain / CC0 Open Asset (Studio High-Res Macro Scan)"
     },
     "cotton-jersey-knit": {
@@ -131,7 +131,7 @@ FABRIC_KNOWLEDGE_BASE = {
             "price_note": "Price varies by supplier"
         },
         "recommendation_rules": "Best Match for T-shirts, stretch-fitting tops, and designs requiring high elasticity.",
-        "reference_source": "Winifred Aldrich Pattern Cutting for Knitted Fabrics & Textile Institute Standards",
+        "reference_source": "Author-compiled knowledge base of general textile properties (not taken from a single published standard)",
         "image_license": "Public Domain / CC0 Open Asset (Studio High-Res Macro Scan)"
     },
     "silk-chiffon": {
@@ -163,7 +163,7 @@ FABRIC_KNOWLEDGE_BASE = {
             "price_note": "Price varies by supplier"
         },
         "recommendation_rules": "Recommended for delicate draped blouses, butterfly/cape sleeves, and layered translucent designs.",
-        "reference_source": "Winifred Aldrich Couture Fabrics Guide & Haute Couture Textile Handbook",
+        "reference_source": "Author-compiled knowledge base of general textile properties (not taken from a single published standard)",
         "image_license": "Public Domain / CC0 Open Asset (Studio High-Res Macro Scan)"
     },
     "cotton-twill": {
@@ -195,7 +195,7 @@ FABRIC_KNOWLEDGE_BASE = {
             "price_note": "Price varies by supplier"
         },
         "recommendation_rules": "Best suited for rigid crop-tops, corsets, and utility structures needing maximum seam stability.",
-        "reference_source": "Winifred Aldrich Heavywear Pattern Cutting & Industrial Denim Manual",
+        "reference_source": "Author-compiled knowledge base of general textile properties (not taken from a single published standard)",
         "image_license": "Public Domain / CC0 Open Asset (Studio High-Res Macro Scan)"
     },
     "satin": {
@@ -227,7 +227,7 @@ FABRIC_KNOWLEDGE_BASE = {
             "price_note": "Price varies by supplier"
         },
         "recommendation_rules": "Recommended for cowl necklines, party tops, and formal glossy blouses.",
-        "reference_source": "Winifred Aldrich Evening Wear & Formal Fabric Selection Guide",
+        "reference_source": "Author-compiled knowledge base of general textile properties (not taken from a single published standard)",
         "image_license": "Public Domain / CC0 Open Asset (Studio High-Res Macro Scan)"
     },
     "crepe-de-chine": {
@@ -259,7 +259,7 @@ FABRIC_KNOWLEDGE_BASE = {
             "price_note": "Price varies by supplier"
         },
         "recommendation_rules": "Highly suitable for formal blouses, peplum styles, and elegant office wear.",
-        "reference_source": "Winifred Aldrich Tailored Blouse Manual & Textile Institute Standards",
+        "reference_source": "Author-compiled knowledge base of general textile properties (not taken from a single published standard)",
         "image_license": "Public Domain / CC0 Open Asset (Studio High-Res Macro Scan)"
     },
     "georgette": {
@@ -291,7 +291,7 @@ FABRIC_KNOWLEDGE_BASE = {
             "price_note": "Price varies by supplier"
         },
         "recommendation_rules": "Recommended for voluminous sleeves (bishop, flared, butterfly) and airy layered blouses.",
-        "reference_source": "Winifred Aldrich Ladies Garment Drafting & Tropical Fabric Science",
+        "reference_source": "Author-compiled knowledge base of general textile properties (not taken from a single published standard)",
         "image_license": "Public Domain / CC0 Open Asset (Studio High-Res Macro Scan)"
     },
     "french-terry-knit": {
@@ -323,7 +323,7 @@ FABRIC_KNOWLEDGE_BASE = {
             "price_note": "Price varies by supplier"
         },
         "recommendation_rules": "Recommended for heavy stretch tops, casual crop-hoodies, and comfortable activewear.",
-        "reference_source": "Winifred Aldrich Sportswear Pattern Cutting & Knitwear Technology Handbook",
+        "reference_source": "Author-compiled knowledge base of general textile properties (not taken from a single published standard)",
         "image_license": "Public Domain / CC0 Open Asset (Studio High-Res Macro Scan)"
     }
 }

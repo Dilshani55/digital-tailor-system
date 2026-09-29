@@ -1,107 +1,87 @@
-# AI-Assisted Web-Based Digital Tailor System for Custom Clothing Fit and Fabric Waste Reduction
+# AI-Assisted Digital Tailor System
 
-**Student:** D N M Vitharana | Index: 28404  
-**Supervisor:** Mr. Anton Jayakody  
-**Programme:** BSc. (Hons) in Software Engineering — NSBM Green University  
+Final-year research project — **D N M Vitharana (28404)**, BSc (Hons) Software Engineering, NSBM Green University. Supervisor: Mr. Anton Jayakody.
 
----
+A web system that turns a garment photo and a person's body measurements into a **printable, full-size (1:1) sewing pattern** for women's **blouses, T-shirts and crop-tops**, together with a fabric estimate.
 
-## 📌 Overview
+## What it does
 
-This research project aims to build a web-based system that uses Artificial Intelligence to automate the process of generating custom garment patterns and calculating the exact amount of fabric needed — replacing traditional manual tailoring methods.
-
-Today, custom garment creation relies heavily on manual body measurement, manual fabric estimations, and paper drafting. This process depends heavily on tailor experience, leads to fabric over-cut and waste, and is inaccessible to non-expert users who discover garment designs online. This system solves all three problems by automating garment feature extraction, 2D drafting block generation, fabric nesting optimization, and downloadable PDF pattern generation.
-
----
-
-## ⚙️ System Architecture & Workflow
-
-1. **Garment Feature Extraction (Vision AI)**
-   - Upload a single front-view photo of a lady's casual garment (blouses, T-shirts, crop tops).
-   - **YOLOv8** model (trained on DeepFashion2 dataset) detects structural features: neckline type, sleeve shape, dart locations, seam placements.
-
-2. **Parametric Pattern Drafting**
-   - Inputs: Detected features + user body measurements (bust, waist, hip, height).
-   - Python parametric algorithm generates 2D drafting blocks according to **Winifred Aldrich's Metric Pattern Cutting** standards.
-
-3. **Fabric Waste Minimization (2D Nesting)**
-   - 2D nesting algorithm arranges pattern pieces on a virtual fabric roll/rectangle.
-   - Computes minimum required yardage to minimize textile off-cuts.
-
-4. **PDF Pattern & Guide Generation**
-   - **ReportLab** generates a professional, print-ready PDF drafting guide and pattern for tailor or DIY assembly.
-
----
-
-## 🛠 Tech Stack
-
-- **Computer Vision / AI**: YOLOv8, DeepFashion2 Dataset
-- **Drafting & Geometry Engine**: Python Parametric Algorithm (Winifred Aldrich Metric Pattern Standards)
-- **Nesting Engine**: 2D Combinatorial Nesting Algorithm
-- **PDF Generation**: ReportLab
-- **Frontend**: React
-- **Backend API**: Flask (Python)
-- **Database**: MongoDB
-
----
-
-## 🎯 Research Scope & Significance
-
-- **Scope**: Ladies' casual garments (blouses, T-shirts, crop tops) from a single front-view photo.
-- **Novelty**: Integrates Computer Vision (feature detection), Applied Fashion Geometry (Aldrich parametric drafting), and Combinatorial Optimization (fabric nesting) into a single end-to-end web pipeline.
-- **Environmental Impact**: Reduces fabric off-cut waste at the custom tailoring stage, promoting sustainable practices in fashion software engineering.
-
----
-
-## 🚀 How to Run the Project
-
-### Prerequisites
-- **Python** 3.10+
-- **Node.js** (v18+) & **npm**
-- **MongoDB** running locally (`mongodb://localhost:27017`) or a MongoDB Atlas URI
-
----
-
-### Step 1: Start MongoDB
-Ensure MongoDB is running locally:
-```bash
-# Windows (if MongoDB service is installed):
-net start MongoDB
-
-# Or start manually:
-mongod
+```
+Garment photo ─► AI suggests the design ─► YOU review and confirm it ─► body measurements (validated)
+      ─► fabric & fit ─► parametric pattern drafting (deterministic maths, not AI)
+      ─► seam allowances + notches ─► automatic geometry validation
+      ─► polygon nesting on 90 / 114 / 150 cm fabric ─► fabric quantity
+      ─► printable 1:1 tiled A4 PDF ─► saved in your pattern library
 ```
 
----
+* **AI part.** One image classifier (YOLOv8n-cls backbone, four output heads: garment type, neckline, sleeve length, sleeve style). Its answers are only *suggestions*; the user must confirm or correct them, and only the confirmed design reaches the pattern engine.
+* **Pattern part.** Pure, deterministic geometry (`backend/app/logic/drafting/`). No second AI model invents the pattern. Every constant that is not derived from your measurements is listed in `assumptions.py` and marked as a *project assumption*.
+* **Fabric part.** Fabric recommendation is rule-based and explains itself. The fabric quantity comes from laying the real cutting-line polygons on the cloth (Bottom-Left-Fill heuristic).
 
-### Step 2: Run the Flask Backend API (Port 5000)
-Open a terminal in the project root:
-```bash
+### Supported designs (anything else is rejected with a clear message)
+
+| Garment | Necklines | Sleeves | Construction |
+|---|---|---|---|
+| Blouse | round, V, square | regular short, regular long | woven bodice |
+| T-shirt | round, V | regular short, regular long | knit bodice |
+| Crop-top | round, V, square | sleeveless, regular short | woven or knit (chosen by fabric) |
+
+### Honest status
+
+The pattern is **mathematically generated and geometry-validated**. It has **not** been fit-tested on bodies or checked by a professional pattern-maker — make a test garment (muslin) before cutting good fabric. See [docs/LIMITATIONS_AND_CLAIMS.md](docs/LIMITATIONS_AND_CLAIMS.md) for exactly what can and cannot be claimed.
+
+## Quick start (Windows, first time)
+
+Requirements: **Python 3.10+** (developed on 3.14), **Node.js 18+**, **MongoDB** running on `localhost:27017`, and Google Chrome (only for the browser test).
+
+```powershell
+# 1. Backend
 cd backend
-
-# Activate Virtual Environment
-# Windows:
+python -m venv venv
 venv\Scripts\activate
-# Mac/Linux:
-# source venv/bin/activate
+pip install -r requirements.txt            # add: pip install -r requirements-dev.txt  for the PDF tests
+copy .env.example .env                      # then edit .env: set SECRET_KEY and JWT_SECRET_KEY
+python run.py                               # API on http://127.0.0.1:5000
 
-# Run Flask backend
-python run.py
-```
-> The API server will start at `http://localhost:5000`
-
----
-
-### Step 3: Run the React Frontend App (Port 3000)
-Open a second terminal in the project root:
-```bash
+# 2. Frontend (second terminal)
 cd frontend
-
-# Install dependencies (first time only)
 npm install
-
-# Start Vite dev server
-npm run dev
+npm run dev                                 # http://localhost:3000
 ```
-> Open your browser and navigate to `http://localhost:3000`
 
+The trained classifier is **not stored in Git** (large file). Put the deployed checkpoint at
+`backend/app/ai/models/garment_multitask_yolov8_best.pt` and the pretrained backbone at
+`backend/app/ai/models/yolov8n-cls.pt`; the checksum of the deployed model is in [docs/AI_EVIDENCE.md](docs/AI_EVIDENCE.md).
+Without them the app still works in "choose the design manually" mode.
+
+Configuration (all optional except the two secrets) is described in `backend/.env.example`:
+`SECRET_KEY`, `JWT_SECRET_KEY`, `MONGO_URI`, `CORS_ORIGINS`, `GOOGLE_CLIENT_ID` (enables Google sign-in), `RESEARCHER_EMAILS` (who may open the researcher dashboard).
+
+## Tests
+
+```powershell
+cd backend;  venv\Scripts\python -m unittest discover -s tests -t .      # backend
+cd frontend; npm test                                                    # frontend (vitest)
+cd frontend; npm run build                                               # production build
+# repository root:
+$env:PYTHONPATH="."; backend\venv\Scripts\python -m unittest discover -s ai_training/tests   # AI pipeline
+cd frontend; npm run e2e                                                 # real browser + backend + MongoDB
+```
+
+Details, current counts and the E2E set-up are in [docs/TESTING.md](docs/TESTING.md).
+
+## Repository map
+
+| Path | Contents |
+|---|---|
+| `backend/app/ai/` | classifier inference (`multitask_classifier.py`), legacy CV fallback |
+| `backend/app/logic/` | feature schema (scope), measurement schema, `drafting/` engine (blocks, transformations, seam allowance, validation), fabric recommendation, nesting, PDF |
+| `backend/app/routes/`, `models/` | REST API and MongoDB models |
+| `backend/tools/` | `generate_evidence.py` – reproducible pattern / nesting / PDF evidence |
+| `frontend/src/` | React wizard, pattern preview, library, dashboards; `e2e/` Playwright test |
+| `ai_training/` | dataset pipeline, training, evaluation, dataset audit, deployment acceptance gate |
+| `docs/` | API, architecture, pattern engine, AI evidence, testing, limitations and claims |
+
+## Documentation
+
+[Architecture](docs/ARCHITECTURE.md) · [Pattern engine](docs/PATTERN_ENGINE.md) · [API](docs/API.md) · [AI evidence](docs/AI_EVIDENCE.md) · [Testing](docs/TESTING.md) · [Limitations and thesis-safe claims](docs/LIMITATIONS_AND_CLAIMS.md) · [AI development history](docs/ai_history/)
