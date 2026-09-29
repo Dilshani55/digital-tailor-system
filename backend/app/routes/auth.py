@@ -26,6 +26,15 @@ def verify_google_credential(credential, client_id):
         return None
     return claims
 
+def _find_user(*emails):
+    """First user matching any of the given e-mails (lower-case first; older accounts may be mixed case)."""
+    for e in emails:
+        user = User.objects(email=e).first()
+        if user:
+            return user
+    return None
+
+
 # ── REGISTER ──────────────────────────────────────────────────────────────────
 @auth_bp.route("/register", methods=["POST"])
 def register():
@@ -42,8 +51,9 @@ def register():
     if len(str(data["password"])) < 8:
         return jsonify({"error": "Password must be at least 8 characters."}), 400
 
-    # 2. Check if email already exists
-    if User.objects(email=data["email"]).first():
+    # 2. Check if email already exists (e-mail addresses are compared case-insensitively)
+    email = str(data["email"]).strip().lower()
+    if _find_user(email):
         return jsonify({"error": "Email already registered"}), 409
 
     # 3. Hash the password
@@ -54,8 +64,8 @@ def register():
 
     # 4. Save new user to MongoDB
     user = User(
-        full_name = data["full_name"],
-        email     = data["email"],
+        full_name = str(data["full_name"]).strip(),
+        email     = email,
         password  = hashed
     )
     user.save()
@@ -79,7 +89,7 @@ def login():
         return jsonify({"error": "Email and password are required"}), 400
 
     # 2. Find user by email
-    user = User.objects(email=data["email"]).first()
+    user = _find_user(str(data["email"]).strip().lower(), str(data["email"]).strip())
     if not user:
         return jsonify({"error": "Invalid email or password"}), 401
 

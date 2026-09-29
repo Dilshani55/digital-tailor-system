@@ -11,11 +11,22 @@ const MEAS = {
   back_waist_length_cm: 40, armhole_depth_cm: 20, garment_length_cm: 65, bicep_cm: 28, sleeve_cm: 55, wrist_cm: 16,
 };
 
+// Set E2E_SHOT_DIR to save a full-page screenshot of every wizard step (visual evidence);
+// set E2E_VIEWPORT=390x844 to run the same flow at phone size.
+const [VW, VH] = (process.env.E2E_VIEWPORT || '').split('x').map(Number);
+if (VW && VH) test.use({ viewport: { width: VW, height: VH } });
+const shotter = (page) => async (name) => {
+  if (!process.env.E2E_SHOT_DIR) return;
+  fs.mkdirSync(process.env.E2E_SHOT_DIR, { recursive: true });
+  await page.screenshot({ path: path.join(process.env.E2E_SHOT_DIR, `${name}.png`), fullPage: true });
+};
+
 test('register -> upload -> AI review -> measurements -> fabric -> pattern -> estimate -> PDF -> history', async ({ page }) => {
   const email = `e2e_${Date.now()}@example.test`;
   const password = 'E2e-Passw0rd!';
   const steps = [];
   const mark = (s) => { steps.push(s); };
+  const shot = shotter(page);
 
   // 1. register through the UI
   await page.goto('/auth');
@@ -36,10 +47,12 @@ test('register -> upload -> AI review -> measurements -> fabric -> pattern -> es
   // 2. upload a real garment photo and let the real classifier analyse it
   await page.goto('/upload');
   await page.getByTestId('image-input').setInputFiles(IMAGE);
+  await shot('01-upload');
   await page.getByRole('button', { name: 'Upload and analyse' }).click();
   await expect(page.getByRole('heading', { name: 'Review the AI suggestion' })).toBeVisible({ timeout: 180_000 });
   await expect(page.getByTestId('head-card-garment_type')).toBeVisible();
   await expect(page.getByTestId('confidence-tag-garment_type')).toContainText('%');
+  await shot('02-ai-review');
   mark('AI analysis returned 4 head predictions with confidences');
 
   // 3. edit the AI answer to a supported design and confirm it
@@ -53,13 +66,16 @@ test('register -> upload -> AI review -> measurements -> fabric -> pattern -> es
   mark('design edited, validated as in-scope and confirmed');
 
   // 4. an out-of-range measurement is rejected inline, then correct values are saved
+  await shot('03-measurements-empty');
   await page.locator('#meas-bust_cm').fill('5');
   await page.getByRole('button', { name: 'Save and continue' }).click();
   await expect(page.getByTestId('error-bust_cm')).toContainText(/plausible range/);
+  await shot('03b-measurement-inline-error');
   for (const [k, v] of Object.entries(MEAS)) await page.locator(`#meas-${k}`).fill(String(v));
   await page.getByLabel('Customer name').fill('E2E Customer');
   await page.getByRole('button', { name: 'Save and continue' }).click();
   await expect(page.getByRole('heading', { name: 'Fabric and fit' })).toBeVisible();
+  await shot('04-fabric-and-fit');
   mark('measurements validated (inline error shown) and saved');
 
   // 5. recommended fabric with explanation, then generate
@@ -69,6 +85,7 @@ test('register -> upload -> AI review -> measurements -> fabric -> pattern -> es
   await expect(page.getByText('Geometry validation passed')).toBeVisible();
   expect(await page.locator('[data-testid^="cutting-line-"]').count()).toBeGreaterThanOrEqual(3);
   expect(await page.locator('[data-testid^="notch-"]').count()).toBeGreaterThanOrEqual(3);
+  await shot('05-pattern-preview');
   mark('pattern generated, validated, SVG shows cutting lines + notches');
 
   // 6. fabric estimate for each supported width
@@ -80,12 +97,14 @@ test('register -> upload -> AI review -> measurements -> fabric -> pattern -> es
     await expect(page.getByTestId('nesting-layout')).toContainText(`${w} cm wide`, { timeout: 60_000 });
     lengths[w] = await page.getByTestId('estimate-results').innerText();
   }
+  await shot('06-fabric-estimate');
   mark(`estimates: ${JSON.stringify(lengths).replace(/\s+/g, ' ')}`);
 
   // 7. printable PDF
   await page.getByRole('button', { name: 'Continue to PDF export' }).click();
   await page.getByRole('button', { name: 'Create printable PDF' }).click();
   await expect(page.getByTestId('pdf-ready')).toBeVisible({ timeout: 120_000 });
+  await shot('07-pdf-ready');
   const [download] = await Promise.all([
     page.waitForEvent('download'),
     page.getByRole('button', { name: 'Download PDF' }).click(),
@@ -107,6 +126,7 @@ test('register -> upload -> AI review -> measurements -> fabric -> pattern -> es
   await page.getByRole('button', { name: 'View pattern' }).first().click();
   await expect(page.getByRole('heading', { name: /Blouse pattern/ })).toBeVisible();
   await expect(page.getByTestId('pattern-preview')).toBeVisible();
+  await shot('08-saved-pattern');
   mark('saved pattern re-opened from the library');
 
   console.log('E2E STEPS PASSED:\n - ' + steps.join('\n - '));
