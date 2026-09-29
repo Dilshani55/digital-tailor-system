@@ -58,12 +58,12 @@ export default function PredictionReview({
   const lowConfidenceHeads = garmentAttributes?.low_confidence_heads || [];
   const hasPredictions = Boolean(garmentAttributes && Object.keys(predictions).length > 0);
 
-  // Initial state derived from confirmed values > raw predictions > defaults
+  // Initial state derived from confirmed values > raw predictions > empty strings for manual mode
   const [selections, setSelections] = useState({
-    garment_type: confirmedAttributes?.garment_type || predictions?.garment_type?.label || 'blouse',
-    neckline_type: confirmedAttributes?.neckline_type || predictions?.neckline_type?.label || 'round-neck',
-    sleeve_length: confirmedAttributes?.sleeve_length || predictions?.sleeve_length?.label || 'short-sleeve',
-    sleeve_style: confirmedAttributes?.sleeve_style || predictions?.sleeve_style?.label || 'regular-sleeve',
+    garment_type: confirmedAttributes?.garment_type || predictions?.garment_type?.label || '',
+    neckline_type: confirmedAttributes?.neckline_type || predictions?.neckline_type?.label || '',
+    sleeve_length: confirmedAttributes?.sleeve_length || predictions?.sleeve_length?.label || '',
+    sleeve_style: confirmedAttributes?.sleeve_style || predictions?.sleeve_style?.label || '',
   });
 
   const [isEditing, setIsEditing] = useState(!confirmedAttributes || Object.keys(confirmedAttributes).length === 0);
@@ -71,18 +71,25 @@ export default function PredictionReview({
   useEffect(() => {
     if (confirmedAttributes && Object.keys(confirmedAttributes).length > 0) {
       setSelections({
-        garment_type: confirmedAttributes.garment_type,
-        neckline_type: confirmedAttributes.neckline_type,
-        sleeve_length: confirmedAttributes.sleeve_length,
-        sleeve_style: confirmedAttributes.sleeve_style,
+        garment_type: confirmedAttributes.garment_type || '',
+        neckline_type: confirmedAttributes.neckline_type || '',
+        sleeve_length: confirmedAttributes.sleeve_length || '',
+        sleeve_style: confirmedAttributes.sleeve_style || '',
       });
       setIsEditing(false);
     } else if (hasPredictions) {
       setSelections({
-        garment_type: predictions.garment_type?.label || 'blouse',
-        neckline_type: predictions.neckline_type?.label || 'round-neck',
-        sleeve_length: predictions.sleeve_length?.label || 'short-sleeve',
-        sleeve_style: predictions.sleeve_style?.label || 'regular-sleeve',
+        garment_type: predictions.garment_type?.label || '',
+        neckline_type: predictions.neckline_type?.label || '',
+        sleeve_length: predictions.sleeve_length?.label || '',
+        sleeve_style: predictions.sleeve_style?.label || '',
+      });
+    } else {
+      setSelections({
+        garment_type: '',
+        neckline_type: '',
+        sleeve_length: '',
+        sleeve_style: '',
       });
     }
   }, [garmentAttributes, confirmedAttributes]);

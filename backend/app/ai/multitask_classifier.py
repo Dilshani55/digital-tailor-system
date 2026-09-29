@@ -37,8 +37,22 @@ DEFAULT_CONFIDENCE_THRESHOLDS = {
     "sleeve_style": 0.40,
 }
 
-DEFAULT_MODEL_PATH = os.path.join(
+DEPLOYED_MODEL_PATH = os.path.join(
     os.path.dirname(__file__), "models", "garment_multitask_yolov8_best.pt"
+)
+
+M14D_CANDIDATE_MODEL_PATH = os.path.abspath(os.path.join(
+    os.path.dirname(__file__),
+    "..", "..", "..",
+    "ai_training", "data", "training_runs", "m14d_fresh", "exp_b_focal", "best.pt",
+))
+
+# Prefer an explicitly deployed checkpoint. The packaged M14D validation-selected
+# checkpoint keeps the demo usable when no deployment copy has been created yet.
+DEFAULT_MODEL_PATH = (
+    DEPLOYED_MODEL_PATH
+    if os.path.exists(DEPLOYED_MODEL_PATH)
+    else M14D_CANDIDATE_MODEL_PATH
 )
 
 DEFAULT_BACKBONE_PATH = os.path.join(
@@ -100,6 +114,7 @@ class YOLOv8MultiTaskClassifier(nn.Module):
 # Thread-safe Singleton Container
 _model_instance = None
 _model_metadata = None
+_model_cache_key = None
 _model_lock = threading.Lock()
 
 
@@ -107,10 +122,11 @@ def get_multitask_classifier(model_path: str = None, backbone_path: str = None):
     """
     Returns cached model singleton and metadata. Loads model once thread-safely.
     """
-    global _model_instance, _model_metadata
+    global _model_instance, _model_metadata, _model_cache_key
 
-    target_model_path = model_path or DEFAULT_MODEL_PATH
-    target_backbone_path = backbone_path or DEFAULT_BACKBONE_PATH
+    target_model_path = os.path.abspath(model_path or DEFAULT_MODEL_PATH)
+    target_backbone_path = os.path.abspath(backbone_path or DEFAULT_BACKBONE_PATH)
+    cache_key = (target_model_path, target_backbone_path)
 
     if not os.path.exists(target_model_path):
         raise MultiTaskModelError(
@@ -118,7 +134,7 @@ def get_multitask_classifier(model_path: str = None, backbone_path: str = None):
         )
 
     with _model_lock:
-        if _model_instance is None:
+        if _model_instance is None or _model_cache_key != cache_key:
             t0 = time.perf_counter()
             try:
                 ckpt = torch.load(target_model_path, map_location="cpu", weights_only=False)
@@ -127,14 +143,30 @@ def get_multitask_classifier(model_path: str = None, backbone_path: str = None):
                     f"Failed to load checkpoint file at {target_model_path}: {e}"
                 )
 
-            required_keys = ["model_state_dict", "class_to_idx", "idx_to_class", "config"]
+            required_keys = ["model_state_dict", "class_to_idx", "idx_to_class"]
             for k in required_keys:
                 if k not in ckpt:
                     raise MultiTaskModelError(
                         f"Checkpoint at {target_model_path} missing required key '{k}'"
                     )
 
-            head_dims = ckpt["config"].get("head_dims", DEFAULT_HEAD_DIMS)
+            config = ckpt.get("config") or {}
+            head_dims = (
+                ckpt.get("head_dimensions")
+                or config.get("head_dims")
+                or DEFAULT_HEAD_DIMS
+            )
+
+            if set(head_dims) != set(HEADS):
+                raise MultiTaskModelError(
+                    f"Checkpoint at {target_model_path} has invalid head dimensions: {head_dims}"
+                )
+            for head in HEADS:
+                expected = int(head_dims[head])
+                if len(ckpt["class_to_idx"].get(head, {})) != expected:
+                    raise MultiTaskModelError(
+                        f"Checkpoint taxonomy for '{head}' does not match head size {expected}"
+                    )
 
             if not os.path.exists(target_backbone_path):
                 # Fallback check under ai_training/data/
@@ -161,25 +193,28 @@ def get_multitask_classifier(model_path: str = None, backbone_path: str = None):
             load_time_ms = round((time.perf_counter() - t0) * 1000, 2)
             _model_instance = model
             _model_metadata = {
-                "model_version": "YOLOv8MultiTaskClassifier_v1.0",
+                "model_version": "YOLOv8MultiTaskClassifier_m14d",
                 "load_time_ms": load_time_ms,
                 "class_to_idx": ckpt["class_to_idx"],
                 "idx_to_class": ckpt["idx_to_class"],
                 "head_dims": head_dims,
                 "epoch": ckpt.get("epoch", None),
-                "selection_score": ckpt.get("selection_score", None),
+                "selection_score": ckpt.get("selection_score", ckpt.get("val_macro_f1")),
+                "loss_type": ckpt.get("loss_type"),
                 "model_path": target_model_path,
             }
+            _model_cache_key = cache_key
 
     return _model_instance, _model_metadata
 
 
 def reset_multitask_classifier_singleton():
     """Resets singleton state for testing purposes."""
-    global _model_instance, _model_metadata
+    global _model_instance, _model_metadata, _model_cache_key
     with _model_lock:
         _model_instance = None
         _model_metadata = None
+        _model_cache_key = None
 
 
 def preprocess_image_crop(image_path: str, bbox: list = None) -> torch.Tensor:

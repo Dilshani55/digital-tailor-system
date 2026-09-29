@@ -172,8 +172,7 @@ export default function Upload() {
       setRequiresUserVerification(Boolean(analyseRes.data.requires_user_verification));
       setStep(2);
     } catch (err) {
-      handleError(err, 'Upload failed. Proceeding to step 2.');
-      setStep(2);
+      handleError(err, 'Image upload or AI analysis failed. Please check server logs and try again.');
     } finally {
       setLoading(false);
     }

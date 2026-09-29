@@ -47,6 +47,23 @@ def calculate_yardage(pattern_id):
 
     # Update pattern with calculated yardage
     pattern.yardage_metres = nesting["yardage_metres"]
+    pattern.nesting_summary = {
+        key: nesting[key]
+        for key in (
+            "fabric_width_cm",
+            "usable_width_cm",
+            "cutting_mode",
+            "fabric_length_cm",
+            "exact_yardage_metres",
+            "yardage_metres",
+            "total_pattern_piece_area_cm2",
+            "usable_area_cm2",
+            "waste_cm2",
+            "waste_percent",
+            "utilisation_percent",
+            "total_pieces",
+        )
+    }
     pattern.save()
 
     return jsonify({

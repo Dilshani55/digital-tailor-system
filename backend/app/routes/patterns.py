@@ -194,6 +194,9 @@ def get_pattern(pattern_id):
         "pattern_id":   str(pattern.id),
         "garment_type": pattern.garment_type,
         "yardage_metres": pattern.yardage_metres,
+        "selected_fabric_id": pattern.selected_fabric_id,
+        "selected_fabric_name": pattern.selected_fabric_name,
+        "nesting_summary": pattern.nesting_summary or {},
         "pieces_count": len(pattern.pattern_coordinates),
         "pieces": [
             {
@@ -230,6 +233,9 @@ def get_all_patterns():
             "pattern_id":     str(p.id),
             "garment_type":   p.garment_type,
             "yardage_metres": p.yardage_metres,
+            "selected_fabric_id": p.selected_fabric_id,
+            "selected_fabric_name": p.selected_fabric_name,
+            "nesting_summary": p.nesting_summary or {},
             "pieces_count":   len(p.pattern_coordinates),
             "generated_at":   str(p.generated_at)
         })

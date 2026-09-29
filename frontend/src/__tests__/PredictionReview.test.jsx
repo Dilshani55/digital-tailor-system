@@ -127,10 +127,14 @@ describe('PredictionReview Component', () => {
     expect(allOptionValues).not.toContain('cold_shoulder_sleeve');
   });
 
-  it('renders manual selection fallback when garmentAttributes is missing', () => {
+  it('renders manual selection fallback with empty selections when garmentAttributes is missing', () => {
     render(<PredictionReview garmentAttributes={null} />);
 
     expect(screen.getByTestId('fallback-notice')).toBeInTheDocument();
-    expect(screen.getByTestId('confirm-btn')).toBeInTheDocument();
+    expect(screen.getByTestId('select-garment_type')).toHaveValue('');
+    expect(screen.getByTestId('select-neckline_type')).toHaveValue('');
+    expect(screen.getByTestId('select-sleeve_length')).toHaveValue('');
+    expect(screen.getByTestId('select-sleeve_style')).toHaveValue('');
+    expect(screen.getByTestId('confirm-btn')).toBeDisabled();
   });
 });
