@@ -4,11 +4,11 @@ Counts below are from the runs recorded in the final evidence report (see the la
 
 | Suite | Command (from the folder shown) | Count | Notes |
 |---|---|---|---|
-| Backend | `backend`: `venv\Scripts\python -m unittest discover -s tests -t .` | 330 | Database access is mocked; no MongoDB needed. `pymupdf` (requirements-dev.txt) is needed for the PDF tests — without it they skip visibly. |
-| Frontend | `frontend`: `npm test` | 104 | vitest + Testing Library, mocked API. |
+| Backend | `backend`: `venv\Scripts\python -m unittest discover -s tests -t .` | 354 | Database access is mocked; no MongoDB needed. `pymupdf` (requirements-dev.txt) is needed for the PDF tests — without it they skip visibly. |
+| Frontend | `frontend`: `npm test` | 121 | vitest + Testing Library, mocked API. |
 | Production build | `frontend`: `npm run build` | – | must finish without errors. |
 | AI pipeline | repo root: `$env:PYTHONPATH="."; backend\venv\Scripts\python -m unittest discover -s ai_training/tests` | 134 | manifests, labels, leakage helpers, taxonomy parity, gate logic, the future 15-class pipeline (masking, readiness, human decisions, training guard, isolation from production); the checkpoint test skips if the `.pt` file is absent. |
-| End-to-end | `frontend`: `npm run e2e` | 5 | Real Chrome → Vite → Flask → MongoDB → real M13 classifier → PDF: full workflow; out-of-scope design refusal; supported M13 predictions pre-selected; unsupported M13 predictions flagged with manual confirmation (real benchmark photos); every page and sidebar link renders with no console/API errors. See below. |
+| End-to-end | `frontend`: `npm run e2e` | 6 | Real Chrome → Vite → Flask → MongoDB → real M13 classifier → PDF: full workflow; out-of-scope design refusal; supported M13 predictions pre-selected; unsupported M13 predictions flagged with manual confirmation (real benchmark photos); every page and sidebar link renders with no console/API errors; customer -> linked pattern -> traditional-vs-system fabric comparison (system value equals the real nesting result) -> researcher summary. See below. |
 
 ## What the backend tests cover
 
@@ -18,6 +18,8 @@ Counts below are from the runs recorded in the final evidence report (see the la
 * **M13 inference & taxonomy** – `test_m13_inference.py` (real checkpoint: SHA-256 unchanged, heads 3/10/6/9, direct inference on benchmark photos, supported/unsupported flags, API analyse, manual confirmation keeps the genuine prediction), `test_feature_contract.py` (15 active classes in exact order, subset of the model taxonomy, removed classes never remapped).
 * **Security & robustness** – `test_hardening.py` (Google sign-in cannot be forged, JSON errors, DB outage → 503, oversized upload → 413, disguised non-images rejected, secrets, CORS, researcher-only data, pseudonyms), `test_auth_routes.py` (register/login/profile/token/ownership).
 * **Research integrity** – `test_integrity_cleanup.py`, `test_research.py`, `test_multitask_integration.py` (no invented values; classifier metadata from the checkpoint).
+* **Evaluation instrument & honesty (added 30 Sep 2026)** - `test_fabric_comparison.py` (system value = real nesting for the same width, stored pattern unchanged, input validation, ownership, researcher-only pseudonymised CSV, descriptive summary / `null` when empty, feedback ownership and score validation, measured times recorded), `test_m13_inference.py` (missing model -> 503 `MODEL_UNAVAILABLE` without paths, unreadable photo -> 422, `model-status`), `test_pattern_list.py` (pattern <-> customer link), `test_pdf_export.py` (PDF prints the stored pieces, drift detection, no internal error text).
+* **Frontend honesty** - `HonestPages.test.jsx` (real activity instead of invented notifications, real pattern counts and no invented e-mails, working add-customer validation, measurements page on the shared schema with shoulder *length*, settings without invented server status, comparison UI, researcher summary / "Not measured"); `Wizard.test.jsx` (model-unavailable banner and 503 message).
 
 ## End-to-end (real stack)
 

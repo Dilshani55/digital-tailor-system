@@ -11,7 +11,7 @@
 
 **Fabric**
 6. Nesting is a **greedy Bottom-Left-Fill heuristic** on a 0.5 cm grid — an upper bound on cloth, not an optimal marker. Plain fabric only (no print matching, nap, or stripes). Fabric shrinkage (3 %) and cutting margin (10 cm) are assumptions.
-7. **No comparison with tailors or with a manual baseline exists**, so no fabric-saving percentage versus traditional practice can be claimed. "Utilisation" is the share of the laid fabric covered by pattern pieces.
+7. **No comparison with tailors or with a manual baseline has been collected yet**, so no fabric-saving percentage versus traditional practice can be claimed. The *instrument* now exists (a traditional estimate can be recorded per saved pattern and is compared with the system estimate recomputed for the same width; researchers get a descriptive summary and CSV), but it holds no study data. Even with data, "the system recommends less" does not show the amount is enough - that needs a real cut. "Utilisation" is the share of the laid fabric covered by pattern pieces.
 8. The fabric knowledge base is an author-compiled, rule-based ranking; its properties are not cited to a published standard.
 
 **AI**
@@ -22,7 +22,8 @@
 
 **System**
 13. Single-user prototype: no email verification, password reset, rate limiting or production deployment hardening (WSGI server, HTTPS). Google sign-in works only after a Google OAuth client id is configured.
-14. Usability, accuracy and fabric-waste **user studies have not been run**; there is no participant data.
+14. Usability, accuracy and fabric-waste **user studies have not been run**; there is no participant data. The in-app instruments (1-5 usability rating, traditional-vs-system fabric comparison, measured analysis/drafting times) are ready for such a study.
+15. The proposal promised items that were not built: a supervised size-prediction model, YOLO detection of darts/seams/landmarks, collars, negative-ease stretch knits and a chat assistant. See [THESIS_RECONCILIATION.md](THESIS_RECONCILIATION.md).
 
 ## SAFE thesis / viva claims
 
@@ -33,7 +34,9 @@
 * Printing: the PDF is genuine 1:1 A4 tiles with overlap, crop marks and a 5 cm calibration square; scale was verified by reading the PDF vector data.
 * Fabric estimates for 90, 114 and 150 cm cloth are produced from the actual cutting-line polygons, with exact overlap/bounds/fold/grain verification and a documented purchase allowance.
 * Reported AI metrics are those in AI_EVIDENCE.md, computed by the scripts in `ai_training/`; a new model is deployed only if it beats the deployed one on the locked benchmark **and** a clean test split (acceptance gate); the newer experimental models did not, so the earlier checkpoint stays.
-* Security and privacy measures: verified Google sign-in, hashed passwords, JWT with ownership checks, content-checked uploads, researcher-only pseudonymised study data.
+* Security and privacy measures: verified Google sign-in, hashed passwords, JWT with ownership checks, content-checked uploads, researcher-only pseudonymised study data, no internal error details in API responses.
+* The system is honest about the AI being unavailable (HTTP 503, "choose the design manually"), and the manual path drafts the same pattern.
+* An evaluation instrument for comparing traditional and system fabric estimates exists (same fabric width, server-recomputed system value, descriptive statistics, pseudonymised export) - **results only once data is collected**.
 
 ## Claims that MUST NOT be made
 
@@ -41,6 +44,7 @@
 * "Aldrich-based / Aldrich-validated" drafting (unverified — see limitation 2).
 * Any percentage fabric saving or waste reduction versus traditional/tailor estimation; "optimal" or "minimum" fabric.
 * Any usability, satisfaction or accuracy result from users, tailors or a muslin test (none exist).
+* A machine-learned size-prediction model, cross-validation results, YOLO *detection* of darts/seams/landmarks, collars, negative-ease drafting or a chat assistant (none exist); "AI" for the rule-based fabric ranking or the algorithmic nesting.
 * Model accuracy beyond the numbers in AI_EVIDENCE.md; "zero data leakage" (image IDs are disjoint, but near-duplicates exist); a detector's mAP (the deployed model is a classifier, not an object detector); training on DeepFashion2 (the data is Fashionpedia).
 * That the system supports other necklines/sleeve styles/garments than the scope table.
 * That a 15-class model exists, has been trained, or is deployed (it is only planned; the deployed model is the original M13).
@@ -54,5 +58,6 @@
 5. **Pattern preview.** Point at the solid cutting line vs dashed sewing line, notches, darts, fold and grain; open the validation panel ("Geometry validation passed", armhole vs sleeve-cap numbers).
 6. **Fabric estimate.** Click 90, 114, 150 cm; show the layout drawing and the "how this was calculated" assumptions. Say plainly it is a heuristic, not optimal.
 7. **PDF.** Create and download; open it; show the 5 cm calibration square, instructions and a tile page; hold a ruler to the square if printing.
-8. **Evidence.** Show `docs/AI_EVIDENCE.md` (metrics, dataset audit, why the new models were *not* deployed) and the green test suites.
-9. **Close with the limitations** (no fit test yet; assumptions registry; small dataset) and the future work: muslin trials with 3–5 tailors/testers, more sleeveless/regular-sleeve data, Aldrich verification.
+8. **Evaluation instrument.** Open the saved pattern, enter a traditional estimate (e.g. "Tailor A", 2.0 m at 150 cm); show that the system value is recomputed for the same width, and the researcher summary (descriptive only; no study data collected yet).
+9. **Evidence.** Show `docs/AI_EVIDENCE.md` (metrics, dataset audit, why the new models were *not* deployed) and the green test suites.
+10. **Close with the limitations** (no fit test yet; assumptions registry; small dataset) and the future work: muslin trials with 3–5 tailors/testers, more sleeveless/regular-sleeve data, Aldrich verification.

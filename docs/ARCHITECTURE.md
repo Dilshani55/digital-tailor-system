@@ -21,6 +21,9 @@
 6. **Estimate** – `routes/export.py` → `estimate_fabric` (nesting). Refused when validation failed.
 7. **PDF** – `PDFGenerator` from the stored layout width/mode and the measurement snapshot.
 8. **Library** – `GET /api/patterns/{id}` returns everything needed to redraw the pattern and list its PDFs.
+9. **Evaluation (optional)** – `POST /api/research/fabric-comparisons` stores a traditional estimate next to the system estimate recomputed for the same width (collection `fabric_comparisons`); researchers read a descriptive summary in `/api/research/metrics`.
+
+The analyse step times the classifier inference and the generate step times the drafting; both are stored and used by the research records. If the checkpoint cannot be loaded, analyse answers 503 `MODEL_UNAVAILABLE` and `GET /api/images/model-status` says so; the manual design path is unaffected. The PDF prints the stored, validated pieces.
 
 ## Backend modules
 
