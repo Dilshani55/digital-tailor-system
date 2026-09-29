@@ -102,7 +102,7 @@ export default function FabricDetailsModal({ fabric, isSelected, onSelect, onClo
               </span>
             </div>
             <span style={{ fontSize: '12px', color: 'var(--text-accent, #2D5A43)', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '4px' }}>
-              <Sparkles size={13} /> {fabric.badge_type || 'AI-Assisted Recommendation'}
+              <Sparkles size={13} /> {fabric.badge_type || 'Rule-based recommendation'}
             </span>
           </div>
 

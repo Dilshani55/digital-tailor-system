@@ -1,5 +1,5 @@
 import time
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from app.models.design_image import DesignImage
 from app.models.measurement import MeasurementProfile
@@ -277,10 +277,12 @@ def generate_pattern():
         session.save()
         return jsonify(e.to_dict()), 422
 
-    except Exception as e:
+    except Exception:
         session.status = "failed"
         session.save()
-        return jsonify({"error": f"Pattern generation failed: {str(e)}"}), 500
+        current_app.logger.exception("Pattern generation failed")
+        return jsonify({"error": "The pattern could not be generated. Please try again.",
+                        "error_code": "GENERATION_FAILED"}), 500
 
 
 # ── GET PATTERN ───────────────────────────────────────────────────────────────

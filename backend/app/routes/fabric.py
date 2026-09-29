@@ -1,4 +1,4 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import jwt_required
 from app.logic.fabric_recommendation import (
     recommend_fabrics,
@@ -52,12 +52,14 @@ def get_recommendations():
             },
             "recommendations": recommendations,
             "total_materials": len(recommendations),
-            "recommendation_method": "Explainable Rule-Based Fabric Optimization Engine (AI-Assisted)"
+            "recommendation_method": "Explainable rule-based fabric ranking (deterministic rules, not machine-learned)"
         }), 200
 
-    except Exception as e:
+    except Exception:
+        current_app.logger.exception("Fabric recommendation failed")
         return jsonify({
-            "error": f"Failed to generate fabric recommendations: {str(e)}"
+            "error": "Fabric recommendations could not be generated. Please try again.",
+            "error_code": "RECOMMENDATION_FAILED",
         }), 500
 
 

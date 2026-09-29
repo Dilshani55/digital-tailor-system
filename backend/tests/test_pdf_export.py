@@ -1,4 +1,5 @@
 """Printable 1:1 tiled PDF + export routes (fabric estimate, PDF) - vector-level verification with PyMuPDF."""
+import copy
 import os
 import tempfile
 import unittest
@@ -217,6 +218,47 @@ class TestExportRoutes(unittest.TestCase):
         doc = pymupdf.open(os.path.join(out, body["filename"]))
         self.assertEqual(len(doc), body["pages"])
         self.assertIn("150", doc[1].get_text())
+
+    def test_pdf_prints_the_stored_pieces_not_a_regeneration(self):
+        """If the drafting code drifted, the PDF must still show the validated, nested stored pieces."""
+        stored = copy.deepcopy(self.data["pattern_pieces"])
+        stored[0]["name"] = "Front Bodice (as saved)"
+        pat = self._pattern()
+        pat.pattern_coordinates = stored
+        self.app.config["OUTPUT_FOLDER"] = tempfile.mkdtemp()
+        with patch("app.routes.export.PatternResult") as pr, patch("app.routes.export.PdfExport") as pe, \
+                patch("app.routes.export.PDFGenerator") as gen:
+            pr.objects.return_value.first.return_value = pat
+            pe.return_value.id = "e1"
+            gen.return_value.info = {"pages": 9}
+            with self.assertLogs(self.app.logger, level="WARNING") as logs:
+                r = self.app.test_client().post("/api/export/pdf/p1", headers=self.headers)
+        self.assertEqual(r.status_code, 201, r.get_json())
+        printed = gen.call_args.kwargs["pattern_data"]["pattern_pieces"]
+        self.assertIs(printed, stored)
+        self.assertTrue(any("differs from the stored" in m for m in logs.output))
+
+    def test_pdf_failure_does_not_leak_internal_details(self):
+        pat = self._pattern()
+        self.app.config["OUTPUT_FOLDER"] = tempfile.mkdtemp()
+        with patch("app.routes.export.PatternResult") as pr, \
+                patch("app.routes.export.PDFGenerator", side_effect=OSError(r"C:\secret\outputs\x.pdf locked")):
+            pr.objects.return_value.first.return_value = pat
+            with self.assertLogs(self.app.logger, level="ERROR"):
+                r = self.app.test_client().post("/api/export/pdf/p1", headers=self.headers)
+        body = r.get_json()
+        self.assertEqual(r.status_code, 500)
+        self.assertEqual(body["error_code"], "PDF_GENERATION_FAILED")
+        self.assertNotIn("secret", str(body))
+
+    def test_geometry_drift_detection(self):
+        from app.routes.export import _geometry_differs
+        pieces = self.data["pattern_pieces"]
+        self.assertFalse(_geometry_differs(pieces, copy.deepcopy(pieces)))
+        wider = copy.deepcopy(pieces)
+        wider[0]["cut_bounding_box"]["width_cm"] += 0.5
+        self.assertTrue(_geometry_differs(pieces, wider))
+        self.assertTrue(_geometry_differs(pieces, pieces[:-1]))
 
 
 if __name__ == "__main__":

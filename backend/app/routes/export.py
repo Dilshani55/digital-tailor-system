@@ -60,6 +60,26 @@ def _summary_of(nesting):
     return {key: nesting[key] for key in _SUMMARY_KEYS}
 
 
+def _geometry_differs(regenerated, stored, tol_cm=0.01):
+    """True if the pieces differ in name, count or cut size (used to detect drafting-code drift)."""
+    def sig(pieces):
+        out = []
+        for p in pieces:
+            box = p.get("cut_bounding_box") or p.get("bounding_box") or {}
+            out.append((p.get("name"), p.get("cut_count"), box.get("width_cm"), box.get("height_cm")))
+        return out
+    a, b = sig(regenerated), sig(stored)
+    if len(a) != len(b):
+        return True
+    for (na, ca, wa, ha), (nb, cb, wb, hb) in zip(a, b):
+        if na != nb or ca != cb:
+            return True
+        for x, y in ((wa, wb), (ha, hb)):
+            if x is None or y is None or abs(float(x) - float(y)) > tol_cm:
+                return True
+    return False
+
+
 # ── CALCULATE YARDAGE ─────────────────────────────────────────────────────────
 @export_bp.route("/yardage/<pattern_id>", methods=["POST"])
 @jwt_required()
@@ -201,6 +221,13 @@ def generate_pdf(pattern_id):
 
         engine       = ParametricEngine(measurements, features, design_spec=(pattern.design_spec or None))
         pattern_data = engine.generate()
+        # Print EXACTLY the stored pieces - the ones the user saw, that passed validation and that the
+        # fabric estimate was nested with. Regeneration only supplies the ease profile and sewing notes.
+        # If the drafting code has changed since the pattern was saved, say so in the server log.
+        if _geometry_differs(pattern_data.get("pattern_pieces") or [], pattern.pattern_coordinates or []):
+            current_app.logger.warning(f"Pattern {pattern_id}: regenerated geometry differs from the stored "
+                                       f"pattern; the PDF uses the stored pieces.")
+        pattern_data = dict(pattern_data, pattern_pieces=pattern.pattern_coordinates)
 
         output_dir = current_app.config["OUTPUT_FOLDER"]
         os.makedirs(output_dir, exist_ok=True)
@@ -234,8 +261,11 @@ def generate_pdf(pattern_id):
             "download_url": f"/api/export/download/{str(pdf_export.id)}"
         }), 201
 
-    except Exception as e:
-        return jsonify({"error": f"PDF generation failed: {str(e)}"}), 500
+    except Exception:
+        # Details go to the server log only (they may contain file paths).
+        current_app.logger.exception(f"PDF generation failed for pattern {pattern_id}")
+        return jsonify({"error": "The printable PDF could not be created. Please try again.",
+                        "error_code": "PDF_GENERATION_FAILED"}), 500
 
 
 # ── DOWNLOAD PDF ──────────────────────────────────────────────────────────────

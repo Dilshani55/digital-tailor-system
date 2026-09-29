@@ -116,7 +116,7 @@ export default function FabricRecommendation({
               alignItems: 'center',
               gap: '4px'
             }}>
-              <Sparkles size={12} /> AI-Assisted Recommendation
+              <Sparkles size={12} /> Rule-based recommendation
             </span>
           </div>
           <p style={{ margin: 0, fontSize: '12px', color: 'var(--text-secondary, #64748B)' }}>
