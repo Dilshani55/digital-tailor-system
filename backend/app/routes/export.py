@@ -7,12 +7,46 @@ from app.models.design_image import DesignImage
 from app.models.session import Session
 from app.models.pdf_export import PdfExport
 from app.models.user import User
-from app.logic.nesting_algorithm import NestingAlgorithm
+from app.logic.nesting_algorithm import NestingAlgorithm, NestingError
 from app.logic.pdf_generator import PDFGenerator
 from app.logic.parametric_engine import ParametricEngine
 from app.logic.ease_rules import apply_ease
 
 export_bp = Blueprint("export", __name__)
+
+
+def _nesting_failure_response(err):
+    """Structured 422 for a failed nesting. Never contains a fabric requirement."""
+    return jsonify({
+        "error": err.message,
+        "error_code": err.error_code,
+        "nesting_failed": True,
+        "nesting_failure": err.details,
+    }), 422
+
+
+def _stored_summary(pattern):
+    """
+    Real values already stored for a pattern, for the history list. Anything not
+    stored is None ("unavailable") — never a placeholder.
+    """
+    nesting = getattr(pattern, "nesting_summary", None) or {}
+    try:
+        image = pattern.session_id.image_id
+        confirmed = (getattr(image, "confirmed_attributes", None) or {}) if image else {}
+    except Exception:
+        confirmed = {}
+    yardage = getattr(pattern, "yardage_metres", None)
+    return {
+        "garment_type":     getattr(pattern, "garment_type", None) or None,
+        "neckline_type":    confirmed.get("neckline_type"),
+        "sleeve_length":    confirmed.get("sleeve_length"),
+        "fabric_name":      getattr(pattern, "selected_fabric_name", None) or None,
+        "fabric_width_cm":  nesting.get("fabric_width_cm"),
+        "cutting_mode":     nesting.get("cutting_mode"),
+        "yardage_metres":   yardage if yardage and yardage > 0 else None,
+        "utilisation_percent": nesting.get("utilisation_percent"),
+    }
 
 
 # ── CALCULATE YARDAGE ─────────────────────────────────────────────────────────
@@ -47,13 +81,16 @@ def calculate_yardage(pattern_id):
     fabric_width = data.get("fabric_width_cm", 114)
     cutting_mode = data.get("cutting_mode", "folded")
 
-    # Run nesting algorithm
-    nester  = NestingAlgorithm(
-        pattern_pieces  = pattern.pattern_coordinates,
-        fabric_width_cm = fabric_width,
-        cutting_mode    = cutting_mode
-    )
-    nesting = nester.run()
+    # Run nesting algorithm (fails explicitly if any piece cannot be placed)
+    try:
+        nester  = NestingAlgorithm(
+            pattern_pieces  = pattern.pattern_coordinates,
+            fabric_width_cm = fabric_width,
+            cutting_mode    = cutting_mode
+        )
+        nesting = nester.run()
+    except NestingError as err:
+        return _nesting_failure_response(err)
 
     # Update pattern with calculated yardage
     pattern.yardage_metres = nesting["yardage_metres"]
@@ -138,11 +175,14 @@ def generate_pdf(pattern_id):
     # Check yardage has been calculated
     if pattern.yardage_metres == 0.0:
         # Run nesting algorithm automatically if yardage hasn't been saved yet
-        nester  = NestingAlgorithm(
-            pattern_pieces  = pattern.pattern_coordinates,
-            fabric_width_cm = 114
-        )
-        nesting = nester.run()
+        try:
+            nester  = NestingAlgorithm(
+                pattern_pieces  = pattern.pattern_coordinates,
+                fabric_width_cm = 114
+            )
+            nesting = nester.run()
+        except NestingError as err:
+            return _nesting_failure_response(err)
         pattern.yardage_metres = nesting["yardage_metres"]
         pattern.save()
 
@@ -168,11 +208,14 @@ def generate_pdf(pattern_id):
 
 
         # Regenerate nesting data for PDF layout
-        nester  = NestingAlgorithm(
-            pattern_pieces  = pattern.pattern_coordinates,
-            fabric_width_cm = 114
-        )
-        nesting = nester.run()
+        try:
+            nester  = NestingAlgorithm(
+                pattern_pieces  = pattern.pattern_coordinates,
+                fabric_width_cm = 114
+            )
+            nesting = nester.run()
+        except NestingError as err:
+            return _nesting_failure_response(err)
 
         # Rebuild pattern data for PDF (includes construction notes)
         engine       = ParametricEngine(measurements, features)
@@ -300,13 +343,15 @@ def get_all_exports():
 
     result = []
     for e in exports:
-        result.append({
+        item = {
             "export_id":   str(e.id),
             "pattern_id":  str(e.pattern_id.id),
             "filename":    e.file_path,
             "download_url": f"/api/export/download/{str(e.id)}",
             "exported_at": str(e.exported_at)
-        })
+        }
+        item.update(_stored_summary(e.pattern_id))
+        result.append(item)
 
     return jsonify({
         "total":   len(result),

@@ -3,6 +3,9 @@
 multitask_classifier.py
 
 Backend Multi-Task Inference Service for Digital Tailor AI (Milestone M13).
+- Model type: IMAGE-LEVEL multi-task CLASSIFIER — a YOLOv8n-cls-derived backbone
+  with four linear prediction heads (garment_type, neckline_type, sleeve_length,
+  sleeve_style). It is NOT an object detector and produces no bounding boxes.
 - Reconstructs YOLOv8MultiTaskClassifier offline without internet calls.
 - Provides thread-safe singleton model loading using threading.Lock.
 - Executes deterministic validation preprocessing (crop bbox or fallback to full image).
@@ -12,6 +15,7 @@ Backend Multi-Task Inference Service for Digital Tailor AI (Milestone M13).
 import os
 import sys
 import time
+import hashlib
 import threading
 import torch
 import torch.nn as nn
@@ -47,8 +51,10 @@ M14D_CANDIDATE_MODEL_PATH = os.path.abspath(os.path.join(
     "ai_training", "data", "training_runs", "m14d_fresh", "exp_b_focal", "best.pt",
 ))
 
-# Prefer an explicitly deployed checkpoint. The packaged M14D validation-selected
-# checkpoint keeps the demo usable when no deployment copy has been created yet.
+# Prefer the explicitly deployed checkpoint (currently byte-identical to the M12
+# staged-training best.pt). NOTE: the M14D file has no "model_state_dict", so this
+# loader cannot load it; if the deployed copy is missing, loading fails with a
+# clear MultiTaskModelError rather than silently using another model.
 DEFAULT_MODEL_PATH = (
     DEPLOYED_MODEL_PATH
     if os.path.exists(DEPLOYED_MODEL_PATH)
@@ -58,6 +64,35 @@ DEFAULT_MODEL_PATH = (
 DEFAULT_BACKBONE_PATH = os.path.join(
     os.path.dirname(__file__), "models", "yolov8n-cls.pt"
 )
+
+
+MODEL_TYPE = (
+    "image-level multi-task classifier "
+    "(YOLOv8n-cls-derived backbone, 4 classification heads; not an object detector)"
+)
+
+
+def _sha256_file(path: str) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def build_model_version(ckpt: dict, sha256: str) -> str:
+    """
+    Version string derived ONLY from what the loaded checkpoint really contains
+    (training epoch/stage recorded in the file + content hash). Nothing is
+    hard-coded, so two different checkpoints can never share a label.
+    """
+    parts = ["YOLOv8MultiTaskClassifier"]
+    if ckpt.get("stage") is not None:
+        parts.append(f"stage={ckpt['stage']}")
+    if ckpt.get("epoch") is not None:
+        parts.append(f"epoch={ckpt['epoch']}")
+    parts.append(f"sha256={sha256[:12]}")
+    return "|".join(parts)
 
 
 class MultiTaskModelError(Exception):
@@ -191,9 +226,15 @@ def get_multitask_classifier(model_path: str = None, backbone_path: str = None):
                 )
 
             load_time_ms = round((time.perf_counter() - t0) * 1000, 2)
+            ckpt_sha256 = _sha256_file(target_model_path)
             _model_instance = model
             _model_metadata = {
-                "model_version": "YOLOv8MultiTaskClassifier_m14d",
+                "model_version": build_model_version(ckpt, ckpt_sha256),
+                "model_type": MODEL_TYPE,
+                "checkpoint_sha256": ckpt_sha256,
+                "stage": ckpt.get("stage"),
+                "pretrained_backbone_identifier": ckpt.get("pretrained_backbone_identifier"),
+                "random_seed": ckpt.get("random_seed"),
                 "load_time_ms": load_time_ms,
                 "class_to_idx": ckpt["class_to_idx"],
                 "idx_to_class": ckpt["idx_to_class"],
@@ -335,6 +376,8 @@ def predict_multitask_features(
 
     return {
         "model_version": meta["model_version"],
+        "model_type": meta["model_type"],
+        "checkpoint_sha256": meta["checkpoint_sha256"],
         "predictions": predictions,
         "low_confidence_heads": low_confidence_heads,
         "requires_user_confirmation": overall_requires_confirm,

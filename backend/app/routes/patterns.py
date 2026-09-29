@@ -59,16 +59,22 @@ def generate_pattern():
     measurement_id = str(data["measurement_id"]).strip("<>")
     image_id = str(data["image_id"]).strip("<>")
 
-    # Validate fabric selection if provided
-    raw_fabric_id = data.get("fabric_id") or data.get("selected_fabric_id") or "cotton-poplin"
-    if validate_fabric_id(raw_fabric_id):
-        selected_fab_def = get_fabric_by_id(raw_fabric_id)
-        selected_fabric_id = selected_fab_def["id"]
-        selected_fabric_name = selected_fab_def["name"]
-    else:
-        # Fallback to default cotton poplin if unrecognised string
-        selected_fabric_id = "cotton-poplin"
-        selected_fabric_name = "Cotton Poplin"
+    # Validate fabric selection. No silent substitution: a missing or unknown
+    # fabric id is a client error, never replaced by another fabric.
+    raw_fabric_id = data.get("fabric_id") or data.get("selected_fabric_id")
+    if not raw_fabric_id:
+        return jsonify({
+            "error": "fabric_id is required. Select a fabric from the catalog (GET /api/fabric/catalog).",
+            "error_code": "FABRIC_ID_REQUIRED",
+        }), 400
+    if not validate_fabric_id(raw_fabric_id):
+        return jsonify({
+            "error": f"Unknown fabric_id '{raw_fabric_id}'. Select a fabric from the catalog (GET /api/fabric/catalog).",
+            "error_code": "INVALID_FABRIC_ID",
+        }), 400
+    selected_fab_def = get_fabric_by_id(raw_fabric_id)
+    selected_fabric_id = selected_fab_def["id"]
+    selected_fabric_name = selected_fab_def["name"]
 
     # 2. Fetch measurement profile
     try:

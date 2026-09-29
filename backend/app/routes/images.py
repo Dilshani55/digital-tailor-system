@@ -104,16 +104,15 @@ def analyse_image(image_id):
             "error": "AI garment analysis failed. Check that the multi-task model checkpoint is available."
         }), 500
 
-    # Optional legacy detector — used only for auxiliary CAD hints (darts/seams)
-    # until the user confirms attributes. Does not drive the review UI.
+    # Optional legacy CV heuristic — used only for auxiliary CAD hints (darts/seams)
+    # until the user confirms attributes. Its output is RULE-BASED (not an ML
+    # prediction) and carries no confidence; it does not drive the review UI.
     legacy_features = {}
-    legacy_confidence = 0.0
     try:
         from app.ai.yolo_detector import detect_features
-        legacy_features, legacy_confidence = detect_features(filepath)
+        legacy_features, _legacy_confidence = detect_features(filepath)  # confidence is None/heuristic
     except Exception:
         legacy_features = {}
-        legacy_confidence = 0.0
 
     predictions = (garment_attributes or {}).get("predictions") or {}
     pred_confidence = 0.0
@@ -129,8 +128,11 @@ def analyse_image(image_id):
         (garment_attributes or {}).get("requires_user_confirmation", True)
     )
 
-    # Provisional CAD features from legacy detector only — overwritten on confirm.
+    # Provisional CAD features from the legacy CV heuristic only — overwritten on
+    # confirm. If the heuristic produced nothing, these are neutral placeholders
+    # explicitly flagged as "not detected" (never presented as analysis results).
     features = legacy_features or {
+        "source": "default_not_detected",
         "neckline": "round neck",
         "sleeves": "short sleeve",
         "darts": "bust dart",
@@ -143,7 +145,9 @@ def analyse_image(image_id):
     design_image.garment_attributes = garment_attributes
     design_image.confirmed_attributes = {}
     design_image.confirmed_at = None
-    design_image.confidence_score = pred_confidence or legacy_confidence
+    # confidence_score = mean top-1 softmax confidence of the 4 classifier heads
+    # (a real model output). The CV heuristic contributes no confidence.
+    design_image.confidence_score = pred_confidence
     design_image.save()
 
     return jsonify({
@@ -152,6 +156,8 @@ def analyse_image(image_id):
         "detected_features": features,
         "garment_attributes": garment_attributes,
         "confidence_score": design_image.confidence_score,
+        "confidence_score_definition": "mean top-1 softmax confidence over the four classifier heads",
+        "detected_features_source": features.get("source", "unknown"),
         "requires_user_confirmation": requires_confirmation,
         "requires_user_verification": requires_confirmation,  # alias for older clients
         "confirmed_attributes": {},
@@ -253,6 +259,7 @@ def confirm_attributes(image_id):
     cad_features = confirmed_to_cad_features(confirmed_data)
     updated_features = dict(design_image.detected_features or {})
     updated_features.update(cad_features)
+    updated_features["source"] = "user_confirmed"  # darts/seams are rule-derived from garment_type
     design_image.detected_features = updated_features
     design_image.save()
 

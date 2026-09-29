@@ -129,17 +129,30 @@ GARMENT_TYPES = {
 
 def detect_features(image_path):
     """
-    Runs YOLOv8 inference combined with garment geometry and silhouette analysis.
-    Returns detected features dict and overall confidence score.
+    Legacy provisional feature extraction (NOT the deployed multi-task classifier).
+
+    Returns (features, confidence).
+
+    Provenance (research integrity):
+      * No trained garment *detector* checkpoint ships with this project
+        (neither yolov8n-garment.pt nor garment_detector.pt exists), so in the
+        normal case the features come from the OpenCV colour/silhouette
+        heuristic in _heuristic_features(). These are RULE-BASED CV outputs,
+        not ML predictions, and features["source"] says so.
+      * `confidence` is None whenever no genuine model score exists. It is
+        never invented. Only if a real detector checkpoint is present AND it
+        returns detections is the highest raw detector score reported.
+      * The AI predictions users review come from
+        app.ai.multitask_classifier.predict_multitask_features().
     """
     try:
         # 1. Analyze garment structural geometry & silhouette
         geom = _heuristic_features(image_path)
+        geom.setdefault("source", "cv_heuristic")
 
         model = get_model()
         if model is None:
-            geom["is_mock"] = False
-            return geom, 0.93
+            return geom, None
 
         # 2. Run inference with YOLOv8 (using realistic confidence threshold to filter out noise)
         results = model.predict(
@@ -218,18 +231,19 @@ def detect_features(image_path):
             "darts":        "bust dart" if detected_type in ["blouse", "crop-top"] else "no dart",
             "seams":        "princess seam" if detected_type == "blouse" else "side seam",
             "garment_type": detected_type,
-            "is_mock":      False
+            "source":       "detector+cv_heuristic_fusion"
         }
 
+        # Highest raw detector score among the classes actually used. This is a
+        # genuine model output, but it is NOT a confidence for the fused result.
         raw_best = max(detected_sleeve_conf, detected_neckline_conf, detected_type_conf)
-        calibrated_conf = round(min(0.96, max(0.90, 0.91 + raw_best * 0.1)), 4)
-        return features, calibrated_conf
+        return features, (round(float(raw_best), 4) if raw_best > 0 else None)
 
     except Exception as e:
-        print(f"YOLOv8 Detection exception: {e}")
+        print(f"Detector exception, falling back to CV heuristic: {e}")
         features = _heuristic_features(image_path)
-        features["is_mock"] = False
-        return features, 0.92
+        features.setdefault("source", "cv_heuristic")
+        return features, None
 
 
 def _heuristic_features(image_path):
@@ -463,7 +477,10 @@ def _heuristic_features(image_path):
         }
     except Exception as e:
         print(f"Heuristic extraction error: {e}")
+        # NOT a detection: neutral placeholder values, flagged so callers and
+        # the UI never treat them as analysed features.
         return {
+            "source":              "default_not_detected",
             "neckline":            "round neck",
             "sleeves":             "short sleeve",
             "darts":               "bust dart",

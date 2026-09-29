@@ -3,6 +3,12 @@ import { Download, Users, Brain, Check, BarChart2, Star } from 'lucide-react';
 import { researchAPI } from '../services/api';
 import LoadingSpinner from '../components/LoadingSpinner';
 
+// Research integrity: a missing value is shown as "Not measured", never a substitute number.
+const NOT_MEASURED = 'Not measured';
+const fmtNum = (v, digits = 1, suffix = '') =>
+  (v === null || v === undefined || Number.isNaN(Number(v))) ? NOT_MEASURED : `${Number(v).toFixed(digits)}${suffix}`;
+const fmtPct = (v) => fmtNum(v === null || v === undefined ? v : Number(v) * 100, 1, '%');
+
 export default function ResearcherDashboard() {
   const [metrics, setMetrics] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -121,11 +127,11 @@ export default function ResearcherDashboard() {
 
             <div className="ui-card" style={{ padding: '20px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>YOLOv8 Accuracy</span>
+                <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Garment-type accuracy (test split)</span>
                 <Brain size={16} style={{ color: 'var(--text-accent)' }} />
               </div>
-              <strong style={{ fontSize: '28px', color: 'var(--text-primary)' }}>{metrics.ai_accuracy}%</strong>
-              <small style={{ display: 'block', marginTop: '4px', fontSize: '11px', color: 'var(--text-muted)' }}>Average prediction confidence</small>
+              <strong style={{ fontSize: '28px', color: 'var(--text-primary)' }}>{fmtPct(metrics.model_evaluation?.per_head?.garment_type?.accuracy)}</strong>
+              <small style={{ display: 'block', marginTop: '4px', fontSize: '11px', color: 'var(--text-muted)' }}>Image-level classifier, held-out test split (training log)</small>
             </div>
 
             <div className="ui-card" style={{ padding: '20px' }}>
@@ -135,7 +141,7 @@ export default function ResearcherDashboard() {
                   <Star size={14} fill="#FBBF24" />
                 </div>
               </div>
-              <strong style={{ fontSize: '28px', color: 'var(--text-primary)' }}>{metrics.usability_score} / 5</strong>
+              <strong style={{ fontSize: '28px', color: 'var(--text-primary)' }}>{metrics.usability_score == null ? NOT_MEASURED : `${metrics.usability_score} / 5`}</strong>
               <small style={{ display: 'block', marginTop: '4px', fontSize: '11px', color: 'var(--text-muted)' }}>Participant survey average</small>
             </div>
           </div>
@@ -145,36 +151,36 @@ export default function ResearcherDashboard() {
             {/* Precision & Recall statistics card */}
             <div className="ui-card" style={{ padding: '24px' }}>
               <h2 style={{ fontSize: '14px', fontWeight: '600', color: 'var(--text-primary)', marginBottom: '16px' }}>
-                AI Model Accuracy & Savings Benchmarks
+                Classifier test metrics (garment type) & measured study values
               </h2>
               
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px', textAlign: 'center', borderBottom: '1px solid var(--border)', paddingBottom: '16px', marginBottom: '16px' }}>
                 <div style={{ background: 'var(--surface-2)', padding: '12px', borderRadius: '8px' }}>
-                  <span style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block' }}>Precision</span>
-                  <strong style={{ fontSize: '18px', color: 'var(--text-primary)' }}>{metrics.precision}</strong>
+                  <span style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block' }}>Macro precision</span>
+                  <strong style={{ fontSize: '18px', color: 'var(--text-primary)' }}>{fmtNum(metrics.model_evaluation?.per_head?.garment_type?.macro_precision, 3)}</strong>
                 </div>
                 <div style={{ background: 'var(--surface-2)', padding: '12px', borderRadius: '8px' }}>
-                  <span style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block' }}>Recall</span>
-                  <strong style={{ fontSize: '18px', color: 'var(--text-primary)' }}>{metrics.recall}</strong>
+                  <span style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block' }}>Macro recall</span>
+                  <strong style={{ fontSize: '18px', color: 'var(--text-primary)' }}>{fmtNum(metrics.model_evaluation?.per_head?.garment_type?.macro_recall, 3)}</strong>
                 </div>
                 <div style={{ background: 'var(--surface-2)', padding: '12px', borderRadius: '8px' }}>
-                  <span style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block' }}>F1-Score</span>
-                  <strong style={{ fontSize: '18px', color: 'var(--text-primary)' }}>{metrics.f1_score}</strong>
+                  <span style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block' }}>Macro F1</span>
+                  <strong style={{ fontSize: '18px', color: 'var(--text-primary)' }}>{fmtNum(metrics.model_evaluation?.per_head?.garment_type?.macro_f1, 3)}</strong>
                 </div>
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', fontSize: '13px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>
                   <span style={{ color: 'var(--text-secondary)' }}>Avg. Manual Correction Rate:</span>
-                  <strong style={{ color: 'var(--text-primary)' }}>{metrics.avg_correction_rate}%</strong>
+                  <strong style={{ color: 'var(--text-primary)' }}>{fmtNum(metrics.avg_correction_rate, 1, '%')}</strong>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>
                   <span style={{ color: 'var(--text-secondary)' }}>Avg. Fabric Savings per drafting:</span>
-                  <strong style={{ color: 'var(--text-accent)' }}>{metrics.avg_fabric_savings} m</strong>
+                  <strong style={{ color: 'var(--text-accent)' }}>{fmtNum(metrics.avg_fabric_savings, 2, ' m')}</strong>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span style={{ color: 'var(--text-secondary)' }}>Avg. processing pipeline time:</span>
-                  <strong style={{ color: 'var(--text-primary)' }}>{metrics.avg_processing_time} s</strong>
+                  <strong style={{ color: 'var(--text-primary)' }}>{fmtNum(metrics.avg_processing_time, 2, ' s')}</strong>
                 </div>
               </div>
             </div>

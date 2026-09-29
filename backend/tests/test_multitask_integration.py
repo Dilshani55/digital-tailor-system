@@ -40,7 +40,10 @@ class TestMultiTaskIntegration(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.source_ckpt = "ai_training/data/training_runs/m12_full/checkpoints/best.pt"
+        # Anchored to the repo root (was cwd-relative, so it failed when run from backend/).
+        repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+        cls.source_ckpt = os.path.join(
+            repo_root, "ai_training", "data", "training_runs", "m12_full", "checkpoints", "best.pt")
         cls.target_ckpt = DEFAULT_MODEL_PATH
         cls.target_backbone = DEFAULT_BACKBONE_PATH
 
@@ -55,8 +58,10 @@ class TestMultiTaskIntegration(unittest.TestCase):
         shutil.rmtree(self.temp_dir)
 
     def test_checkpoint_existence_and_sha(self):
-        self.assertTrue(os.path.exists(self.source_ckpt), "Source checkpoint missing!")
         self.assertTrue(os.path.exists(self.target_ckpt), "Backend checkpoint missing!")
+        if not os.path.exists(self.source_ckpt):
+            # ai_training/data is git-ignored; the training output only exists on the training machine.
+            self.skipTest("M12 training output not present (ai_training/data is not in the repository)")
 
         src_size = os.path.getsize(self.source_ckpt)
         dst_size = os.path.getsize(self.target_ckpt)
@@ -76,7 +81,15 @@ class TestMultiTaskIntegration(unittest.TestCase):
     def test_offline_reconstruction(self):
         model, meta = get_multitask_classifier()
         self.assertIsNotNone(model)
-        self.assertEqual(meta["model_version"], "YOLOv8MultiTaskClassifier_v1.0")
+        # model_version is derived from the loaded checkpoint (stage, epoch, content hash),
+        # not a hard-coded label.
+        with open(self.target_ckpt, "rb") as f:
+            actual_sha = hashlib.sha256(f.read()).hexdigest()
+        self.assertEqual(meta["checkpoint_sha256"], actual_sha)
+        self.assertIn("sha256=" + actual_sha[:12], meta["model_version"])
+        self.assertTrue(meta["model_version"].startswith("YOLOv8MultiTaskClassifier|"))
+        self.assertIn("classifier", meta["model_type"])
+        self.assertIn("not an object detector", meta["model_type"])
         self.assertTrue(os.path.exists(self.target_backbone))
 
     def test_singleton_loading(self):

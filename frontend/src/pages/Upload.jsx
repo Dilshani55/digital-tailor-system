@@ -7,6 +7,7 @@ import MeasurementGuide from '../components/MeasurementGuide';
 import FabricRecommendation from '../components/FabricRecommendation';
 import PredictionReview from '../components/PredictionReview';
 import PatternPreview from '../components/PatternPreview';
+import { formatResult, CALCULATION_FAILED, NOT_CALCULATED as NOT_CALCULATED_LABEL } from '../utils/results';
 import {
   imagesAPI, measurementsAPI, patternsAPI, exportAPI, researchAPI
 } from '../services/api';
@@ -67,6 +68,7 @@ export default function Upload() {
   const [patternData, setPatternData] = useState(null);
   const [yardageData, setYardageData] = useState(null);
   const [fabricWidth, setFabricWidth] = useState(114);
+  const [yardageError, setYardageError] = useState(false);
   const [selectedFabricId, setSelectedFabricId] = useState('cotton-poplin');
   const [selectedFabricName, setSelectedFabricName] = useState('Cotton Poplin');
   const [fabricValidationError, setFabricValidationError] = useState('');
@@ -292,6 +294,11 @@ export default function Upload() {
     }
   };
 
+  // Research integrity: results are shown only when the backend produced them.
+  // Otherwise say so honestly — never substitute a plausible-looking number.
+  const NOT_CALCULATED = yardageError ? CALCULATION_FAILED : NOT_CALCULATED_LABEL;
+  const resultOrNA = (value, suffix = '') => formatResult(value, suffix, yardageError);
+
   // ── STEP 3: Generate Pattern + 2D View ────────────────────────────────────
   const handleGeneratePattern = async () => {
     setLoading(true); setError('');
@@ -322,10 +329,21 @@ export default function Upload() {
           return;
         }
 
-        const yardRes = await exportAPI.yardage(newPatternId, {
-          fabric_width_cm: fabricWidth
-        });
-        setYardageData(yardRes.data);
+        try {
+          const yardRes = await exportAPI.yardage(newPatternId, {
+            fabric_width_cm: fabricWidth
+          });
+          setYardageData(yardRes.data);
+          setYardageError(false);
+        } catch (yardErr) {
+          // Nesting failed (e.g. a piece does not fit the selected fabric width).
+          setYardageData(null);
+          setYardageError(true);
+          setError(yardErr.response?.data?.error || 'Fabric calculation failed.');
+          setPatternGenerated(true);
+          setShow2DView(true);
+          return;
+        }
 
         const pdfRes = await exportAPI.pdf(newPatternId);
         setExportId(pdfRes.data.export_id);
@@ -350,7 +368,14 @@ export default function Upload() {
           cutting_mode: 'folded'
         });
         setYardageData(yardRes.data);
-      } catch (err) {}
+        setYardageError(false);
+        setError('');
+      } catch (err) {
+        // Never leave a previous width's result on screen after a failed recalculation.
+        setYardageData(null);
+        setYardageError(true);
+        setError(err.response?.data?.error || 'Fabric calculation failed for this width.');
+      }
     }
   };
 
@@ -656,13 +681,13 @@ export default function Upload() {
                   </div>
                   <div className="result-tile">
                     <div className="r-val" style={{ color: 'var(--text-accent)' }}>
-                      {yardageData?.yardage_metres ? `${yardageData.yardage_metres}m` : '0.58m'}
+                      {resultOrNA(yardageData?.yardage_metres, 'm')}
                     </div>
                     <div className="r-lbl">Fabric Required</div>
                   </div>
                   <div className="result-tile">
                     <div className="r-val" style={{ color: 'var(--text-accent)' }}>
-                      {yardageData?.utilisation_percent ? `${yardageData.utilisation_percent}%` : '78.7%'}
+                      {resultOrNA(yardageData?.utilisation_percent, '%')}
                     </div>
                     <div className="r-lbl">Fabric Efficiency</div>
                   </div>
@@ -859,10 +884,12 @@ export default function Upload() {
                       <div style={{ background: 'var(--surface-2)', padding: '12px', borderRadius: '8px' }}>
                         <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '2px' }}>Fabric Required</div>
                         <div style={{ fontSize: '13px', fontWeight: '700', color: '#2563EB' }}>
-                          Approximately {yardageData.purchasing_recommended_m || yardageData.yardage_metres || 1.7} metres
+                          {yardageData.purchasing_recommended_m != null || yardageData.yardage_metres != null
+                            ? `Approximately ${yardageData.purchasing_recommended_m ?? yardageData.yardage_metres} metres`
+                            : NOT_CALCULATED}
                         </div>
                         <div style={{ fontSize: '10px', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                          Exact marker: {yardageData.exact_yardage_metres || (yardageData.fabric_length_cm / 100).toFixed(2)}m + {yardageData.handling_allowance_m || 0.06}m allowance
+                          Exact marker: {resultOrNA(yardageData.exact_yardage_metres, 'm')} + {resultOrNA(yardageData.handling_allowance_m, 'm')} allowance
                         </div>
                       </div>
                       <div style={{ background: 'var(--surface-2)', padding: '12px', borderRadius: '8px' }}>
@@ -879,7 +906,7 @@ export default function Upload() {
                         <div style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-primary)' }}>
                           {yardageData.placed_pieces && yardageData.placed_pieces.length > 0
                             ? yardageData.placed_pieces.map(p => `${p.name} ×${p.cut_quantity || 1}`).join(', ')
-                            : 'Front ×1, Back ×1, Short Sleeve ×2'}
+                            : NOT_CALCULATED}
                         </div>
                       </div>
                       <div style={{ background: 'var(--surface-2)', padding: '12px', borderRadius: '8px' }}>
@@ -901,10 +928,10 @@ export default function Upload() {
                     {/* Usage Status & Recommendation Callout */}
                     <div style={{ background: 'rgba(217, 119, 6, 0.08)', borderLeft: '4px solid #D97706', padding: '12px', borderRadius: '6px', marginBottom: '14px' }}>
                       <div style={{ fontSize: '12px', fontWeight: '700', color: '#D97706', marginBottom: '2px' }}>
-                        Fabric Usage Status: {yardageData.usage_status || 'Low efficiency — the layout may be improved'}
+                        Fabric Usage Status: {yardageData.usage_status || NOT_CALCULATED}
                       </div>
                       <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
-                        {yardageData.usage_recommendation || 'The layout leaves significant unused fabric. Consider adding small accessory pieces or using a narrower fabric bolt width to minimize waste.'}
+                        {yardageData.usage_recommendation || ''}
                       </div>
                     </div>
 
@@ -946,7 +973,7 @@ export default function Upload() {
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px', marginBottom: '12px', fontSize: '11px' }}>
                           <div style={{ background: 'var(--surface-1)', padding: '8px', borderRadius: '6px' }}>
                             <div style={{ color: 'var(--text-secondary)', fontSize: '10px' }}>Folded Usable Width</div>
-                            <div style={{ fontWeight: '700' }}>{yardageData.usable_width_cm || (fabricWidth / 2)} cm</div>
+                            <div style={{ fontWeight: '700' }}>{resultOrNA(yardageData.usable_width_cm, ' cm')}</div>
                           </div>
                           <div style={{ background: 'var(--surface-1)', padding: '8px', borderRadius: '6px' }}>
                             <div style={{ color: 'var(--text-secondary)', fontSize: '10px' }}>Marker Length Needed</div>
@@ -954,11 +981,11 @@ export default function Upload() {
                           </div>
                           <div style={{ background: 'var(--surface-1)', padding: '8px', borderRadius: '6px' }}>
                             <div style={{ color: 'var(--text-secondary)', fontSize: '10px' }}>Total Pattern Area</div>
-                            <div style={{ fontWeight: '700' }}>{yardageData.total_pattern_piece_area_cm2 || yardageData.total_pattern_piece_area} cm²</div>
+                            <div style={{ fontWeight: '700' }}>{resultOrNA(yardageData.total_pattern_piece_area_cm2 ?? yardageData.total_pattern_piece_area, ' cm²')}</div>
                           </div>
                           <div style={{ background: 'var(--surface-1)', padding: '8px', borderRadius: '6px' }}>
                             <div style={{ color: 'var(--text-secondary)', fontSize: '10px' }}>Usable Fabric Area</div>
-                            <div style={{ fontWeight: '700' }}>{yardageData.usable_area_cm2 || (yardageData.usable_width_cm * yardageData.fabric_length_cm).toFixed(1)} cm²</div>
+                            <div style={{ fontWeight: '700' }}>{resultOrNA(yardageData.usable_area_cm2, ' cm²')}</div>
                           </div>
                         </div>
 
@@ -1077,13 +1104,13 @@ export default function Upload() {
               </div>
               <div className="result-tile">
                 <div className="r-val" style={{ color: 'var(--text-accent)' }}>
-                  {yardageData?.yardage_metres ? `${yardageData.yardage_metres}m` : '0.58m'}
+                  {resultOrNA(yardageData?.yardage_metres, 'm')}
                 </div>
                 <div className="r-lbl">Fabric Required</div>
               </div>
               <div className="result-tile">
                 <div className="r-val" style={{ color: 'var(--text-accent)' }}>
-                  {yardageData?.utilisation_percent ? `${yardageData.utilisation_percent}%` : '78.7%'}
+                  {resultOrNA(yardageData?.utilisation_percent, '%')}
                 </div>
                 <div className="r-lbl">Fabric Efficiency</div>
               </div>
@@ -1094,7 +1121,7 @@ export default function Upload() {
               <div className="pdf-card" style={{ flex: 1, minWidth: '280px' }}>
                 <div className="pdf-top">
                   <div className="pdf-top-title">Drafting Guide PDF — {features.garment_type}</div>
-                  <div className="pdf-top-sub">5 pages · includes 2D cutting layout & Aldrich construction notes</div>
+                  <div className="pdf-top-sub">Includes cutting layout, pattern pieces & construction notes</div>
                 </div>
                 <div className="pdf-body">
                   <div className="pdf-row">
@@ -1104,21 +1131,21 @@ export default function Upload() {
                     </span>
                   </div>
                   <div className="pdf-row">
-                    <span className="pdf-row-l">Bust with Ease (+10cm)</span>
+                    <span className="pdf-row-l">Bust with Ease</span>
                     <span className="pdf-row-r">
-                      {patternData?.measurements_used?.eased?.bust_cm || (parseFloat(meas.bust_cm || 88) + 10)} cm
+                      {resultOrNA(patternData?.measurements_used?.eased?.bust_cm, ' cm')}
                     </span>
                   </div>
                   <div className="pdf-row">
-                    <span className="pdf-row-l">Waist with Ease (+8cm)</span>
+                    <span className="pdf-row-l">Waist with Ease</span>
                     <span className="pdf-row-r">
-                      {patternData?.measurements_used?.eased?.waist_cm || (parseFloat(meas.waist_cm || 70) + 8)} cm
+                      {resultOrNA(patternData?.measurements_used?.eased?.waist_cm, ' cm')}
                     </span>
                   </div>
                   <div className="pdf-row">
-                    <span className="pdf-row-l">Hip with Ease (+10cm)</span>
+                    <span className="pdf-row-l">Hip with Ease</span>
                     <span className="pdf-row-r">
-                      {patternData?.measurements_used?.eased?.hip_cm || (parseFloat(meas.hip_cm || 94) + 10)} cm
+                      {resultOrNA(patternData?.measurements_used?.eased?.hip_cm, ' cm')}
                     </span>
                   </div>
                   <div className="pdf-row">
@@ -1128,7 +1155,7 @@ export default function Upload() {
                   <div className="pdf-row">
                     <span className="pdf-row-l">Fabric Required ({fabricWidth}cm bolt)</span>
                     <span className="pdf-row-r" style={{ color: 'var(--text-accent)', fontWeight: '600' }}>
-                      {yardageData?.yardage_metres || 0.58} metres
+                      {resultOrNA(yardageData?.yardage_metres, ' metres')}
                     </span>
                   </div>
                 </div>

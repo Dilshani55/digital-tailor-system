@@ -22,6 +22,30 @@ def calculate_shoelace_area(points):
     return abs(area) / 2.0
 
 
+class NestingError(Exception):
+    """
+    Raised when a valid marker cannot be produced. Carries a structured payload
+    (`.details`) so callers can return it to the client. A failed nesting must
+    never be turned into a "successful" fabric requirement.
+    """
+
+    def __init__(self, message, error_code="NESTING_FAILED", failed_pieces=None, **extra):
+        super().__init__(message)
+        self.message = message
+        self.error_code = error_code
+        self.failed_pieces = failed_pieces or []
+        self.extra = extra
+
+    @property
+    def details(self):
+        return {
+            "error_code": self.error_code,
+            "message": self.message,
+            "failed_pieces": self.failed_pieces,
+            **self.extra,
+        }
+
+
 class Rectangle:
     """Represents a single pattern piece for 2D layout nesting."""
 
@@ -77,7 +101,18 @@ class NestingAlgorithm:
             cutting_mode    (str):  'folded' (lengthwise fold) or 'open'
             allow_rotation  (bool): whether 90° rotation is allowed.
         """
-        self.fabric_width   = float(fabric_width_cm)
+        try:
+            self.fabric_width = float(fabric_width_cm)
+        except (TypeError, ValueError):
+            raise NestingError(
+                f"Fabric width '{fabric_width_cm}' is not a number.",
+                error_code="INVALID_FABRIC_WIDTH",
+            )
+        if not self.fabric_width > 0:
+            raise NestingError(
+                f"Fabric width must be greater than 0 cm (got {fabric_width_cm}).",
+                error_code="INVALID_FABRIC_WIDTH",
+            )
         self.fabric_type    = (fabric_type or "woven").lower()
         self.cutting_mode   = (cutting_mode or "folded").lower()
 
@@ -186,6 +221,7 @@ class NestingAlgorithm:
                 piece.rotate()
 
         placed = []
+        self.unplaced = []   # pieces that fit in no allowed orientation
 
         for piece in self.pieces:
             best_pos    = None
@@ -218,6 +254,8 @@ class NestingAlgorithm:
                 piece.x = px
                 piece.y = py
                 placed.append(piece)
+            else:
+                self.unplaced.append(piece)
 
         if not placed:
             return float("inf"), []
@@ -274,11 +312,52 @@ class NestingAlgorithm:
             waste_area_cm2 = usable_area_cm2 - total_pattern_area_cm2
             waste_percent = 100 - utilisation_percent
         """
+        if not self.pieces:
+            raise NestingError(
+                "No pattern pieces were provided, so no marker can be generated.",
+                error_code="NO_PIECES",
+            )
+
         best_length, best_placed = self._nest_with_usable_width(self.usable_width)
 
-        if best_length == float("inf"):
-            best_length = 50.0
-            best_placed = self.pieces
+        # Every required piece instance must be placed. If any is not, fail
+        # explicitly — never drop it and report a smaller (fabricated) requirement.
+        if self.unplaced or len(best_placed) != len(self.pieces):
+            failed = []
+            for piece in self.unplaced:
+                # Report the piece's ORIGINAL orientation (placement may have flipped it).
+                w, h = (piece.height, piece.width) if piece.rotated else (piece.width, piece.height)
+                w -= self.SEAM_GAP
+                h -= self.SEAM_GAP
+                narrowest = min(w, h) if self.allow_rotation else w
+                reason = (
+                    f"needs {narrowest:.1f} cm of width but only "
+                    f"{self.usable_width:.1f} cm is usable"
+                )
+                if self.cutting_mode == "folded":
+                    reason += (
+                        f" (fabric folded: {self.fabric_width:.0f} cm bolt -> "
+                        f"{self.usable_width:.1f} cm layer)"
+                    )
+                if not self.allow_rotation:
+                    reason += "; 90-degree rotation is not permitted for this fabric/grain"
+                failed.append({
+                    "name": piece.name,
+                    "width_cm": round(w, 2),
+                    "height_cm": round(h, 2),
+                    "usable_width_cm": self.usable_width,
+                    "reason": reason,
+                })
+            names = ", ".join(f["name"] for f in failed) or "unknown piece"
+            raise NestingError(
+                f"Nesting failed: {len(failed)} required pattern piece(s) do not fit the "
+                f"selected fabric ({names}). Choose a wider fabric or a different cutting mode.",
+                error_code="PIECE_DOES_NOT_FIT",
+                failed_pieces=failed,
+                fabric_width_cm=self.fabric_width,
+                usable_width_cm=self.usable_width,
+                cutting_mode=self.cutting_mode,
+            )
 
         placed_piece_area = sum(p.polygon_area for p in best_placed)
         usable_area_cm2 = self.usable_width * best_length
