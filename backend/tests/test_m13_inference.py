@@ -87,11 +87,63 @@ class TestAnalyseApi(unittest.TestCase):
         image.file_path = "x.png"
         image.id = "img1"
         with patch("app.routes.images.DesignImage") as DI, \
+                patch("app.ai.multitask_classifier.get_multitask_classifier", return_value=(None, {})), \
                 patch("app.ai.multitask_classifier.predict_multitask_features", return_value=raw), \
                 patch("app.ai.yolo_detector.detect_features", return_value=({"source": "cv_heuristic"}, None)):
             DI.objects.return_value.first.return_value = image
             r = self.app.test_client().post("/api/images/img1/analyse", headers=self.h)
         return r, image
+
+    def _analyse_failing(self, load_error=None, predict_error=None):
+        from app.ai.multitask_classifier import MultiTaskModelError
+        image = MagicMock()
+        image.user_id.id = "u1"
+        image.file_path = "x.png"
+        load = patch("app.ai.multitask_classifier.get_multitask_classifier",
+                     side_effect=MultiTaskModelError(load_error) if load_error else None,
+                     return_value=(None, {}))
+        predict = patch("app.ai.multitask_classifier.predict_multitask_features",
+                        side_effect=MultiTaskModelError(predict_error) if predict_error else None)
+        with patch("app.routes.images.DesignImage") as DI, load, predict:
+            DI.objects.return_value.first.return_value = image
+            r = self.app.test_client().post("/api/images/img1/analyse", headers=self.h)
+        return r, image
+
+    def test_missing_model_is_reported_honestly_as_unavailable(self):
+        r, image = self._analyse_failing(load_error="Multi-task model checkpoint not found at C:/secret/path.pt")
+        body = r.get_json()
+        self.assertEqual(r.status_code, 503)
+        self.assertEqual(body["error_code"], "MODEL_UNAVAILABLE")
+        self.assertIn("choose the design manually", body["error"])
+        self.assertNotIn("secret", json.dumps(body))            # no internal path leaks to the client
+        image.save.assert_not_called()                          # no fake analysis is stored
+
+    def test_unreadable_image_is_a_422_not_a_server_error(self):
+        r, image = self._analyse_failing(predict_error="Failed to open or decode image")
+        self.assertEqual(r.status_code, 422)
+        self.assertEqual(r.get_json()["error_code"], "IMAGE_NOT_ANALYSABLE")
+        image.save.assert_not_called()
+
+    def test_model_status_endpoint_reports_unavailable_without_internal_details(self):
+        with patch("app.ai.multitask_classifier.get_multitask_classifier",
+                   side_effect=__import__("app.ai.multitask_classifier", fromlist=["x"]).MultiTaskModelError(
+                       "Multi-task model checkpoint not found at C:/secret/path.pt")):
+            r = self.app.test_client().get("/api/images/model-status", headers=self.h)
+        body = r.get_json()
+        self.assertEqual(r.status_code, 200)
+        self.assertFalse(body["available"])
+        self.assertNotIn("secret", json.dumps(body))
+
+    def test_model_status_endpoint_reports_the_loaded_checkpoint(self):
+        meta = {"model_version": "M13|x", "model_type": "multitask", "checkpoint_sha256": "abc", "head_dims": {}}
+        with patch("app.ai.multitask_classifier.get_multitask_classifier", return_value=(None, meta)):
+            r = self.app.test_client().get("/api/images/model-status", headers=self.h)
+        body = r.get_json()
+        self.assertTrue(body["available"])
+        self.assertEqual((body["model_version"], body["checkpoint_sha256"]), ("M13|x", "abc"))
+
+    def test_model_status_requires_login(self):
+        self.assertEqual(self.app.test_client().get("/api/images/model-status").status_code, 401)
 
     def test_supported_prediction_is_returned_with_no_scope_warning(self):
         r, image = self._analyse(self._raw())

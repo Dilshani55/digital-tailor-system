@@ -5,7 +5,7 @@ from app.models.design_image import DesignImage
 from app.models.measurement import MeasurementProfile
 
 class Session(Document):
-    meta = {'collection': 'sessions'}
+    meta = {'collection': 'sessions', 'indexes': ['user_id']}
 
     user_id = ReferenceField(User, required=True)
     image_id = ReferenceField(DesignImage)

@@ -13,7 +13,7 @@ METRICS_INTEGRITY_VERSION = 2
 
 
 class ResearchRecord(Document):
-    meta = {'collection': 'research_records'}
+    meta = {'collection': 'research_records', 'indexes': ['user_id', 'pattern_id']}
 
     user_id = ReferenceField(User, required=True)
     session_id = ReferenceField(Session)

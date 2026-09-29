@@ -1,3 +1,4 @@
+import time
 import os
 from flask import Blueprint, request, jsonify, current_app, send_from_directory
 from flask_jwt_extended import jwt_required, get_jwt_identity
@@ -7,6 +8,36 @@ from app.utils.helpers import allowed_file, save_image, get_image_dimensions, In
 from app.logic import feature_schema
 
 images_bp = Blueprint("images", __name__)
+
+MODEL_UNAVAILABLE_MESSAGE = (
+    "The AI garment model is not available on this server, so the photo cannot be analysed. "
+    "You can still choose the design manually."
+)
+
+
+def _model_unavailable():
+    return jsonify({"error": MODEL_UNAVAILABLE_MESSAGE, "error_code": "MODEL_UNAVAILABLE"}), 503
+
+
+# ── AI MODEL STATUS ───────────────────────────────────────────────────────────
+@images_bp.route("/model-status", methods=["GET"])
+@jwt_required()
+def get_model_status():
+    """Tells the client, truthfully, whether photo analysis is possible (no internal paths exposed)."""
+    try:
+        from app.ai.multitask_classifier import model_status
+        status = model_status()
+    except Exception as e:
+        current_app.logger.warning(f"Classifier code unavailable: {e}")
+        status = {"available": False}
+    if not status.get("available"):
+        return jsonify({"available": False, "message": MODEL_UNAVAILABLE_MESSAGE}), 200
+    return jsonify({
+        "available": True,
+        "model_type": status.get("model_type"),
+        "model_version": status.get("model_version"),
+        "checkpoint_sha256": status.get("checkpoint_sha256"),
+    }), 200
 
 
 # ── UPLOAD DESIGN IMAGE ───────────────────────────────────────────────────────
@@ -99,16 +130,36 @@ def analyse_image(image_id):
     #    (garment type, neckline, sleeve length, sleeve style only — no CAD drafting).
     garment_attributes = {}
     try:
-        from app.ai.multitask_classifier import predict_multitask_features
+        from app.ai.multitask_classifier import (
+            MultiTaskModelError, get_multitask_classifier, predict_multitask_features,
+        )
+    except Exception as e:  # torch/ultralytics not installed
+        current_app.logger.warning(f"Classifier code unavailable: {e}")
+        return _model_unavailable()
+    try:
+        get_multitask_classifier()
+    except Exception as e:
+        # Missing / corrupt / incompatible checkpoint: say so; the user can still choose the design.
+        current_app.logger.warning(f"Multi-task model unavailable: {e}")
+        return _model_unavailable()
+    try:
+        t0 = time.perf_counter()
         garment_attributes = predict_multitask_features(filepath)
+        analysis_time_sec = round(time.perf_counter() - t0, 4)
         # Keep every genuine prediction; only ADD scope flags. A class outside the user-selectable
         # taxonomy is never remapped to a similar one - the user must confirm the design manually.
         garment_attributes = feature_schema.annotate_predictions(garment_attributes)
-    except Exception as e:
-        if hasattr(current_app, "logger"):
-            current_app.logger.warning(f"Multi-task classification failed: {e}")
+    except MultiTaskModelError as e:
+        current_app.logger.warning(f"Image could not be analysed: {e}")
         return jsonify({
-            "error": "AI garment analysis failed. Check that the multi-task model checkpoint is available."
+            "error": "This photo could not be analysed. Try another photo or choose the design manually.",
+            "error_code": "IMAGE_NOT_ANALYSABLE",
+        }), 422
+    except Exception as e:
+        current_app.logger.warning(f"Multi-task classification failed: {e}")
+        return jsonify({
+            "error": "AI garment analysis failed. Please choose the design manually.",
+            "error_code": "ANALYSIS_FAILED",
         }), 500
 
     # Optional legacy CV heuristic — used only for auxiliary CAD hints (darts/seams)
@@ -156,6 +207,7 @@ def analyse_image(image_id):
     # confidence_score = mean top-1 softmax confidence of the 4 classifier heads
     # (a real model output). The CV heuristic contributes no confidence.
     design_image.confidence_score = pred_confidence
+    design_image.analysis_time_sec = analysis_time_sec
     design_image.save()
 
     return jsonify({

@@ -249,6 +249,26 @@ def get_multitask_classifier(model_path: str = None, backbone_path: str = None):
     return _model_instance, _model_metadata
 
 
+def model_status(model_path: str = None) -> dict:
+    """
+    Whether the classifier can be used right now. Loads the model once (cached) so the answer
+    reflects a real load, not just the presence of a file. Never raises.
+    """
+    try:
+        _, meta = get_multitask_classifier(model_path=model_path)
+    except MultiTaskModelError as e:
+        return {"available": False, "reason": str(e)}
+    except Exception as e:  # corrupt file, incompatible library, ...
+        return {"available": False, "reason": f"Model could not be loaded: {e}"}
+    return {
+        "available": True,
+        "model_version": meta["model_version"],
+        "model_type": meta["model_type"],
+        "checkpoint_sha256": meta["checkpoint_sha256"],
+        "head_dims": meta["head_dims"],
+    }
+
+
 def reset_multitask_classifier_singleton():
     """Resets singleton state for testing purposes."""
     global _model_instance, _model_metadata, _model_cache_key

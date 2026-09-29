@@ -1,3 +1,4 @@
+import time
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from app.models.design_image import DesignImage
@@ -187,8 +188,10 @@ def generate_pattern():
     try:
         # 5. Engine input = the validated measurements from step 3b (never defaults).
         # 6–7. Run parametric engine with confirmed CAD features
+        t0 = time.perf_counter()
         engine  = ParametricEngine(measurements_dict, features_dict, design_spec=design_spec)
         pattern = engine.generate()
+        generation_time_sec = round(time.perf_counter() - t0, 4)
 
         # 8. Geometry validation. The engine already raised DraftingError if either the base
         #    block or the final pattern failed; these reports are stored as research evidence.
@@ -209,6 +212,7 @@ def generate_pattern():
             base_block          = pattern["base_block"],
             measurements_snapshot = measurements_snapshot,
             validation_passed   = bool(validation.get("passed")),
+            generation_time_sec = generation_time_sec,
         )
         pattern_result.save()
 
@@ -337,8 +341,13 @@ def get_all_patterns():
     if not user:
         return jsonify({"error": "User not found"}), 404
 
-    sessions = Session.objects(user_id=user)
+    sessions = list(Session.objects(user_id=user))
     session_ids = [s.id for s in sessions]
+    # customer (measurement profile) of each session, without dereferencing each pattern's session
+    profile_of_session = {}
+    for s in sessions:
+        ref = s._data.get("measurement_id")
+        profile_of_session[s.id] = str(getattr(ref, "id", ref)) if ref is not None else None
 
     patterns = PatternResult.objects(
         session_id__in=session_ids
@@ -346,8 +355,10 @@ def get_all_patterns():
 
     result = []
     for p in patterns:
+        session_ref = p._data.get("session_id")
         result.append({
             "pattern_id":     str(p.id),
+            "measurement_id": profile_of_session.get(getattr(session_ref, "id", session_ref)),
             "garment_type":   p.garment_type,
             "yardage_metres": p.yardage_metres,
             "selected_fabric_id": p.selected_fabric_id,

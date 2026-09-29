@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from app.models.session import Session
 
 class PatternResult(Document):
-    meta = {'collection': 'pattern_results'}
+    meta = {'collection': 'pattern_results', 'indexes': [('session_id', '-generated_at')]}
 
     session_id = ReferenceField(Session, required=True)
     pattern_coordinates = ListField(DictField(), default=list)
@@ -20,4 +20,5 @@ class PatternResult(Document):
     design_spec = DictField(default=dict)            # canonical confirmed design used for this pattern
     measurements_snapshot = DictField(default=dict)  # validated canonical-cm measurements used for this pattern
     validation_passed = BooleanField(default=True)
+    generation_time_sec = FloatField(default=None)  # measured wall-clock time of engine.generate(); None for older records
     generated_at = DateTimeField(default=lambda: datetime.now(timezone.utc))

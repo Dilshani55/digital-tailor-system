@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from app.models.user import User
 
 class DesignImage(Document):
-    meta = {'collection': 'design_images'}
+    meta = {'collection': 'design_images', 'indexes': [('user_id', '-uploaded_at')]}
 
     user_id = ReferenceField(User, required=True)
     file_path = StringField(required=True)
@@ -13,4 +13,5 @@ class DesignImage(Document):
     design_spec = DictField(default=dict)   # canonical spec: confirmed attrs + provenance + support (see feature_schema)
     confirmed_at = DateTimeField(default=None)
     confidence_score = FloatField(default=0.0)
+    analysis_time_sec = FloatField(default=None)  # measured classifier inference time (model already loaded)
     uploaded_at = DateTimeField(default=lambda: datetime.now(timezone.utc))

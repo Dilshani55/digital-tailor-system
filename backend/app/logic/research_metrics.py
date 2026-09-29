@@ -144,3 +144,42 @@ def mean_or_none(values):
     if not vals:
         return None
     return sum(vals) / len(vals)
+
+
+def summarize_fabric_comparisons(rows):
+    """
+    Descriptive summary of traditional-vs-system fabric estimates.
+
+    rows: iterable of dicts with the stored values
+        {"traditional_m", "system_m", "source", "pattern_id"}.
+    difference = traditional - system (positive: the system recommends buying LESS cloth).
+
+    Returns None when there is no entry. Only descriptive statistics are given: with the small
+    samples a prototype study collects, no significance or "fabric saving" claim follows from it.
+    """
+    rows = [r for r in rows if r.get("traditional_m") and r.get("system_m") is not None]
+    if not rows:
+        return None
+    diffs = sorted(r["traditional_m"] - r["system_m"] for r in rows)
+    rel = [100.0 * (r["traditional_m"] - r["system_m"]) / r["traditional_m"] for r in rows]
+    n = len(diffs)
+    mean = sum(diffs) / n
+    median = diffs[n // 2] if n % 2 else (diffs[n // 2 - 1] + diffs[n // 2]) / 2
+    sd = (sum((d - mean) ** 2 for d in diffs) / (n - 1)) ** 0.5 if n > 1 else None
+    by_source = {}
+    for r in rows:
+        by_source[r["source"]] = by_source.get(r["source"], 0) + 1
+    return {
+        "n": n,
+        "patterns": len({r["pattern_id"] for r in rows}),
+        "mean_difference_m": round(mean, 3),
+        "median_difference_m": round(median, 3),
+        "sd_difference_m": None if sd is None else round(sd, 3),
+        "mean_relative_difference_percent": round(sum(rel) / n, 1),
+        "system_lower_count": sum(1 for d in diffs if d > 0),
+        "system_higher_count": sum(1 for d in diffs if d < 0),
+        "equal_count": sum(1 for d in diffs if d == 0),
+        "by_source": by_source,
+        "definition": "difference = traditional estimate - system recommended purchase, same fabric width",
+        "note": "Descriptive only. Whether the system amount is actually sufficient has not been verified by cutting.",
+    }

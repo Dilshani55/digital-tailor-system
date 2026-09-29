@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from app.models.user import User
 
 class MeasurementProfile(Document):
-    meta = {'collection': 'measurements'}
+    meta = {'collection': 'measurements', 'indexes': [('user_id', '-created_at')]}
 
     user_id = ReferenceField(User, required=True)
     client_name = StringField(default="Customer Profile")
