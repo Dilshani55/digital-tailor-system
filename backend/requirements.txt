@@ -1,0 +1,29 @@
+# Direct runtime dependencies of the Digital Tailor backend.
+# Versions are those installed in the working development venv (Python 3.14.6)
+# on which the test suite was run. Transitive packages (Werkzeug, Jinja2,
+# pymongo, PyJWT, opencv-python via ultralytics, ...) are left to the resolver.
+#
+# Install:  pip install -r requirements.txt
+# torch: the project was trained/run with a CPU build. On Windows/Linux use
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+# before the command above if you want the CPU-only wheels.
+
+# Web API
+Flask==3.1.3
+flask-cors==6.0.5
+Flask-JWT-Extended==4.7.4
+bcrypt==5.0.0
+
+# Database
+mongoengine==0.29.3
+
+# Pattern / PDF / image handling
+reportlab==5.0.0
+pillow==12.3.0
+numpy==2.5.1
+opencv-python==5.0.0.93
+
+# AI inference (multitask garment classifier, YOLOv8n-cls backbone)
+torch==2.13.0
+torchvision==0.28.0
+ultralytics==8.4.102
