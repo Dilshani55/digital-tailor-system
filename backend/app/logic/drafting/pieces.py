@@ -20,8 +20,15 @@ class Piece:
         self.fold_line = fold_line          # ((x0, y0), (x1, y1)) or None
         self.darts = list(darts or [])
         self.meta = dict(meta or {})
-        self.seam_allowance_cm = seam_allowance_cm   # metadata only; no seam-allowance geometry yet
+        self.seam_allowance_cm = seam_allowance_cm   # main seam allowance; real geometry is in cut_outline
         self.transformations = []
+        # cutting-line geometry, attached by seam_allowance.apply_seam_allowance()
+        self.allowances = {}
+        self.cut_outline = None
+        self.edge_kinds = []
+        self.edge_offsets = []
+        self.seam_outline = None
+        self.notches = []
 
     # geometry -----------------------------------------------------------------
     @property
@@ -46,7 +53,25 @@ class Piece:
             area = round(g.polygon_area(outline), 2)
         else:
             box, area = {"width_cm": 0, "height_cm": 0, "min_x": 0, "min_y": 0}, 0.0
+        cut = self.cut_outline
+        if cut and g.all_finite(cut):
+            cx0, cy0, cx1, cy1 = g.bbox(cut)
+            cut_box = {"width_cm": round(cx1 - cx0, 2), "height_cm": round(cy1 - cy0, 2),
+                       "min_x": round(cx0, 3), "min_y": round(cy0, 3)}
+            cut_area = round(g.polygon_area(cut), 2)
+        else:
+            cut_box, cut_area = None, None
         return {
+            "units": "cm",
+            "side": {"front_bodice": "front", "back_bodice": "back"}.get(self.piece_type),
+            "cutting_line": None if cut is None else [_pt(p) for p in cut],
+            "cut_bounding_box": cut_box,
+            "cut_polygon_area_cm2": cut_area,
+            "seam_allowances": dict(self.allowances),
+            "edge_allowances": [
+                {"kind": k, "cm": o} for k, o in zip(self.edge_kinds, self.edge_offsets)
+            ] if self.edge_kinds else [],
+            "notches": list(self.notches),
             "name": self.name,
             "piece_type": self.piece_type,
             "cut_count": self.cut_count,

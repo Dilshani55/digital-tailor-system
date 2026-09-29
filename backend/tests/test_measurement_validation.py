@@ -515,7 +515,7 @@ class TestEndToEndContract(unittest.TestCase):
         # 1. user corrects neckline + sleeve length at confirmation
         with patch("app.routes.images.DesignImage") as di:
             di.objects.return_value.first.return_value = image
-            corrected = dict(CONFIRMED, neckline_type="square-neck", sleeve_length="elbow-length")
+            corrected = dict(CONFIRMED, neckline_type="square-neck", sleeve_length="long-sleeve")
             r = client.post("/api/images/img1/confirm-attributes", json=corrected, headers=_headers())
         self.assertEqual(r.status_code, 200, r.get_json())
 
@@ -549,7 +549,7 @@ class TestEndToEndContract(unittest.TestCase):
                 "measurement_id": "m1", "image_id": "img1", "fabric_id": "cotton-poplin"})
         self.assertEqual(r.status_code, 201, r.get_json())
         self.assertEqual(seen["f"]["neckline"], "square neck")                  # corrected, canonical design
-        self.assertEqual(seen["f"]["sleeves"], "elbow sleeve")
+        self.assertEqual(seen["f"]["sleeves"], "long sleeve")
         self.assertAlmostEqual(seen["m"]["bust_cm"], 88.0, delta=0.05)          # inches -> cm
         spec = pr.call_args.kwargs["design_spec"]
         self.assertEqual(spec["provenance"]["neckline_type"]["source"], "user_corrected")

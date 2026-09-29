@@ -14,7 +14,7 @@ Supported transformations (see feature_schema.py for the support table):
 """
 
 from app.logic import feature_schema as fs
-from app.logic.drafting import bodice, sleeve as sleeve_mod, geometry as g
+from app.logic.drafting import bodice, sleeve as sleeve_mod, geometry as g, seam_allowance as sa
 from app.logic.drafting.assumptions import A
 from app.logic.drafting.ease import DraftingError
 from app.logic.drafting.pieces import Piece
@@ -41,7 +41,7 @@ class FinalPattern:
         return {
             "stage": "final_pattern",
             "description": "Base block transformed by the confirmed design specification. "
-                           "Prototype, mathematically generated, geometry-validated; no seam allowance yet.",
+                           "Prototype, mathematically generated, geometry-validated; cutting lines include seam allowances.",
             "design_attributes": dict(self.attributes),
             "transformations": self.transformations,
             "pieces": [p.to_dict() for p in self.pieces],
@@ -181,6 +181,20 @@ def apply_design(base, attributes):
                                 "rule": "0.85 x full neckline seam length (project assumption)", "status": "applied"})
 
     final = FinalPattern(base, clean, front, back, sleeve_piece, extras, transformations)
+
+    # 5. seam allowance: real cutting-line geometry + balance marks on every piece
+    block_id = block["block_id"]
+    for piece in final.pieces:
+        sa.apply_seam_allowance(piece, block_id)
+    front.notches = sa.bodice_notches(front)
+    back.notches = sa.bodice_notches(back)
+    if sleeve_piece is not None:
+        sleeve_piece.notches = sa.sleeve_notches(
+            sleeve_piece, front.meta["armhole_length_cm"], back.meta["armhole_length_cm"])
+    transformations.append({
+        "id": "seam_allowance", "type": "offset_cutting_line", "status": "applied",
+        "allowances_cm": sa.allowance_table(block_id),
+        "rule": "cutting line = seam line offset per edge (fold edge 0); project sewing-practice values"})
     result = validate_final_pattern(final)
     final.validation = result
     if not result["passed"]:

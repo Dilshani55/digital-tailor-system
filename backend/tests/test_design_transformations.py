@@ -317,8 +317,8 @@ class TestDeterminismAndMultiProfile(unittest.TestCase):
                 (design(neckline="v-neck", length="long-sleeve"), {}),
                 (design(garment_type="crop-top", neckline="square-neck", length="sleeveless", style="none"),
                  dict(garment_length_cm=self._crop_length(profile))),
-                (design(neckline="square-neck", length="elbow-length"), {}),
-                (design(garment_type="t-shirt", length="three-quarter-sleeve"), {}),
+                (design(neckline="square-neck", length="long-sleeve"), {}),
+                (design(garment_type="t-shirt", length="long-sleeve"), {}),
             ]
             for attrs, over in designs:
                 fabric = "knit" if attrs["garment_type"] == "t-shirt" else "woven"
@@ -435,7 +435,7 @@ class TestGenerateRouteIntegration(unittest.TestCase):
         cases = [
             ("small", design(), {}),
             ("medium", design(neckline="v-neck", length="long-sleeve"), {}),
-            ("large", design(neckline="square-neck", length="elbow-length"), {}),
+            ("large", design(neckline="square-neck", length="long-sleeve"), {}),
             ("medium", design(garment_type="crop-top", neckline="square-neck", length="sleeveless", style="none"),
              dict(garment_length_cm=36)),
         ]

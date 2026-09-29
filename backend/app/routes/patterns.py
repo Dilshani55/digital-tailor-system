@@ -142,7 +142,7 @@ def generate_pattern():
             }), 409
 
     # Unsupported designs are rejected explicitly — never replaced by another design.
-    report = feature_schema.support_report(clean)
+    report = feature_schema.support_report(clean, with_scope=True)
     if not report["supported"]:
         return jsonify({
             "error": feature_schema.unsupported_message(report),

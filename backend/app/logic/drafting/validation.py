@@ -13,6 +13,7 @@ import math
 
 from app.logic.drafting import geometry as g
 from app.logic.drafting.assumptions import A
+from app.logic.drafting import seam_allowance as sa
 
 SEAM_TOL_CM = 0.05           # front/back seam-length agreement (they are built from the same numbers)
 CAP_EASE_SOLVE_TOL_CM = 0.1  # constructed cap vs target
@@ -150,11 +151,95 @@ def validate_base_block(base):
     return out
 
 
+SA_TOL_CM = 0.05
+
+
+def validate_construction(piece, res):
+    """Seam-allowance geometry, notches, grainline, fold, quantity and labelling of one final piece."""
+    p = piece.name
+    cut, seam = piece.cut_outline, piece.seam_outline
+    res.check(f"{p}: cutting line present", bool(cut) and bool(seam), "seam allowance geometry attached",
+              f"{p}: no cutting-line geometry (seam allowance missing)")
+    if not cut or not seam:
+        return
+    finite = g.all_finite(cut)
+    res.check(f"{p}: cutting line finite", finite, "all coordinates finite", f"{p}: cutting line has non-finite coordinates")
+    if not finite:
+        return
+    crossings = g.self_intersections(cut)
+    res.check(f"{p}: cutting line simple", not crossings, "no self-intersection",
+              f"{p}: seam allowance makes the cutting line self-intersect (edges {crossings[:3]})")
+    res.check(f"{p}: cutting line encloses seam line",
+              g.polygon_area(cut) > g.polygon_area(seam) and all(g.point_in_polygon(q, cut) for q in seam),
+              f"cut {g.polygon_area(cut):.1f} cm2 > seam {g.polygon_area(seam):.1f} cm2",
+              f"{p}: cutting line does not enclose the seam line")
+    short_by, matched, checked = 0.0, 0, 0
+    n = len(seam)
+    for i in range(n):
+        a, b = seam[i], seam[(i + 1) % n]
+        if g.dist(a, b) < 0.3:
+            continue          # tiny curve facets: corner mitres dominate
+        mid = ((a[0] + b[0]) / 2.0, (a[1] + b[1]) / 2.0)
+        want = piece.edge_offsets[i]
+        got = sa.point_polyline_distance(mid, cut, piece.fold_line if piece.cut_on_fold else None)
+        checked += 1
+        short_by = max(short_by, want - got)
+        matched += abs(got - want) <= SA_TOL_CM + 0.05 * want
+    # never LESS than specified anywhere; and the offset really is applied along (nearly) the whole outline
+    # (a tight concave curve, e.g. a neck point, is trimmed and may legitimately exceed the value locally)
+    res.check(f"{p}: seam allowance width", short_by <= SA_TOL_CM and matched >= 0.85 * max(checked, 1),
+              f"minimum shortfall {short_by:.3f} cm; {matched}/{checked} edges at the exact allowance",
+              f"{p}: seam allowance is narrower than specified by {short_by:.2f} cm")
+    res.check(f"{p}: allowance values", all(v >= 0 for v in piece.edge_offsets) and piece.seam_allowance_cm > 0,
+              f"seam {piece.seam_allowance_cm} cm", f"{p}: invalid seam allowance")
+    gr = piece.grain
+    res.check(f"{p}: grainline", gr is not None and g.all_finite(list(gr)) and g.dist(gr[0], gr[1]) > 1.0,
+              "grainline present", f"{p}: missing or degenerate grainline")
+    res.check(f"{p}: fold line", (not piece.cut_on_fold) or (piece.fold_line is not None and g.dist(*piece.fold_line) > 1.0),
+              "fold line present when cut on fold", f"{p}: cut-on-fold piece has no fold line")
+    res.check(f"{p}: cut quantity", isinstance(piece.cut_count, int) and piece.cut_count >= 1,
+              f"cut {piece.cut_count}", f"{p}: invalid cut quantity")
+    res.check(f"{p}: label", bool(piece.name and piece.name.strip()), "named", "A pattern piece has no name")
+    bad = [nt["id"] for nt in piece.notches if sa.point_polyline_distance(tuple(nt["point"]), seam) > 0.05]
+    res.check(f"{p}: notches on seam line", not bad, f"{len(piece.notches)} notches",
+              f"{p}: notches {bad} do not lie on the seam line")
+    if piece.piece_type in ("front_bodice", "back_bodice", "sleeve"):
+        need = {"front_bodice": 1, "back_bodice": 2, "sleeve": 3}[piece.piece_type]
+        res.check(f"{p}: notches present", len(piece.notches) >= need, f"{len(piece.notches)} notches (need {need})",
+                  f"{p}: balance notches are missing")
+
+
+def _completeness(final, res):
+    """The right set of pieces exists for the confirmed design and block."""
+    types = [p.piece_type for p in final.pieces]
+    attrs = final.attributes
+    need = ["front_bodice", "back_bodice"]
+    if attrs["sleeve_length"] == "sleeveless":
+        need.append("armhole_facing")
+    else:
+        need.append("sleeve")
+    if final.base.block.get("add_neckband"):
+        need.append("neckband")
+    missing = [t for t in need if t not in types]
+    res.check("required pieces", not missing, f"pieces: {', '.join(types)}",
+              f"Required pattern pieces are missing: {', '.join(missing)}")
+    dv = final.dv
+    for piece in (final.front, final.back):
+        res.check(f"{piece.name}: finished bust", abs(4.0 * piece.points["UNDERARM"][0] - dv.garment_bust) <= SA_TOL_CM,
+                  f"{4.0 * piece.points['UNDERARM'][0]:.2f} vs eased bust {dv.garment_bust:.2f} cm",
+                  f"{piece.name}: finished bust does not equal body bust plus ease")
+    if final.base.block.get("allow_darts") and abs(final.front.meta["hem_y_cm"] - dv.waist_y) < 1e-6             and final.front.meta["side_seam_suppression_cm"] != dv.suppression:
+        res.check("darts present for suppression", bool(final.front.darts), "front dart present",
+                  "Woven bodice is missing its waist dart")
+
+
 def validate_final_pattern(final):
     """final: FinalPattern (transformations.py)."""
     res = _Result()
     for piece in final.pieces:
         validate_piece(piece, res)
+        validate_construction(piece, res)
+    _completeness(final, res)
     _pair_checks(final.front, final.back, final.dv, res)
     info = None
     if final.sleeve is not None:

@@ -80,6 +80,37 @@ export function consistencyError(selections) {
   return '';
 }
 
+// PROJECT SCOPE — mirrors backend feature_schema.SCOPE.
+export const SCOPE = {
+  blouse: { neckline_type: ['round-neck', 'v-neck', 'square-neck'], sleeve_length: ['short-sleeve', 'long-sleeve'] },
+  't-shirt': { neckline_type: ['round-neck', 'v-neck'], sleeve_length: ['short-sleeve', 'long-sleeve'] },
+  'crop-top': { neckline_type: ['round-neck', 'v-neck', 'square-neck'], sleeve_length: ['sleeveless', 'short-sleeve'] },
+};
+const SCOPE_LABEL = { blouse: 'Blouse', 't-shirt': 'T-shirt', 'crop-top': 'Crop-top' };
+const pretty = (vals) => vals.map((v) => v.replace('-neck', '').replace('-sleeve', '').replace(/-/g, ' ')).join(', ');
+
+export function scopeViolations(sel) {
+  const allowed = SCOPE[sel?.garment_type];
+  if (!allowed || !sel.neckline_type || !sel.sleeve_length) return [];
+  const out = [];
+  [['neckline_type', 'necklines'], ['sleeve_length', 'sleeve lengths']].forEach(([head, what]) => {
+    if (!allowed[head].includes(sel[head])) {
+      const opt = supportOf(head, sel[head]);
+      out.push({ head, value: sel[head], label: opt ? opt.label : sel[head],
+        note: `Outside the supported scope: ${SCOPE_LABEL[sel.garment_type]} supports ${pretty(allowed[head])} ${what} only.` });
+    }
+  });
+  if (sel.sleeve_style) {
+    const want = sel.sleeve_length === 'sleeveless' ? 'none' : 'regular-sleeve';
+    if (sel.sleeve_style !== want) {
+      const opt = supportOf('sleeve_style', sel.sleeve_style);
+      out.push({ head: 'sleeve_style', value: sel.sleeve_style, label: opt ? opt.label : sel.sleeve_style,
+        note: `Outside the supported scope: only '${want}' sleeve style is supported with this sleeve length.` });
+    }
+  }
+  return out;
+}
+
 /** Unsupported / approximated selections among the four heads (empty entries ignored). */
 export function supportReport(selections) {
   const unsupported = [];
@@ -91,5 +122,9 @@ export function supportReport(selections) {
     if (opt.support === UNSUPPORTED) unsupported.push(item);
     else if (opt.support === APPROXIMATED) approximated.push(item);
   });
-  return { supported: unsupported.length === 0, unsupported, approximated };
+  const seen = new Set(unsupported.map((u) => `${u.head}:${u.value}`));
+  scopeViolations(selections).forEach((v) => { if (!seen.has(`${v.head}:${v.value}`)) unsupported.push(v); });
+  const bad = new Set(unsupported.map((u) => `${u.head}:${u.value}`));
+  const approx = approximated.filter((a) => !bad.has(`${a.head}:${a.value}`));
+  return { supported: unsupported.length === 0, unsupported, approximated: approx };
 }

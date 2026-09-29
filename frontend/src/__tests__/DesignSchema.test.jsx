@@ -99,3 +99,28 @@ describe('PredictionReview keeps user corrections', () => {
     expect(screen.getByTestId('confirm-btn').disabled).toBe(false);
   });
 });
+
+describe('project scope', () => {
+  const sel = (g, n, s, st) => ({ garment_type: g, neckline_type: n, sleeve_length: s, sleeve_style: st });
+  it('accepts every in-scope combination', () => {
+    const ok = [
+      sel('blouse', 'square-neck', 'long-sleeve', 'regular-sleeve'),
+      sel('t-shirt', 'v-neck', 'short-sleeve', 'regular-sleeve'),
+      sel('crop-top', 'round-neck', 'sleeveless', 'none'),
+    ];
+    ok.forEach((s) => expect(supportReport(s).supported).toBe(true));
+  });
+  it('rejects out-of-scope combinations with a reason', () => {
+    const bad = [
+      sel('t-shirt', 'square-neck', 'short-sleeve', 'regular-sleeve'),
+      sel('blouse', 'round-neck', 'sleeveless', 'none'),
+      sel('crop-top', 'round-neck', 'long-sleeve', 'regular-sleeve'),
+      sel('blouse', 'round-neck', 'elbow-length', 'regular-sleeve'),
+    ];
+    bad.forEach((s) => {
+      const r = supportReport(s);
+      expect(r.supported).toBe(false);
+      expect(r.unsupported[0].note).toMatch(/supported scope/);
+    });
+  });
+});

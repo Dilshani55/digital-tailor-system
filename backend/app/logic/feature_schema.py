@@ -77,6 +77,46 @@ _FEATURES = {
     },
 }
 
+# PROJECT SCOPE: the only garment/neckline/sleeve combinations the system drafts.
+# (frontend/src/utils/designSchema.js mirrors this; test_feature_contract.py enforces parity.)
+SCOPE = {
+    "blouse": {"neckline_type": ("round-neck", "v-neck", "square-neck"),
+               "sleeve_length": ("short-sleeve", "long-sleeve")},
+    "t-shirt": {"neckline_type": ("round-neck", "v-neck"),
+                "sleeve_length": ("short-sleeve", "long-sleeve")},
+    "crop-top": {"neckline_type": ("round-neck", "v-neck", "square-neck"),
+                 "sleeve_length": ("sleeveless", "short-sleeve")},
+}
+SCOPE_GARMENT_LABEL = {"blouse": "Blouse", "t-shirt": "T-shirt", "crop-top": "Crop-top"}
+
+
+def _pretty(values):
+    return ", ".join(v.replace("-neck", "").replace("-sleeve", "").replace("-", " ") for v in values)
+
+
+def scope_violations(clean):
+    """Items outside the supported garment x neckline x sleeve scope (regular sleeve style only)."""
+    out = []
+    allowed = SCOPE.get(clean.get("garment_type"))
+    if not allowed:
+        return out
+    g = SCOPE_GARMENT_LABEL[clean["garment_type"]]
+    for head in ("neckline_type", "sleeve_length"):
+        if clean[head] not in allowed[head]:
+            what = "necklines" if head == "neckline_type" else "sleeve lengths"
+            out.append({"head": head, "value": clean[head],
+                        "note": f"Outside the supported scope: {g} supports {_pretty(allowed[head])} {what} only."})
+    if clean["sleeve_length"] == "sleeveless":
+        ok_style = clean["sleeve_style"] == "none"
+    else:
+        ok_style = clean["sleeve_style"] == "regular-sleeve"
+    if not ok_style:
+        want = "none" if clean["sleeve_length"] == "sleeveless" else "regular-sleeve"
+        out.append({"head": "sleeve_style", "value": clean["sleeve_style"],
+                    "note": f"Outside the supported scope: only '{want}' sleeve style is supported with this sleeve length."})
+    return out
+
+
 TAXONOMY = {head: tuple(values) for head, values in _FEATURES.items()}
 
 
@@ -97,6 +137,7 @@ def schema_payload():
             ]
             for head in HEADS
         },
+        "scope": {g: {h: list(v) for h, v in d.items()} for g, d in SCOPE.items()},
         "rule_based_features": {
             "darts": "derived from garment_type (blouse: bust dart; others: none)",
             "seams": "side seam",
@@ -145,8 +186,11 @@ def validate_attributes(attrs):
     return clean, {}
 
 
-def support_report(clean):
-    """Summarise how well the engine supports a validated attribute set."""
+def support_report(clean, with_scope=False):
+    """Summarise how well the engine supports a validated attribute set.
+
+    with_scope=True additionally rejects anything outside the PROJECT scope (SCOPE); the API uses it.
+    The drafting engine itself stays a superset (e.g. it can still draft elbow-length sleeves)."""
     unsupported, approximated = [], []
     for head in HEADS:
         level, note = support_of(head, clean[head])
@@ -155,6 +199,11 @@ def support_report(clean):
             unsupported.append(item)
         elif level == APPROXIMATED:
             approximated.append(item)
+    seen = {(u["head"], u["value"]) for u in unsupported}
+    for item in (scope_violations(clean) if with_scope else []):
+        if (item["head"], item["value"]) not in seen:
+            unsupported.append(item)
+    approximated = [a for a in approximated if (a["head"], a["value"]) not in {(u["head"], u["value"]) for u in unsupported}]
     return {
         "supported": not unsupported,
         "unsupported": unsupported,
@@ -214,6 +263,6 @@ def build_design_spec(clean, garment_attributes, rule_based):
             "derived_from": "garment_type",
         },
         "model": model,
-        "support": support_report(clean),
+        "support": support_report(clean, with_scope=True),
         "confirmed_at": datetime.now(timezone.utc).isoformat(),
     }
