@@ -30,7 +30,10 @@ import sys
 import numpy as np
 import torch
 from PIL import Image
-from transformers import CLIPModel, CLIPProcessor
+try:
+    from transformers import CLIPModel, CLIPProcessor
+except ImportError:  # optional labelling-only dependency; the script reports it when actually run
+    CLIPModel = CLIPProcessor = None
 
 
 def parse_args():
@@ -45,6 +48,8 @@ def parse_args():
 def load_clip_model(model_name):
     print(f"Loading CLIP model '{model_name}' via Transformers...")
     try:
+        if CLIPModel is None:
+            raise RuntimeError("The 'transformers' package is required for CLIP labelling (pip install transformers).")
         model = CLIPModel.from_pretrained(model_name)
         processor = CLIPProcessor.from_pretrained(model_name)
         model.eval()
