@@ -96,6 +96,20 @@ def mean_f1(scores):
     return sum(vals) / len(vals)
 
 
+def decide(hard_checks, d_lock, d_test):
+    """PASS / FAIL / AMBIGUOUS from the hard checks and the mean-macro-F1 deltas (candidate - deployed)."""
+    if not all(hard_checks) or d_lock <= 0:
+        return "FAIL"
+    if d_test < 0 or d_lock < MIN_IMPROVEMENT:
+        return "AMBIGUOUS"
+    return "PASS"
+
+
+def regression_ok(deltas):
+    """No head may lose more than its allowed macro-F1 (garment_type, which selects the block, is strictest)."""
+    return all(deltas[h] >= -MAX_REGRESSION[h] for h in HEADS)
+
+
 def smoke(model_path, images):
     model, meta = get_multitask_classifier(model_path=model_path)
     dims = {h: len(meta["class_to_idx"][h]) for h in HEADS}
@@ -163,7 +177,7 @@ def main():
     gate["checks"]["locked_mean_macro_f1_delta"] = round(d_lock, 4)
     gate["checks"]["clean_test_mean_macro_f1_delta"] = round(d_test, 4)
     gate["checks"]["per_head_locked_delta"] = {h: round(v, 4) for h, v in reg.items()}
-    gate["checks"]["no_critical_regression"] = all(reg[h] >= -MAX_REGRESSION[h] for h in HEADS)
+    gate["checks"]["no_critical_regression"] = regression_ok(reg)
 
     train_uids = {r["record_uid"] for r in read_jsonl(args.train_manifest)}
     gate["checks"]["no_eval_record_in_training_manifest"] = not any(e["original_record_uid"] in train_uids for e in evalrecs)
@@ -173,12 +187,7 @@ def main():
     hard = [gate["checks"]["head_dimensions_match_taxonomy"], gate["checks"]["inference_smoke_test"],
             gate["checks"]["no_critical_regression"], gate["checks"]["no_eval_record_in_training_manifest"],
             gate["checks"]["no_eval_near_duplicate_of_training"]]
-    if not all(hard) or d_lock <= 0:
-        gate["result"] = "FAIL"
-    elif d_test < 0 or d_lock < MIN_IMPROVEMENT:
-        gate["result"] = "AMBIGUOUS"
-    else:
-        gate["result"] = "PASS"
+    gate["result"] = decide(hard, d_lock, d_test)
     gate["note"] = ("The locked benchmark has only 60 images (23-54 labelled per head); differences of a few points are "
                     "within sampling noise, which is why the clean test split must agree.")
     os.makedirs(os.path.dirname(os.path.abspath(args.output)), exist_ok=True)
