@@ -1,0 +1,22 @@
+{
+  "schema_version": "1.0.0",
+  "purpose": "Minimum TRUSTED (human_verified or fashionpedia_direct) examples per class and split before a 3/5/3/4 model may be trained.",
+  "minimum_trusted_per_class": {"train": 100, "val": 30, "test": 30},
+  "rationale": [
+    "test/val >= 30 per class: fewer than ~30 examples makes a per-class F1 too noisy to compare models (one image moves recall by >3 points).",
+    "train >= 100 per class: practical floor for fine-tuning a small classification head; below it the class is dominated by the others even with class weights.",
+    "These are engineering thresholds chosen for this project, not statistical guarantees; raise them if more data is available."
+  ],
+  "locked_benchmark": {
+    "note": "A new locked real-product benchmark is needed for the 15-class model; the existing 60-image benchmark has 0 examples of square-neck, collared-neck, sleeveless, none and regular-sleeve.",
+    "minimum_images_per_class": 10,
+    "must_not_overlap_training": true
+  },
+  "leakage_control": {
+    "split_unit": "source image (all annotations of one photo stay in the same split)",
+    "near_duplicate_hash": "64-bit dHash, Hamming distance <= 4 counted as near-duplicate",
+    "rule": "a val/test image with a near-duplicate in train is excluded from val/test evaluation; a human-labelled image inherits the split of its source image"
+  },
+  "queue_oversampling_factor": 3,
+  "queue_oversampling_note": "Reviewers reject or mark uncertain a share of candidates, so the queue offers about 3x the number of missing examples (capped by the size of the real candidate pool)."
+}

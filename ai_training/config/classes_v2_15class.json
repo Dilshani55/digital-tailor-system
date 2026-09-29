@@ -1,0 +1,47 @@
+{
+  "schema_version": "2.0.0",
+  "status": "PLANNED - not trained, not deployed, not connected to the backend or frontend",
+  "model_family": "YOLOv8",
+  "model_type": "single-multi-task-classifier",
+  "number_of_models": 1,
+  "class_counts": {"garment_type": 3, "neckline_type": 5, "sleeve_length": 3, "sleeve_style": 4},
+  "total_label_count": 15,
+  "note": "Order below is the exact output order of a future 3/5/3/4 model. It is NOT compatible with the deployed M13 checkpoint (3/10/6/9); an old checkpoint must never be loaded with this file.",
+  "outputs": {
+    "garment_type": {
+      "class_count": 3,
+      "classes": ["blouse", "t-shirt", "crop-top"],
+      "class_to_idx": {"blouse": 0, "t-shirt": 1, "crop-top": 2},
+      "idx_to_class": {"0": "blouse", "1": "t-shirt", "2": "crop-top"}
+    },
+    "neckline_type": {
+      "class_count": 5,
+      "classes": ["round-neck", "v-neck", "square-neck", "collared-neck", "off-shoulder"],
+      "class_to_idx": {"round-neck": 0, "v-neck": 1, "square-neck": 2, "collared-neck": 3, "off-shoulder": 4},
+      "idx_to_class": {"0": "round-neck", "1": "v-neck", "2": "square-neck", "3": "collared-neck", "4": "off-shoulder"}
+    },
+    "sleeve_length": {
+      "class_count": 3,
+      "classes": ["sleeveless", "short-sleeve", "long-sleeve"],
+      "class_to_idx": {"sleeveless": 0, "short-sleeve": 1, "long-sleeve": 2},
+      "idx_to_class": {"0": "sleeveless", "1": "short-sleeve", "2": "long-sleeve"}
+    },
+    "sleeve_style": {
+      "class_count": 4,
+      "classes": ["none", "regular-sleeve", "puff-sleeve", "bell-sleeve"],
+      "class_to_idx": {"none": 0, "regular-sleeve": 1, "puff-sleeve": 2, "bell-sleeve": 3},
+      "idx_to_class": {"0": "none", "1": "regular-sleeve", "2": "puff-sleeve", "3": "bell-sleeve"}
+    }
+  },
+  "removed_classes_are_masked_never_remapped": {
+    "neckline_type": ["scoop-neck", "boat-neck", "sweetheart-neck", "halter-neck", "high-neck"],
+    "sleeve_length": ["cap-length", "elbow-length", "three-quarter-sleeve"],
+    "sleeve_style": ["bishop-sleeve", "flutter-sleeve", "raglan-sleeve", "dolman-sleeve", "kimono-sleeve"]
+  },
+  "label_rules": {
+    "removed_class_record": "the classification head of that record is masked (mask = 0, label = null); it is never converted to a similar active class",
+    "sleeve_style_none": "only when the same record has an explicit, trusted sleeve_length = sleeveless label; a missing sleeve annotation is not evidence",
+    "trusted_provenance": ["human_verified", "fashionpedia_direct"],
+    "untrusted_provenance": ["fashionpedia_rule_derived", "accepted_pseudo_label", "fashionpedia_candidate_mapping", "model_suggestion"]
+  }
+}

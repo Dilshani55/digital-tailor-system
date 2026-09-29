@@ -42,12 +42,16 @@ Fields (cm): `bust_cm, waist_cm, hip_cm, height_cm, neck_cm, shoulder_cm, across
 ## Images and AI `/api/images` 🔒
 
 * `POST /upload` – multipart field `image` (JPG/PNG/WEBP, ≤ 16 MB). The **content** is decoded and checked; the stored name is random. → `image_id`.
-* `POST /{image_id}/analyse` – runs the 4-head classifier → `garment_attributes.predictions.{garment_type,neckline_type,sleeve_length,sleeve_style}` each with `label`, `confidence`, `top_3`, `requires_user_confirmation`, plus model version/checksum.
-* `POST /{image_id}/confirm-attributes` – body `{garment_type, neckline_type, sleeve_length, sleeve_style}` (taxonomy values). Stores the **user-confirmed** design (`design_spec`, with provenance ML-confirmed / user-corrected / manual). Only this confirmed design reaches the pattern engine.
-* `GET /design-schema` – taxonomy, per-value engine support and the project scope matrix.
+* `POST /{image_id}/analyse` – runs the deployed 4-head classifier (M13, 3/10/6/9 outputs) → `garment_attributes.predictions.{garment_type,neckline_type,sleeve_length,sleeve_style}` each with the **genuine** `label`, `confidence`, `top_3`, `requires_user_confirmation`, plus model version/checksum. Every head also carries `supported_in_ui` and `suggested_label` (the label if it is one of the 15 selectable classes, otherwise `null` — a prediction is **never** replaced by a similar class). If any head predicted a class outside the selectable list the response has `unsupported_heads` and `unsupported_message` = *"The detected feature is outside the supported pattern scope. Please confirm the design manually."*; nothing is auto-confirmed.
+* `POST /{image_id}/confirm-attributes` – body `{garment_type, neckline_type, sleeve_length, sleeve_style}`, each one of the 15 selectable classes. A model-only class (for example `boat-neck`, `elbow-length`, `bishop-sleeve`) is rejected with `400 OUTSIDE_SCOPE`. Stores the **user-confirmed** design (`design_spec`, with provenance ML-confirmed / user-corrected / manual). Only this confirmed design reaches the pattern engine.
+* `GET /design-schema` – the 15 selectable classes (3 / 5 / 3 / 4) with per-value drafting support, the sizes of the untouched model taxonomy (`model_class_counts` 3/10/6/9) and the project scope matrix.
 * `GET /`, `GET /{id}`, `DELETE /{id}`, `GET /view/{filename}`.
 
-### Supported scope
+### Selectable classes (active taxonomy, 15)
+
+garment_type: blouse, t-shirt, crop-top · neckline_type: round-neck, v-neck, square-neck, collared-neck, off-shoulder · sleeve_length: sleeveless, short-sleeve, long-sleeve · sleeve_style: none, regular-sleeve, puff-sleeve, bell-sleeve. `collared-neck`, `off-shoulder`, `puff-sleeve` and `bell-sleeve` can be selected and stored but the pattern engine cannot draft them yet (`422 UNSUPPORTED_DESIGN` at generation).
+
+### Supported scope (what can actually be drafted)
 
 | Garment | Necklines | Sleeves (style must be `regular-sleeve`; `none` when sleeveless) |
 |---|---|---|

@@ -6,6 +6,8 @@ Everything here is produced by scripts in `ai_training/` from files on the devel
 
 One image-level classifier: a YOLOv8n-cls backbone (Ultralytics, ImageNet-pretrained, 224×224 input) with **four linear heads** — `garment_type` (3 classes), `neckline_type` (10), `sleeve_length` (6), `sleeve_style` (9) — 28 labels in total. It is **not an object detector** and it does not generate patterns. Training loss is masked (a head is trained only where a label exists) with capped class weights and provenance sample weights. CPU only (no CUDA on the development machine; PyTorch 2.13 CPU).
 
+**Taxonomy in production.** The M13 checkpoint keeps its original output taxonomy (3 / 10 / 6 / 9 = 28 classes, order fixed by the checkpoint). The application lets the user choose from 15 *active* classes (3 / 5 / 3 / 4); a model prediction outside those 15 is kept as evidence, flagged, and never remapped to a look-alike. On the 60 benchmark photos M13 predicts at least one out-of-scope class for 49 images (82 %). A model with exactly the 15-class outputs is planned but not trained: see [FUTURE_15_CLASS_MODEL.md](FUTURE_15_CLASS_MODEL.md).
+
 ## 2. Dataset audit (`ai_training/scripts/audit_dataset.py`)
 
 Source: **Fashionpedia** (annotations CC BY 4.0; the images belong to their original photographers/Flickr licences, so the raw images are kept local and are never redistributed). 34,679 annotated garment instances were considered; **15,794** met the labelling policy and form the splits below. Image files are split by *source image*, not by annotation.

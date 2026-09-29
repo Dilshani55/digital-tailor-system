@@ -4,17 +4,18 @@ Counts below are from the runs recorded in the final evidence report (see the la
 
 | Suite | Command (from the folder shown) | Count | Notes |
 |---|---|---|---|
-| Backend | `backend`: `venv\Scripts\python -m unittest discover -s tests -t .` | 318 | Database access is mocked; no MongoDB needed. `pymupdf` (requirements-dev.txt) is needed for the PDF tests — without it they skip visibly. |
-| Frontend | `frontend`: `npm test` | 95 | vitest + Testing Library, mocked API. |
+| Backend | `backend`: `venv\Scripts\python -m unittest discover -s tests -t .` | 330 | Database access is mocked; no MongoDB needed. `pymupdf` (requirements-dev.txt) is needed for the PDF tests — without it they skip visibly. |
+| Frontend | `frontend`: `npm test` | 104 | vitest + Testing Library, mocked API. |
 | Production build | `frontend`: `npm run build` | – | must finish without errors. |
-| AI pipeline | repo root: `$env:PYTHONPATH="."; backend\venv\Scripts\python -m unittest discover -s ai_training/tests` | 104 | manifests, labels, leakage helpers, taxonomy parity, gate logic; the checkpoint test skips if the `.pt` file is absent. |
-| End-to-end | `frontend`: `npm run e2e` | 3 | Real Chrome → Vite → Flask → MongoDB → classifier → PDF (full workflow; out-of-scope refusal; every page and sidebar link renders with no console/API errors). See below. |
+| AI pipeline | repo root: `$env:PYTHONPATH="."; backend\venv\Scripts\python -m unittest discover -s ai_training/tests` | 134 | manifests, labels, leakage helpers, taxonomy parity, gate logic, the future 15-class pipeline (masking, readiness, human decisions, training guard, isolation from production); the checkpoint test skips if the `.pt` file is absent. |
+| End-to-end | `frontend`: `npm run e2e` | 5 | Real Chrome → Vite → Flask → MongoDB → real M13 classifier → PDF: full workflow; out-of-scope design refusal; supported M13 predictions pre-selected; unsupported M13 predictions flagged with manual confirmation (real benchmark photos); every page and sidebar link renders with no console/API errors. See below. |
 
 ## What the backend tests cover
 
 * **Pattern maths & geometry** – `test_base_block.py` (ease, drafting values, curves, sleeve-cap solving, validator failure paths), `test_design_transformations.py` (necklines, hem rule, sleeves, API output), `test_seam_allowance.py` (offset geometry incl. per-edge allowances and the fold edge, all 15 supported designs × 3 body sizes, required pieces, construction-validation failures, scope matrix), `test_parametric.py`, `test_block_and_locked.py`.
 * **Validation & contract** – `test_feature_contract.py` (taxonomy parity with `classes.json`, model heads and the frontend), `test_measurement_validation.py` (units, ranges, relations, chained image → confirm → measurements → generate).
 * **Nesting / estimate / PDF** – `test_nesting.py` (exact overlap, bounds, fold, grain, quantities, widths 90/114/150, folded and open, invariance of piece dimensions, too-wide piece), `test_pdf_export.py` (A4 pages, page numbers, instructions, 5 cm calibration square, true 1:1 scale read from the PDF's vector data, tile coverage, routes: estimate blocked when validation failed, widths, stored layout reused).
+* **M13 inference & taxonomy** – `test_m13_inference.py` (real checkpoint: SHA-256 unchanged, heads 3/10/6/9, direct inference on benchmark photos, supported/unsupported flags, API analyse, manual confirmation keeps the genuine prediction), `test_feature_contract.py` (15 active classes in exact order, subset of the model taxonomy, removed classes never remapped).
 * **Security & robustness** – `test_hardening.py` (Google sign-in cannot be forged, JSON errors, DB outage → 503, oversized upload → 413, disguised non-images rejected, secrets, CORS, researcher-only data, pseudonyms), `test_auth_routes.py` (register/login/profile/token/ownership).
 * **Research integrity** – `test_integrity_cleanup.py`, `test_research.py`, `test_multitask_integration.py` (no invented values; classifier metadata from the checkpoint).
 

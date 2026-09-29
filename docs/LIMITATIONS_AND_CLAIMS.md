@@ -16,12 +16,13 @@
 
 **AI**
 9. The classifier is a small image-level model. On the deployed checkpoint the garment-type head is reasonable (macro-F1 ≈ 0.79) but neckline (≈ 0.42), sleeve length (≈ 0.60) and especially sleeve style (≈ 0.32) are weak, and "sleeveless" / "regular sleeve" — the classes the supported scope needs most — have almost no training or test examples (see [AI_EVIDENCE.md](AI_EVIDENCE.md)). This is exactly why the user must confirm the design.
-10. Labels are mostly derived from Fashionpedia annotations and rules; only garment type has human-verified gold labels. The 60-image real-product benchmark is small (23–54 labelled items per head), so differences of a few points are within noise.
-11. The dataset contains near-duplicate photos across splits (≈ 4–5 % of validation/test images have a near-twin in training). Reported test numbers on the full test split are therefore slightly optimistic; the acceptance gate also evaluates a "clean" test split without them.
+10. The model predicts more classes (28) than the user can select (15). On the 60 real benchmark photos M13 predicts at least one class **outside** the selectable list for **49 of 60 (82 %)**, so manual confirmation is the normal path, not an exception. The future 15-class model is planned only ([FUTURE_15_CLASS_MODEL.md](FUTURE_15_CLASS_MODEL.md)): nine of its 15 classes still lack trusted training/validation/test examples, and it has **not** been trained.
+11. Labels are mostly derived from Fashionpedia annotations and rules; only garment type has human-verified gold labels. The 60-image real-product benchmark is small (23–54 labelled items per head), so differences of a few points are within noise.
+12. The dataset contains near-duplicate photos across splits (≈ 4–5 % of validation/test images have a near-twin in training). Reported test numbers on the full test split are therefore slightly optimistic; the acceptance gate also evaluates a "clean" test split without them.
 
 **System**
-12. Single-user prototype: no email verification, password reset, rate limiting or production deployment hardening (WSGI server, HTTPS). Google sign-in works only after a Google OAuth client id is configured.
-13. Usability, accuracy and fabric-waste **user studies have not been run**; there is no participant data.
+13. Single-user prototype: no email verification, password reset, rate limiting or production deployment hardening (WSGI server, HTTPS). Google sign-in works only after a Google OAuth client id is configured.
+14. Usability, accuracy and fabric-waste **user studies have not been run**; there is no participant data.
 
 ## SAFE thesis / viva claims
 
@@ -42,6 +43,7 @@
 * Any usability, satisfaction or accuracy result from users, tailors or a muslin test (none exist).
 * Model accuracy beyond the numbers in AI_EVIDENCE.md; "zero data leakage" (image IDs are disjoint, but near-duplicates exist); a detector's mAP (the deployed model is a classifier, not an object detector); training on DeepFashion2 (the data is Fashionpedia).
 * That the system supports other necklines/sleeve styles/garments than the scope table.
+* That a 15-class model exists, has been trained, or is deployed (it is only planned; the deployed model is the original M13).
 
 ## Suggested viva demonstration (≈ 10 minutes)
 

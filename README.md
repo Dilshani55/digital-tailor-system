@@ -14,7 +14,7 @@ Garment photo ─► AI suggests the design ─► YOU review and confirm it ─
       ─► printable 1:1 tiled A4 PDF ─► saved in your pattern library
 ```
 
-* **AI part.** One image classifier (YOLOv8n-cls backbone, four output heads: garment type, neckline, sleeve length, sleeve style). Its answers are only *suggestions*; the user must confirm or correct them, and only the confirmed design reaches the pattern engine.
+* **AI part.** One image classifier (YOLOv8n-cls backbone, four output heads: garment type, neckline, sleeve length, sleeve style). Its answers are only *suggestions*; the user must confirm or correct them, and only the confirmed design reaches the pattern engine. Users choose from 15 active classes (3 / 5 / 3 / 4); if the model predicts something outside them the app says so and asks for manual confirmation — it never swaps in a similar class.
 * **Pattern part.** Pure, deterministic geometry (`backend/app/logic/drafting/`). No second AI model invents the pattern. Every constant that is not derived from your measurements is listed in `assumptions.py` and marked as a *project assumption*.
 * **Fabric part.** Fabric recommendation is rule-based and explains itself. The fabric quantity comes from laying the real cutting-line polygons on the cloth (Bottom-Left-Fill heuristic).
 
@@ -84,4 +84,4 @@ Details, current counts and the E2E set-up are in [docs/TESTING.md](docs/TESTING
 
 ## Documentation
 
-[Architecture](docs/ARCHITECTURE.md) · [Pattern engine](docs/PATTERN_ENGINE.md) · [API](docs/API.md) · [AI evidence](docs/AI_EVIDENCE.md) · [Testing](docs/TESTING.md) · [Limitations and thesis-safe claims](docs/LIMITATIONS_AND_CLAIMS.md) · [AI development history](docs/ai_history/)
+[Architecture](docs/ARCHITECTURE.md) · [Pattern engine](docs/PATTERN_ENGINE.md) · [API](docs/API.md) · [AI evidence](docs/AI_EVIDENCE.md) · [Testing](docs/TESTING.md) · [Limitations and thesis-safe claims](docs/LIMITATIONS_AND_CLAIMS.md) · [Future 15-class model (planned)](docs/FUTURE_15_CLASS_MODEL.md) · [AI development history](docs/ai_history/)
