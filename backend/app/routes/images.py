@@ -101,6 +101,9 @@ def analyse_image(image_id):
     try:
         from app.ai.multitask_classifier import predict_multitask_features
         garment_attributes = predict_multitask_features(filepath)
+        # Keep every genuine prediction; only ADD scope flags. A class outside the user-selectable
+        # taxonomy is never remapped to a similar one - the user must confirm the design manually.
+        garment_attributes = feature_schema.annotate_predictions(garment_attributes)
     except Exception as e:
         if hasattr(current_app, "logger"):
             current_app.logger.warning(f"Multi-task classification failed: {e}")
@@ -165,6 +168,8 @@ def analyse_image(image_id):
         "detected_features_source": features.get("source", "unknown"),
         "requires_user_confirmation": requires_confirmation,
         "requires_user_verification": requires_confirmation,  # alias for older clients
+        "unsupported_heads": (garment_attributes or {}).get("unsupported_heads", []),
+        "unsupported_message": (garment_attributes or {}).get("unsupported_message"),
         "confirmed_attributes": {},
         "status": "analysis complete — confirm garment features before pattern generation"
     }), 200

@@ -23,11 +23,15 @@ const garmentAttributes = {
 };
 
 describe('designSchema', () => {
-  it('has the four classifier heads and the 28-label taxonomy', () => {
+  it('has the four classifier heads and the 15 active classes (3/5/3/4)', () => {
     expect(HEADS).toEqual(['garment_type', 'neckline_type', 'sleeve_length', 'sleeve_style']);
     const total = HEADS.reduce((n, h) => n + DESIGN_SCHEMA[h].length, 0);
-    expect(total).toBe(28);
-    expect(ACTIVE_TAXONOMY_OPTIONS.neckline_type).toHaveLength(10);
+    expect(total).toBe(15);
+    expect(HEADS.map((h) => DESIGN_SCHEMA[h].length)).toEqual([3, 5, 3, 4]);
+    expect(ACTIVE_TAXONOMY_OPTIONS.neckline_type.map((o) => o.value))
+      .toEqual(['round-neck', 'v-neck', 'square-neck', 'collared-neck', 'off-shoulder']);
+    expect(ACTIVE_TAXONOMY_OPTIONS.sleeve_length.map((o) => o.value)).toEqual(['sleeveless', 'short-sleeve', 'long-sleeve']);
+    expect(ACTIVE_TAXONOMY_OPTIONS.sleeve_style.map((o) => o.value)).toEqual(['none', 'regular-sleeve', 'puff-sleeve', 'bell-sleeve']);
   });
 
   it('every option has a support level and unsupported ones explain why', () => {
@@ -38,10 +42,10 @@ describe('designSchema', () => {
   });
 
   it('reports unsupported selections instead of hiding them', () => {
-    const r = supportReport({ garment_type: 'blouse', neckline_type: 'halter-neck',
+    const r = supportReport({ garment_type: 'blouse', neckline_type: 'collared-neck',
       sleeve_length: 'short-sleeve', sleeve_style: 'puff-sleeve' });
     expect(r.supported).toBe(false);
-    expect(r.unsupported.map((u) => u.value).sort()).toEqual(['halter-neck', 'puff-sleeve']);
+    expect(r.unsupported.map((u) => u.value).sort()).toEqual(['collared-neck', 'puff-sleeve']);
     expect(supportReport({ garment_type: 'blouse', neckline_type: 'round-neck',
       sleeve_length: 'short-sleeve', sleeve_style: 'regular-sleeve' }).supported).toBe(true);
   });
@@ -58,12 +62,12 @@ describe('PredictionReview keeps user corrections', () => {
     const onConfirm = vi.fn();
     render(<PredictionReview garmentAttributes={garmentAttributes} onConfirm={onConfirm} />);
     fireEvent.change(screen.getByTestId('select-neckline_type'), { target: { value: 'square-neck' } });
-    fireEvent.change(screen.getByTestId('select-sleeve_length'), { target: { value: 'elbow-length' } });
+    fireEvent.change(screen.getByTestId('select-sleeve_length'), { target: { value: 'short-sleeve' } });
     fireEvent.click(screen.getByTestId('confirm-btn'));
     expect(onConfirm).toHaveBeenCalledWith({
       garment_type: 'blouse',          // accepted as predicted
       neckline_type: 'square-neck',    // corrected (model said v-neck)
-      sleeve_length: 'elbow-length',   // corrected (model said long-sleeve)
+      sleeve_length: 'short-sleeve',   // corrected (model said long-sleeve)
       sleeve_style: 'regular-sleeve',
     });
   });

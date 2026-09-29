@@ -85,8 +85,12 @@ def taxonomy_report(classes_path):
 
     sys.path.insert(0, os.path.abspath("backend"))
     try:
-        from app.logic.feature_schema import TAXONOMY
-        report["checks"]["backend_feature_schema"] = all(list(TAXONOMY[h]) == truth[h] for h in HEADS)
+        from app.logic.feature_schema import MODEL_TAXONOMY, UI_TAXONOMY
+        # the deployed classifier's taxonomy is unchanged ...
+        report["checks"]["backend_model_taxonomy"] = all(list(MODEL_TAXONOMY[h]) == truth[h] for h in HEADS)
+        # ... and the user-selectable classes are an ordered subset of it (never a remapping)
+        report["checks"]["ui_taxonomy_is_ordered_subset_of_model"] = all(
+            [truth[h].index(v) for v in UI_TAXONOMY[h]] == sorted(truth[h].index(v) for v in UI_TAXONOMY[h]) for h in HEADS)
     except Exception as exc:                        # noqa: BLE001
         report["checks"]["backend_feature_schema"] = f"unavailable: {exc}"
     try:
@@ -101,8 +105,12 @@ def taxonomy_report(classes_path):
         for h in HEADS:
             block = re.search(rf"{h}: \[(.*?)\n  \]", text, re.S)
             values = re.findall(r"value: '([^']+)'", block.group(1)) if block else []
-            ok = ok and values == truth[h]
-        report["checks"]["frontend_designSchema"] = ok
+            try:
+                from app.logic.feature_schema import UI_TAXONOMY as _UI
+                ok = ok and values == list(_UI[h])
+            except Exception:                            # noqa: BLE001
+                ok = False
+        report["checks"]["frontend_designSchema_matches_active_ui_taxonomy"] = ok
     return report
 
 

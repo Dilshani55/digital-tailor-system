@@ -1,6 +1,9 @@
-// Design-feature schema used by the confirmation UI.
-// MUST stay identical to backend/app/logic/feature_schema.py (values, order and support
+// Design-feature schema used by the confirmation UI: the 15 ACTIVE classes the user may choose
+// (3 garment / 5 neckline / 3 sleeve length / 4 sleeve style).
+// MUST stay identical to backend/app/logic/feature_schema.py UI_TAXONOMY (values, order and support
 // levels). A backend test (test_feature_contract.py) fails if the two drift apart.
+// The deployed classifier still predicts its original larger taxonomy (3/10/6/9); a prediction
+// outside this list is never remapped - see `predictionOutsideScope` below.
 //
 // Support levels describe what the CURRENT drafting engine really does with a value:
 //   implemented   – geometry reflects the value
@@ -32,20 +35,12 @@ export const DESIGN_SCHEMA = {
     { value: 'round-neck', label: 'Round Neck', support: IMPLEMENTED, note: 'Curved round neck.' },
     { value: 'v-neck', label: 'V-Neck', support: IMPLEMENTED, note: 'True V: straight edges to a centre-front point.' },
     { value: 'square-neck', label: 'Square Neck', support: IMPLEMENTED, note: 'Square front neck with straight edges.' },
-    { value: 'scoop-neck', label: 'Scoop Neck', support: APPROXIMATED, note: 'Drafted as the base round neck; scoop depth is NOT applied.' },
-    { value: 'boat-neck', label: 'Boat Neck', support: APPROXIMATED, note: 'Drafted as the base round neck; boat shape is NOT applied.' },
-    { value: 'sweetheart-neck', label: 'Sweetheart Neck', support: APPROXIMATED, note: 'Drafted as the base round neck; sweetheart shape is NOT applied.' },
-    { value: 'halter-neck', label: 'Halter Neck', support: UNSUPPORTED, note: 'Halter/strap construction is not implemented.' },
-    { value: 'high-neck', label: 'High Neck', support: APPROXIMATED, note: 'Drafted as the base round neck; no stand/collar piece is generated.' },
     { value: 'collared-neck', label: 'Collared Neck', support: UNSUPPORTED, note: 'No collar piece is generated.' },
     { value: 'off-shoulder', label: 'Off-Shoulder', support: UNSUPPORTED, note: 'Off-shoulder construction is not implemented.' },
   ],
   sleeve_length: [
     { value: 'sleeveless', label: 'Sleeveless', support: IMPLEMENTED, note: 'No sleeve piece; armhole facing strips are generated.' },
-    { value: 'cap-length', label: 'Cap Length', support: UNSUPPORTED, note: 'A cap-length sleeve is shorter than the sleeve cap; not implemented.' },
     { value: 'short-sleeve', label: 'Short Sleeve', support: IMPLEMENTED, note: '40% of the measured full-arm length (project assumption).' },
-    { value: 'elbow-length', label: 'Elbow Length', support: IMPLEMENTED, note: '58% of the measured full-arm length (project assumption).' },
-    { value: 'three-quarter-sleeve', label: 'Three-Quarter Sleeve', support: IMPLEMENTED, note: '75% of the measured full-arm length (project assumption).' },
     { value: 'long-sleeve', label: 'Long Sleeve', support: IMPLEMENTED, note: 'Full measured arm length, tapering to the wrist.' },
   ],
   sleeve_style: [
@@ -53,11 +48,6 @@ export const DESIGN_SCHEMA = {
     { value: 'regular-sleeve', label: 'Regular Sleeve', support: IMPLEMENTED, note: 'Plain set-in sleeve.' },
     { value: 'puff-sleeve', label: 'Puff Sleeve', support: UNSUPPORTED, note: NOT_CONNECTED },
     { value: 'bell-sleeve', label: 'Bell Sleeve', support: UNSUPPORTED, note: NOT_CONNECTED },
-    { value: 'bishop-sleeve', label: 'Bishop Sleeve', support: UNSUPPORTED, note: NOT_CONNECTED },
-    { value: 'flutter-sleeve', label: 'Flutter Sleeve', support: UNSUPPORTED, note: NOT_CONNECTED },
-    { value: 'raglan-sleeve', label: 'Raglan Sleeve', support: UNSUPPORTED, note: 'Raglan construction is not implemented.' },
-    { value: 'dolman-sleeve', label: 'Dolman Sleeve', support: UNSUPPORTED, note: NOT_CONNECTED },
-    { value: 'kimono-sleeve', label: 'Kimono Sleeve', support: UNSUPPORTED, note: NOT_CONNECTED },
   ],
 };
 
@@ -127,4 +117,12 @@ export function supportReport(selections) {
   const bad = new Set(unsupported.map((u) => `${u.head}:${u.value}`));
   const approx = approximated.filter((a) => !bad.has(`${a.head}:${a.value}`));
   return { supported: unsupported.length === 0, unsupported, approximated: approx };
+}
+
+export const OUTSIDE_SCOPE_MESSAGE =
+  'The detected feature is outside the supported pattern scope. Please confirm the design manually.';
+
+/** True if the model's top-1 label for `head` is not one of the user-selectable classes. */
+export function predictionOutsideScope(head, label) {
+  return Boolean(label) && !(DESIGN_SCHEMA[head] || []).some((o) => o.value === label);
 }

@@ -107,7 +107,7 @@ def _strip(name, ptype, length, width, count, meta):
 
 def apply_design(base, attributes):
     """Apply confirmed design attributes to a valid base block. Raises DraftingError on any problem."""
-    clean, errors = fs.validate_attributes(attributes)
+    clean, errors = fs.validate_attributes(attributes, scope="model")
     if errors:
         first = next(iter(errors.values()))
         raise DraftingError(first["message"], code="INVALID_DESIGN_ATTRIBUTES",

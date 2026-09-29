@@ -189,9 +189,11 @@ class TestMultiTaskIntegration(unittest.TestCase):
     def test_active_taxonomy_and_cold_shoulder_rejection(self):
         from app.routes.images import ACTIVE_TAXONOMY
 
-        # Total 28 classes
+        # 15 active user-selectable classes (3 / 5 / 3 / 4); the model itself still outputs 3 / 10 / 6 / 9
         total_classes = sum(len(opts) for opts in ACTIVE_TAXONOMY.values())
-        self.assertEqual(total_classes, 28)
+        self.assertEqual(total_classes, 15)
+        self.assertEqual([len(ACTIVE_TAXONOMY[h]) for h in ("garment_type", "neckline_type", "sleeve_length", "sleeve_style")],
+                         [3, 5, 3, 4])
 
         # Verify active taxonomy values
         self.assertIn("blouse", ACTIVE_TAXONOMY["garment_type"])

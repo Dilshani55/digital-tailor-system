@@ -57,13 +57,27 @@ class TestTaxonomyParity(unittest.TestCase):
         with open(os.path.join(REPO_ROOT, "ai_training", "config", "classes.json"), encoding="utf-8") as f:
             cfg = json.load(f)["outputs"]
         for head in fs.HEADS:
-            self.assertEqual(list(fs.TAXONOMY[head]), cfg[head]["classes"], head)
+            # the deployed M13 classifier keeps its ORIGINAL taxonomy and order (3/10/6/9)
+            self.assertEqual(list(fs.MODEL_TAXONOMY[head]), cfg[head]["classes"], head)
 
     def test_backend_schema_matches_model_head_sizes(self):
         from app.ai.multitask_classifier import DEFAULT_HEAD_DIMS, HEADS
         self.assertEqual(tuple(HEADS), fs.HEADS)
         for head in fs.HEADS:
-            self.assertEqual(DEFAULT_HEAD_DIMS[head], len(fs.TAXONOMY[head]), head)
+            self.assertEqual(DEFAULT_HEAD_DIMS[head], len(fs.MODEL_TAXONOMY[head]), head)
+        self.assertEqual([DEFAULT_HEAD_DIMS[h] for h in fs.HEADS], [3, 10, 6, 9])
+
+    def test_active_ui_taxonomy_is_exactly_the_15_classes_in_order(self):
+        self.assertEqual({h: list(v) for h, v in fs.TAXONOMY.items()}, {
+            "garment_type": ["blouse", "t-shirt", "crop-top"],
+            "neckline_type": ["round-neck", "v-neck", "square-neck", "collared-neck", "off-shoulder"],
+            "sleeve_length": ["sleeveless", "short-sleeve", "long-sleeve"],
+            "sleeve_style": ["none", "regular-sleeve", "puff-sleeve", "bell-sleeve"],
+        })
+        self.assertEqual(sum(len(v) for v in fs.TAXONOMY.values()), 15)
+        for head in fs.HEADS:            # every active class exists in the model, in the same relative order
+            positions = [fs.MODEL_TAXONOMY[head].index(v) for v in fs.TAXONOMY[head]]
+            self.assertEqual(positions, sorted(positions), head)
 
     def test_frontend_schema_matches_backend(self):
         text = open(os.path.join(REPO_ROOT, "frontend", "src", "utils", "designSchema.js"),
@@ -86,6 +100,63 @@ class TestTaxonomyParity(unittest.TestCase):
                     encoding="utf-8").read()
         self.assertIn("../utils/designSchema", text)
         self.assertNotIn("{ value: 'blouse'", text)   # no second, hand-copied taxonomy
+
+
+class TestOutsideScopePredictions(unittest.TestCase):
+    """The deployed M13 model still predicts 3/10/6/9 classes; those outside the 15 active ones are never remapped."""
+
+    def _ga(self, **labels):
+        base = {"garment_type": "blouse", "neckline_type": "round-neck", "sleeve_length": "short-sleeve",
+                "sleeve_style": "regular-sleeve"}
+        base.update(labels)
+        return {"model_version": "M13", "predictions": {h: {"label": v, "confidence": 0.61, "top_3": [
+            {"class_name": v, "class_index": 0, "confidence": 0.61}], "requires_user_confirmation": False}
+            for h, v in base.items()}, "requires_user_confirmation": False}
+
+    def test_supported_predictions_pass_through_untouched(self):
+        out = fs.annotate_predictions(self._ga())
+        self.assertEqual(out["unsupported_heads"], [])
+        self.assertIsNone(out["unsupported_message"])
+        self.assertTrue(all(p["supported_in_ui"] and p["suggested_label"] == p["label"] for p in out["predictions"].values()))
+
+    def test_removed_classes_are_flagged_never_remapped_and_evidence_is_kept(self):
+        cases = {"neckline_type": ["boat-neck", "scoop-neck", "sweetheart-neck", "halter-neck", "high-neck"],
+                 "sleeve_length": ["cap-length", "elbow-length", "three-quarter-sleeve"],
+                 "sleeve_style": ["bishop-sleeve", "flutter-sleeve", "raglan-sleeve", "dolman-sleeve", "kimono-sleeve"]}
+        for head, labels in cases.items():
+            for label in labels:
+                out = fs.annotate_predictions(self._ga(**{head: label}))
+                p = out["predictions"][head]
+                self.assertEqual(p["label"], label)                      # genuine prediction preserved
+                self.assertEqual(p["confidence"], 0.61)                  # genuine confidence preserved
+                self.assertEqual(p["top_3"][0]["class_name"], label)
+                self.assertFalse(p["supported_in_ui"])
+                self.assertIsNone(p["suggested_label"])                  # no substitute class
+                self.assertEqual(out["unsupported_heads"], [head])
+                self.assertEqual(out["unsupported_message"],
+                                 "The detected feature is outside the supported pattern scope. Please confirm the design manually.")
+                self.assertTrue(out["requires_user_confirmation"])
+
+    def test_input_is_not_mutated_and_missing_predictions_are_safe(self):
+        ga = self._ga(neckline_type="boat-neck")
+        snapshot = json.dumps(ga, sort_keys=True)
+        fs.annotate_predictions(ga)
+        self.assertEqual(json.dumps(ga, sort_keys=True), snapshot)
+        self.assertEqual(fs.annotate_predictions(None)["unsupported_heads"], [])
+
+    def test_api_validation_rejects_removed_classes_with_the_scope_message(self):
+        for head, value in (("neckline_type", "boat-neck"), ("sleeve_length", "elbow-length"), ("sleeve_style", "bishop-sleeve")):
+            clean, errors = fs.validate_attributes(dict(GOOD, **{head: value}))
+            self.assertEqual(clean, {})
+            self.assertEqual(errors[head]["code"], "OUTSIDE_SCOPE")
+            self.assertIn("outside the supported pattern scope", errors[head]["message"])
+        _, errors = fs.validate_attributes(dict(GOOD, neckline_type="nonsense"))
+        self.assertEqual(errors["neckline_type"]["code"], "NOT_IN_TAXONOMY")
+
+    def test_engine_internals_still_use_the_full_model_taxonomy(self):
+        clean, errors = fs.validate_attributes(dict(GOOD, sleeve_length="elbow-length"), scope="model")
+        self.assertEqual(errors, {})
+        self.assertEqual(clean["sleeve_length"], "elbow-length")
 
 
 class TestValidation(unittest.TestCase):
@@ -118,10 +189,10 @@ class TestValidation(unittest.TestCase):
         self.assertEqual(errors, {})
 
     def test_support_report_flags_unsupported_and_approximated(self):
-        clean, _ = fs.validate_attributes(dict(GOOD, neckline_type="halter-neck", sleeve_style="puff-sleeve"))
+        clean, _ = fs.validate_attributes(dict(GOOD, neckline_type="collared-neck", sleeve_style="puff-sleeve"))
         report = fs.support_report(clean)
         self.assertFalse(report["supported"])
-        self.assertEqual({u["value"] for u in report["unsupported"]}, {"halter-neck", "puff-sleeve"})
+        self.assertEqual({u["value"] for u in report["unsupported"]}, {"collared-neck", "puff-sleeve"})
         self.assertTrue(all(u["note"] for u in report["unsupported"]))
         self.assertIn("cannot be drafted", fs.unsupported_message(report))
 
@@ -288,12 +359,12 @@ class TestGenerateRoute(unittest.TestCase):
         self.assertEqual(seen["features"]["sleeves"], "short sleeve")
 
     def test_unsupported_design_is_rejected_not_replaced(self):
-        image = self._confirmed_image(dict(GOOD, neckline_type="halter-neck", sleeve_style="puff-sleeve"))
+        image = self._confirmed_image(dict(GOOD, neckline_type="collared-neck", sleeve_style="puff-sleeve"))
         resp, pr, _ = self._generate(self.base(), image)
         self.assertEqual(resp.status_code, 422)
         body = resp.get_json()
         self.assertEqual(body["error_code"], "UNSUPPORTED_DESIGN")
-        self.assertEqual({u["value"] for u in body["unsupported_features"]}, {"halter-neck", "puff-sleeve"})
+        self.assertEqual({u["value"] for u in body["unsupported_features"]}, {"collared-neck", "puff-sleeve"})
         pr.assert_not_called()
 
     def test_unconfirmed_design_is_rejected(self):

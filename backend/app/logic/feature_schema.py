@@ -117,7 +117,23 @@ def scope_violations(clean):
     return out
 
 
-TAXONOMY = {head: tuple(values) for head, values in _FEATURES.items()}
+# The deployed M13 classifier keeps its ORIGINAL output taxonomy (3 / 10 / 6 / 9 classes, order fixed by
+# the checkpoint and ai_training/config/classes.json). It is never changed or remapped.
+MODEL_TAXONOMY = {head: tuple(values) for head, values in _FEATURES.items()}
+
+# What the USER may choose and confirm (active production taxonomy, 3 / 5 / 3 / 4 = 15 classes).
+# Values the model can predict but that are not listed here are NOT remapped to a similar class:
+# the prediction is kept as evidence and the user must confirm the design manually.
+UI_TAXONOMY = {
+    "garment_type": ("blouse", "t-shirt", "crop-top"),
+    "neckline_type": ("round-neck", "v-neck", "square-neck", "collared-neck", "off-shoulder"),
+    "sleeve_length": ("sleeveless", "short-sleeve", "long-sleeve"),
+    "sleeve_style": ("none", "regular-sleeve", "puff-sleeve", "bell-sleeve"),
+}
+TAXONOMY = UI_TAXONOMY          # the API / frontend contract
+
+OUTSIDE_SCOPE_MESSAGE = ("The detected feature is outside the supported pattern scope. "
+                         "Please confirm the design manually.")
 
 
 def support_of(head, value):
@@ -133,10 +149,13 @@ def schema_payload():
         "heads": {
             head: [
                 {"value": v, "support": lvl, "note": note}
-                for v, (lvl, note) in _FEATURES[head].items()
+                for v, (lvl, note) in _FEATURES[head].items() if v in UI_TAXONOMY[head]
             ]
             for head in HEADS
         },
+        "active_class_count": sum(len(v) for v in UI_TAXONOMY.values()),
+        "model_class_counts": {h: len(v) for h, v in MODEL_TAXONOMY.items()},
+        "outside_scope_message": OUTSIDE_SCOPE_MESSAGE,
         "scope": {g: {h: list(v) for h, v in d.items()} for g, d in SCOPE.items()},
         "rule_based_features": {
             "darts": "derived from garment_type (blouse: bust dart; others: none)",
@@ -145,14 +164,46 @@ def schema_payload():
     }
 
 
-def validate_attributes(attrs):
+def annotate_predictions(garment_attributes):
+    """
+    Adds scope information to the classifier output WITHOUT changing any prediction.
+    Every head keeps its genuine label / confidence / top_3 (research evidence). Additionally:
+      predictions[head]["supported_in_ui"]  True if the predicted label is a selectable class
+      predictions[head]["suggested_label"]  the label if selectable, else None (never a substitute)
+      unsupported_heads / unsupported_message  set when any head predicted a class outside the UI taxonomy
+    """
+    ga = dict(garment_attributes or {})
+    preds = {h: dict(p) for h, p in ((ga.get("predictions")) or {}).items()}
+    unsupported = []
+    for head in HEADS:
+        p = preds.get(head)
+        if not p:
+            continue
+        ok = p.get("label") in UI_TAXONOMY[head]
+        p["supported_in_ui"] = ok
+        p["suggested_label"] = p.get("label") if ok else None
+        if not ok:
+            unsupported.append(head)
+    ga["predictions"] = preds
+    ga["unsupported_heads"] = unsupported
+    ga["unsupported_message"] = OUTSIDE_SCOPE_MESSAGE if unsupported else None
+    if unsupported:
+        ga["requires_user_confirmation"] = True
+    return ga
+
+
+def validate_attributes(attrs, scope="ui"):
     """
     Validate a full set of confirmed attributes against the taxonomy.
+
+    scope="ui"    (API, default): only the 15 active user-selectable classes are accepted.
+    scope="model" (drafting engine internals): the full classifier taxonomy.
 
     Returns (clean, errors). `clean` holds the 4 stripped values only when there
     are no errors; `errors` maps head -> {"code", "message"}.
     """
     attrs = attrs if isinstance(attrs, dict) else {}
+    allowed = MODEL_TAXONOMY if scope == "model" else UI_TAXONOMY
     clean, errors = {}, {}
     for head in HEADS:
         raw = attrs.get(head)
@@ -160,12 +211,17 @@ def validate_attributes(attrs):
             errors[head] = {"code": "REQUIRED", "message": f"Missing or invalid attribute '{head}'"}
             continue
         val = raw.strip()
-        if val not in TAXONOMY[head]:
+        if val not in allowed[head] and val in MODEL_TAXONOMY[head]:
+            errors[head] = {"code": "OUTSIDE_SCOPE",
+                            "message": f"'{val}' is outside the supported pattern scope. Please choose one of: "
+                                       f"{', '.join(allowed[head])}."}
+            continue
+        if val not in allowed[head]:
             errors[head] = {
                 "code": "NOT_IN_TAXONOMY",
                 "message": (
                     f"Invalid attribute value '{val}' for '{head}'. "
-                    f"Must be one of the active taxonomy values: {', '.join(TAXONOMY[head])}."
+                    f"Must be one of the active taxonomy values: {', '.join(allowed[head])}."
                 ),
             }
             continue

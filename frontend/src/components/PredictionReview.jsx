@@ -3,6 +3,7 @@ import { CheckCircle2, AlertTriangle, Sparkles, RefreshCw, HelpCircle } from 'lu
 
 import {
   ACTIVE_TAXONOMY_OPTIONS, HEAD_TITLES, supportOf, supportReport, consistencyError, UNSUPPORTED, APPROXIMATED,
+  OUTSIDE_SCOPE_MESSAGE, predictionOutsideScope,
 } from '../utils/designSchema';
 
 // Re-exported for existing importers; the single frontend definition lives in utils/designSchema.js.
@@ -19,12 +20,20 @@ export default function PredictionReview({
   const lowConfidenceHeads = garmentAttributes?.low_confidence_heads || [];
   const hasPredictions = Boolean(garmentAttributes && Object.keys(predictions).length > 0);
 
-  // Initial state derived from confirmed values > raw predictions > empty strings for manual mode
+  // A prediction is pre-selected ONLY if it is one of the user-selectable classes. Anything else stays
+  // blank (never mapped to a "similar" class) and the user must choose manually.
+  const suggest = (head) => {
+    const label = predictions?.[head]?.label;
+    return label && !predictionOutsideScope(head, label) ? label : '';
+  };
+  const outsideScopeHeads = Object.keys(HEAD_TITLES).filter((h) => predictionOutsideScope(h, predictions?.[h]?.label));
+
+  // Initial state derived from confirmed values > selectable predictions > empty strings for manual mode
   const [selections, setSelections] = useState({
-    garment_type: confirmedAttributes?.garment_type || predictions?.garment_type?.label || '',
-    neckline_type: confirmedAttributes?.neckline_type || predictions?.neckline_type?.label || '',
-    sleeve_length: confirmedAttributes?.sleeve_length || predictions?.sleeve_length?.label || '',
-    sleeve_style: confirmedAttributes?.sleeve_style || predictions?.sleeve_style?.label || '',
+    garment_type: confirmedAttributes?.garment_type || suggest('garment_type'),
+    neckline_type: confirmedAttributes?.neckline_type || suggest('neckline_type'),
+    sleeve_length: confirmedAttributes?.sleeve_length || suggest('sleeve_length'),
+    sleeve_style: confirmedAttributes?.sleeve_style || suggest('sleeve_style'),
   });
 
   const [isEditing, setIsEditing] = useState(!confirmedAttributes || Object.keys(confirmedAttributes).length === 0);
@@ -40,10 +49,10 @@ export default function PredictionReview({
       setIsEditing(false);
     } else if (hasPredictions) {
       setSelections({
-        garment_type: predictions.garment_type?.label || '',
-        neckline_type: predictions.neckline_type?.label || '',
-        sleeve_length: predictions.sleeve_length?.label || '',
-        sleeve_style: predictions.sleeve_style?.label || '',
+        garment_type: suggest('garment_type'),
+        neckline_type: suggest('neckline_type'),
+        sleeve_length: suggest('sleeve_length'),
+        sleeve_style: suggest('sleeve_style'),
       });
     } else {
       setSelections({
@@ -164,6 +173,24 @@ export default function PredictionReview({
             <strong>Low Confidence Detected:</strong> Low prediction confidence on{' '}
             <em>{lowConfidenceHeads.map((h) => HEAD_TITLES[h] || h).join(', ')}</em>. Please double-check and select the intended features.
           </div>
+        </div>
+      )}
+
+      {isEditing && outsideScopeHeads.length > 0 && (
+        <div
+          role="alert"
+          style={{ background: '#FEF3C7', border: '1px solid #F59E0B', borderRadius: '8px', padding: '10px 12px', fontSize: '12px', color: '#92400E', marginBottom: '14px' }}
+          data-testid="outside-scope-alert"
+        >
+          <strong>{OUTSIDE_SCOPE_MESSAGE}</strong>
+          <ul style={{ margin: '6px 0 0', paddingLeft: '18px' }}>
+            {outsideScopeHeads.map((h) => (
+              <li key={h} data-testid={`outside-scope-${h}`}>
+                {HEAD_TITLES[h]}: detected “{predictions[h].label}”
+                {predictions[h].confidence != null ? ` (${(predictions[h].confidence * 100).toFixed(0)}%)` : ''} — please choose from the list.
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 
