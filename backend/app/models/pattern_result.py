@@ -1,4 +1,7 @@
-from mongoengine import Document, ReferenceField, ListField, DictField, FloatField, StringField, DateTimeField
+from mongoengine import (
+    Document, ReferenceField, ListField, DictField,
+    FloatField, StringField, DateTimeField, BooleanField,
+)
 from datetime import datetime, timezone
 from app.models.session import Session
 
@@ -12,4 +15,6 @@ class PatternResult(Document):
     garment_type = StringField(default="blouse")
     selected_fabric_id = StringField(default="cotton-poplin")
     selected_fabric_name = StringField(default="Cotton Poplin")
+    validation_report = DictField(default=dict)
+    validation_passed = BooleanField(default=True)
     generated_at = DateTimeField(default=lambda: datetime.now(timezone.utc))

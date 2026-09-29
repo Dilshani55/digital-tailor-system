@@ -91,42 +91,71 @@ def analyse_image(image_id):
     if not os.path.exists(filepath):
         return jsonify({"error": "Image file not found on server"}), 404
 
-    # 4. Run YOLOv8 detection
-    try:
-        from app.ai.yolo_detector import detect_features
-        features, confidence = detect_features(filepath)
-    except Exception:
-        features = {
-            "neckline":  "round neck",
-            "sleeves":   "short sleeve",
-            "darts":     "bust dart",
-            "seams":     "side seam",
-            "garment_type": "blouse"
-        }
-        confidence = 0.91
-
-    # 4b. Run Multi-Task Classification (Milestone M13)
+    # 4. Locked workflow: M13 multi-task classifier is the primary AI path
+    #    (garment type, neckline, sleeve length, sleeve style only — no CAD drafting).
     garment_attributes = {}
     try:
         from app.ai.multitask_classifier import predict_multitask_features
         garment_attributes = predict_multitask_features(filepath)
     except Exception as e:
         if hasattr(current_app, "logger"):
-            current_app.logger.warning(f"Multi-task classification skipped/failed: {e}")
+            current_app.logger.warning(f"Multi-task classification failed: {e}")
+        return jsonify({
+            "error": "AI garment analysis failed. Check that the multi-task model checkpoint is available."
+        }), 500
 
-    # 5. Update MongoDB record with detected features & multi-task attributes
+    # Optional legacy detector — used only for auxiliary CAD hints (darts/seams)
+    # until the user confirms attributes. Does not drive the review UI.
+    legacy_features = {}
+    legacy_confidence = 0.0
+    try:
+        from app.ai.yolo_detector import detect_features
+        legacy_features, legacy_confidence = detect_features(filepath)
+    except Exception:
+        legacy_features = {}
+        legacy_confidence = 0.0
+
+    predictions = (garment_attributes or {}).get("predictions") or {}
+    pred_confidence = 0.0
+    conf_values = [
+        (predictions.get(h) or {}).get("confidence")
+        for h in ("garment_type", "neckline_type", "sleeve_length", "sleeve_style")
+    ]
+    conf_values = [c for c in conf_values if isinstance(c, (int, float))]
+    if conf_values:
+        pred_confidence = sum(conf_values) / len(conf_values)
+
+    requires_confirmation = bool(
+        (garment_attributes or {}).get("requires_user_confirmation", True)
+    )
+
+    # Provisional CAD features from legacy detector only — overwritten on confirm.
+    features = legacy_features or {
+        "neckline": "round neck",
+        "sleeves": "short sleeve",
+        "darts": "bust dart",
+        "seams": "side seam",
+        "garment_type": "blouse",
+    }
+
+    # 5. Persist predictions; clear any prior confirmation (re-analyse resets gate)
     design_image.detected_features = features
     design_image.garment_attributes = garment_attributes
-    design_image.confidence_score  = confidence
+    design_image.confirmed_attributes = {}
+    design_image.confirmed_at = None
+    design_image.confidence_score = pred_confidence or legacy_confidence
     design_image.save()
 
     return jsonify({
-        "message":           "Image analysed successfully",
-        "image_id":          str(design_image.id),
+        "message": "Image analysed successfully",
+        "image_id": str(design_image.id),
         "detected_features": features,
         "garment_attributes": garment_attributes,
-        "confidence_score":  confidence,
-        "status": "analysis complete — ready for pattern generation"
+        "confidence_score": design_image.confidence_score,
+        "requires_user_confirmation": requires_confirmation,
+        "requires_user_verification": requires_confirmation,  # alias for older clients
+        "confirmed_attributes": {},
+        "status": "analysis complete — confirm garment features before pattern generation"
     }), 200
 
 
@@ -219,14 +248,11 @@ def confirm_attributes(image_id):
     design_image.confirmed_attributes = confirmed_data
     design_image.confirmed_at = datetime.now(timezone.utc)
 
-    # Sync into detected_features for downstream CAD/pattern engines
+    # Sync into detected_features using CAD-compatible (space-form) labels
+    from app.logic.taxonomy_map import confirmed_to_cad_features
+    cad_features = confirmed_to_cad_features(confirmed_data)
     updated_features = dict(design_image.detected_features or {})
-    updated_features.update({
-        "garment_type": confirmed_data["garment_type"],
-        "neckline": confirmed_data["neckline_type"],
-        "sleeves": confirmed_data["sleeve_length"],
-        "sleeve_style": confirmed_data["sleeve_style"],
-    })
+    updated_features.update(cad_features)
     design_image.detected_features = updated_features
     design_image.save()
 
@@ -234,8 +260,9 @@ def confirm_attributes(image_id):
         "message": "Garment attributes confirmed successfully",
         "image_id": str(design_image.id),
         "confirmed_attributes": confirmed_data,
+        "detected_features": updated_features,
         "confirmed_at": str(design_image.confirmed_at),
-        "status": "confirmed"
+        "status": "confirmed — ready for measurements and pattern generation"
     }), 200
 
 

@@ -7,8 +7,35 @@ from app.models.session import Session
 from app.models.user import User
 from app.logic.parametric_engine import ParametricEngine
 from app.logic.fabric_recommendation import validate_fabric_id, get_fabric_by_id
+from app.logic.taxonomy_map import confirmed_to_cad_features
+from app.logic.pattern_validator import validate_pattern
 
 patterns_bp = Blueprint("patterns", __name__)
+
+MANUAL_IMAGE_IDS = {"manual", "manual-selection", "none"}
+
+
+def _profile_measurements(measurement):
+    """Build the measurement dict passed to ParametricEngine (locked + legacy fields)."""
+    return {
+        "bust_cm": measurement.bust_cm,
+        "waist_cm": measurement.waist_cm,
+        "hip_cm": measurement.hip_cm,
+        "height_cm": measurement.height_cm,
+        "neck_cm": getattr(measurement, "neck_cm", 36.0),
+        "shoulder_cm": getattr(measurement, "shoulder_cm", 12.0),
+        "across_back_cm": getattr(measurement, "across_back_cm", 34.0),
+        "back_waist_length_cm": getattr(measurement, "back_waist_length_cm", 40.0),
+        "armhole_depth_cm": getattr(measurement, "armhole_depth_cm", None)
+            or getattr(measurement, "armhole_cm", 20.0),
+        "armhole_cm": getattr(measurement, "armhole_cm", 20.0),
+        "garment_length_cm": getattr(measurement, "garment_length_cm", 65.0),
+        "bicep_cm": getattr(measurement, "bicep_cm", 28.0),
+        "sleeve_cm": getattr(measurement, "sleeve_cm", 55.0),
+        "wrist_cm": getattr(measurement, "wrist_cm", 16.0),
+        "fabric_type": measurement.fabric_type,
+        "fit_preference": getattr(measurement, "fit_preference", "standard"),
+    }
 
 
 # ── GENERATE PATTERN ──────────────────────────────────────────────────────────
@@ -55,10 +82,12 @@ def generate_pattern():
     if not measurement:
         return jsonify({"error": "Measurement profile not found"}), 404
 
-    # 3. Fetch design image and its features
+    # 3. Fetch design image and enforce user confirmation (locked workflow step 3)
     custom_features = data.get("detected_features") or {}
+    custom_confirmed = data.get("confirmed_attributes") or {}
+    is_manual = image_id in MANUAL_IMAGE_IDS
 
-    if image_id in ["manual", "manual-selection", "none"]:
+    if is_manual:
         design_image = DesignImage.objects(
             user_id   = user,
             file_path = "manual_selection.png"
@@ -67,15 +96,38 @@ def generate_pattern():
             design_image = DesignImage(
                 user_id           = user,
                 file_path         = "manual_selection.png",
-                detected_features = custom_features,
+                detected_features = {},
                 confidence_score  = 1.0
             )
             design_image.save()
+
+        # Manual path: accept confirmed_attributes from client and persist
+        heads = ["garment_type", "neckline_type", "sleeve_length", "sleeve_style"]
+        if all(custom_confirmed.get(h) for h in heads):
+            design_image.confirmed_attributes = {h: custom_confirmed[h] for h in heads}
+            design_image.detected_features = confirmed_to_cad_features(
+                design_image.confirmed_attributes
+            )
+            design_image.save()
         elif custom_features and isinstance(custom_features, dict):
-            updated_features = dict(design_image.detected_features or {})
-            updated_features.update(custom_features)
-            design_image.update(set__detected_features=updated_features)
-            design_image.reload()
+            # Accept hyphen taxonomy packed into detected_features from older UI
+            packed = {
+                "garment_type": custom_features.get("garment_type"),
+                "neckline_type": custom_features.get("neckline_type")
+                    or custom_features.get("neckline"),
+                "sleeve_length": custom_features.get("sleeve_length")
+                    or custom_features.get("sleeves"),
+                "sleeve_style": custom_features.get("sleeve_style") or "regular-sleeve",
+            }
+            if all(packed.values()) and "-" in str(packed.get("neckline_type", "")):
+                design_image.confirmed_attributes = packed
+                design_image.detected_features = confirmed_to_cad_features(packed)
+                design_image.save()
+            else:
+                updated = dict(design_image.detected_features or {})
+                updated.update(custom_features)
+                design_image.detected_features = updated
+                design_image.save()
     else:
         try:
             design_image = DesignImage.objects(
@@ -88,17 +140,18 @@ def generate_pattern():
         if not design_image:
             return jsonify({"error": "Design image not found"}), 404
 
-        if custom_features and isinstance(custom_features, dict):
-            updated_features = dict(design_image.detected_features or {})
-            updated_features.update(custom_features)
-            design_image.update(set__detected_features=updated_features)
-            design_image.reload()
-
-
-    if not design_image.detected_features:
+    confirmed = getattr(design_image, "confirmed_attributes", None) or {}
+    required_heads = ["garment_type", "neckline_type", "sleeve_length", "sleeve_style"]
+    if not all(confirmed.get(h) for h in required_heads):
         return jsonify({
-            "error": "Image has not been analysed yet. Call /api/images/{id}/analyse first."
+            "error": "Garment features must be confirmed before pattern generation. "
+                     "Call POST /api/images/{id}/confirm-attributes first."
         }), 400
+
+    # Prefer CAD features derived from confirmed taxonomy
+    features_dict = confirmed_to_cad_features(confirmed)
+    design_image.detected_features = features_dict
+    design_image.save()
 
     # 4. Create session to track this generation
     session = Session(
@@ -110,40 +163,50 @@ def generate_pattern():
     session.save()
 
     try:
-        # 5. Build measurement dict for engine
-        measurements_dict = {
-            "bust_cm":    measurement.bust_cm,
-            "waist_cm":   measurement.waist_cm,
-            "hip_cm":     measurement.hip_cm,
-            "height_cm":  measurement.height_cm,
-            "fabric_type": measurement.fabric_type
-        }
+        # 5. Build measurement dict for engine (locked measurement set + legacy)
+        measurements_dict = _profile_measurements(measurement)
 
-        # 6. Build features dict from YOLOv8 output / user selections
-        features_dict = design_image.detected_features
-
-        # 7. Run parametric engine
+        # 6–7. Run parametric engine with confirmed CAD features
         engine  = ParametricEngine(measurements_dict, features_dict)
         pattern = engine.generate()
 
-        # 8. Save pattern result to MongoDB
+        # 8. Geometric pattern validation (locked workflow step 8)
+        validation = validate_pattern(
+            pattern["pattern_pieces"],
+            garment_type=pattern.get("garment_type", "blouse"),
+            fabric_type=pattern.get("fabric_type", "woven"),
+            sleeves=features_dict.get("sleeves", "short sleeve"),
+            measurements_used=pattern.get("measurements_used"),
+            drafting_block=pattern.get("drafting_block"),
+        )
+
+        # 9. Save pattern result to MongoDB
         pattern_result = PatternResult(
             session_id          = session,
             pattern_coordinates = pattern["pattern_pieces"],
-            yardage_metres      = 0.0,   # filled by nesting algorithm in Part 8
+            yardage_metres      = 0.0,
             garment_type        = pattern["garment_type"],
             selected_fabric_id  = selected_fabric_id,
-            selected_fabric_name= selected_fabric_name
+            selected_fabric_name= selected_fabric_name,
+            validation_report   = validation,
+            validation_passed   = bool(validation.get("passed")),
         )
         pattern_result.save()
 
-        # 9. Update session status
-        session.status = "complete"
+        # 10. Update session status
+        session.status = "complete" if validation.get("passed") else "validation_failed"
         session.save()
 
-        # 10. Return pattern data
+        status_code = 201
+        message = (
+            "Pattern generated successfully"
+            if validation.get("passed")
+            else "Pattern generated but failed geometric validation — fabric estimate blocked"
+        )
+
+        # 11. Return pattern data (fabric estimate blocked if validation failed)
         return jsonify({
-            "message":             "Pattern generated successfully",
+            "message":             message,
             "pattern_id":          str(pattern_result.id),
             "session_id":          str(session.id),
             "garment_type":        pattern["garment_type"],
@@ -151,19 +214,32 @@ def generate_pattern():
             "selected_fabric_id":   selected_fabric_id,
             "selected_fabric_name": selected_fabric_name,
             "pieces_count":        len(pattern["pattern_pieces"]),
+            "drafting_block":      pattern.get("drafting_block"),
+            "validation":          validation,
+            "validation_passed":   bool(validation.get("passed")),
+            "fabric_estimate_blocked": not bool(validation.get("passed")),
             "pieces": [
                 {
                     "name":         p["name"],
                     "width_cm":     p["bounding_box"]["width_cm"],
                     "height_cm":    p["bounding_box"]["height_cm"],
-                    "seam_allowance_cm": p["seam_allowance_cm"]
+                    "seam_allowance_cm": p["seam_allowance_cm"],
+                    "outline":      p.get("outline"),
+                    "grain_line":   p.get("grain_line"),
+                    "cut_on_fold":  p.get("cut_on_fold"),
+                    "cut_count":    p.get("cut_count"),
                 }
                 for p in pattern["pattern_pieces"]
             ],
+            "pattern_pieces":      pattern["pattern_pieces"],
             "measurements_used":   pattern["measurements_used"],
             "construction_notes":  pattern["construction_notes"],
-            "next_step": "Call /api/patterns/{id}/yardage to calculate fabric needed"
-        }), 201
+            "next_step": (
+                "Call /api/export/yardage/{id} to calculate fabric needed"
+                if validation.get("passed")
+                else "Fix validation errors before requesting fabric estimate"
+            )
+        }), status_code
 
     except Exception as e:
         session.status = "failed"

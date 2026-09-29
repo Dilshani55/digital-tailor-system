@@ -33,6 +33,16 @@ def calculate_yardage(pattern_id):
     if str(pattern.session_id.user_id.id) != current_user_id:
         return jsonify({"error": "Unauthorized"}), 403
 
+    # Locked workflow step 8: do not estimate fabric if pattern validation failed
+    if getattr(pattern, "validation_passed", True) is False:
+        report = getattr(pattern, "validation_report", None) or {}
+        return jsonify({
+            "error": "Fabric estimation blocked — pattern failed geometric validation.",
+            "validation_passed": False,
+            "validation": report,
+            "errors": report.get("errors", []),
+        }), 422
+
     data         = request.get_json() or {}
     fabric_width = data.get("fabric_width_cm", 114)
     cutting_mode = data.get("cutting_mode", "folded")
@@ -114,6 +124,16 @@ def generate_pdf(pattern_id):
 
     if str(pattern.session_id.user_id.id) != current_user_id:
         return jsonify({"error": "Unauthorized"}), 403
+
+    # Locked workflow step 8: block PDF when geometric validation failed
+    if getattr(pattern, "validation_passed", True) is False:
+        report = getattr(pattern, "validation_report", None) or {}
+        return jsonify({
+            "error": "PDF export blocked — pattern failed geometric validation.",
+            "validation_passed": False,
+            "validation": report,
+            "errors": report.get("errors", []),
+        }), 422
 
     # Check yardage has been calculated
     if pattern.yardage_metres == 0.0:

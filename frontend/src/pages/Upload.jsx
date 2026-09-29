@@ -6,6 +6,7 @@ import LoadingSpinner  from '../components/LoadingSpinner';
 import MeasurementGuide from '../components/MeasurementGuide';
 import FabricRecommendation from '../components/FabricRecommendation';
 import PredictionReview from '../components/PredictionReview';
+import PatternPreview from '../components/PatternPreview';
 import {
   imagesAPI, measurementsAPI, patternsAPI, exportAPI, researchAPI
 } from '../services/api';
@@ -38,13 +39,28 @@ export default function Upload() {
   });
   const [requiresUserVerification, setRequiresUserVerification] = useState(false);
 
-  // Step 2 — Measurements
+  // Step 2 — Measurements (locked drafting set)
+  const emptyMeas = {
+    client_name: '',
+    bust_cm: '',
+    waist_cm: '',
+    hip_cm: '',
+    height_cm: '',
+    neck_cm: '',
+    shoulder_cm: '',
+    across_back_cm: '',
+    back_waist_length_cm: '',
+    armhole_depth_cm: '',
+    garment_length_cm: '',
+    bicep_cm: '',
+    sleeve_cm: '',
+    wrist_cm: '',
+    fabric_type: 'woven',
+    fit_preference: 'standard',
+  };
   const [savedProfiles, setSavedProfiles] = useState([]);
   const [measurementId, setMeasurementId] = useState(null);
-  const [meas, setMeas] = useState({
-    client_name: '', bust_cm: '', waist_cm: '', hip_cm: '',
-    height_cm: '', fabric_type: 'woven'
-  });
+  const [meas, setMeas] = useState({ ...emptyMeas });
 
   // Step 3 — Pattern & 2D Viewer state
   const [patternId,   setPatternId]   = useState(null);
@@ -68,6 +84,25 @@ export default function Upload() {
   const handleError = (err, fallback) =>
     setError(err.response?.data?.error || fallback);
 
+  const profileToMeas = (p) => ({
+    client_name: p.client_name || 'Customer Profile',
+    bust_cm: p.bust_cm ?? '',
+    waist_cm: p.waist_cm ?? '',
+    hip_cm: p.hip_cm ?? '',
+    height_cm: p.height_cm ?? '',
+    neck_cm: p.neck_cm ?? '',
+    shoulder_cm: p.shoulder_cm ?? '',
+    across_back_cm: p.across_back_cm ?? '',
+    back_waist_length_cm: p.back_waist_length_cm ?? '',
+    armhole_depth_cm: p.armhole_depth_cm ?? p.armhole_cm ?? '',
+    garment_length_cm: p.garment_length_cm ?? '',
+    bicep_cm: p.bicep_cm ?? '',
+    sleeve_cm: p.sleeve_cm ?? '',
+    wrist_cm: p.wrist_cm ?? '',
+    fabric_type: p.fabric_type || 'woven',
+    fit_preference: p.fit_preference || 'standard',
+  });
+
   // Fetch saved customer profiles for quick selection dropdown
   useEffect(() => {
     measurementsAPI.getAll().then((res) => {
@@ -77,14 +112,7 @@ export default function Upload() {
     // Check if navigated from Customer Directory with a pre-selected profile
     if (location.state?.selectedProfile) {
       const p = location.state.selectedProfile;
-      setMeas({
-        client_name: p.client_name || 'Customer Profile',
-        bust_cm: p.bust_cm || '',
-        waist_cm: p.waist_cm || '',
-        hip_cm: p.hip_cm || '',
-        height_cm: p.height_cm || '',
-        fabric_type: p.fabric_type || 'woven'
-      });
+      setMeas(profileToMeas(p));
       setMeasurementId(p.measurement_id);
     }
   }, [location.state]);
@@ -112,23 +140,13 @@ export default function Upload() {
 
   const handleSelectSavedClient = (profileId) => {
     if (!profileId) {
-      setMeas({
-        client_name: '', bust_cm: '', waist_cm: '', hip_cm: '',
-        height_cm: '', fabric_type: 'woven'
-      });
+      setMeas({ ...emptyMeas });
       setMeasurementId(null);
       return;
     }
     const found = savedProfiles.find(p => p.measurement_id === profileId);
     if (found) {
-      setMeas({
-        client_name: found.client_name || '',
-        bust_cm: found.bust_cm || '',
-        waist_cm: found.waist_cm || '',
-        hip_cm: found.hip_cm || '',
-        height_cm: found.height_cm || '',
-        fabric_type: found.fabric_type || 'woven'
-      });
+      setMeas(profileToMeas(found));
       setMeasurementId(found.measurement_id);
     }
   };
@@ -169,7 +187,11 @@ export default function Upload() {
       if (analyseRes.data.detected_features) {
         setFeatures(analyseRes.data.detected_features);
       }
-      setRequiresUserVerification(Boolean(analyseRes.data.requires_user_verification));
+      setRequiresUserVerification(Boolean(
+        analyseRes.data.requires_user_confirmation
+        ?? analyseRes.data.requires_user_verification
+        ?? analyseRes.data.garment_attributes?.requires_user_confirmation
+      ));
       setStep(2);
     } catch (err) {
       handleError(err, 'Image upload or AI analysis failed. Please check server logs and try again.');
@@ -219,14 +241,19 @@ export default function Upload() {
       setError('Please review and click "Confirm Design Features" before saving measurements and proceeding.');
       return;
     }
-    const required = ['bust_cm','waist_cm','hip_cm','height_cm'];
+    const required = [
+      'bust_cm', 'waist_cm', 'hip_cm', 'height_cm',
+      'neck_cm', 'shoulder_cm', 'across_back_cm', 'back_waist_length_cm',
+      'armhole_depth_cm', 'garment_length_cm',
+      'bicep_cm', 'sleeve_cm', 'wrist_cm',
+    ];
     for (const f of required) {
       if (!meas[f] || String(meas[f]).trim() === '') {
-        setError(`Please enter your ${f.replace('_cm','').replace('_',' ')} measurement.`);
+        setError(`Please enter your ${f.replace(/_cm$/, '').replace(/_/g, ' ')} measurement.`);
         return;
       }
     }
-    if (!features.garment_type) {
+    if (!features.garment_type && !confirmedAttributes?.garment_type) {
       setError('Please select a Garment Type for your pattern design.');
       return;
     }
@@ -243,7 +270,18 @@ export default function Upload() {
         waist_cm:  parseFloat(meas.waist_cm),
         hip_cm:    parseFloat(meas.hip_cm),
         height_cm: parseFloat(meas.height_cm),
-        fabric_type: meas.fabric_type
+        neck_cm: parseFloat(meas.neck_cm),
+        shoulder_cm: parseFloat(meas.shoulder_cm),
+        across_back_cm: parseFloat(meas.across_back_cm),
+        back_waist_length_cm: parseFloat(meas.back_waist_length_cm),
+        armhole_depth_cm: parseFloat(meas.armhole_depth_cm),
+        armhole_cm: parseFloat(meas.armhole_depth_cm),
+        garment_length_cm: parseFloat(meas.garment_length_cm),
+        bicep_cm: parseFloat(meas.bicep_cm),
+        sleeve_cm: parseFloat(meas.sleeve_cm),
+        wrist_cm: parseFloat(meas.wrist_cm),
+        fabric_type: meas.fabric_type,
+        fit_preference: meas.fit_preference || 'standard',
       });
       setMeasurementId(res.data.measurement_id);
       setStep(3);
@@ -262,6 +300,7 @@ export default function Upload() {
         const patRes = await patternsAPI.generate({
           measurement_id:    measurementId,
           image_id:          imageId || 'manual',
+          confirmed_attributes: confirmedAttributes || undefined,
           detected_features: features,
           fabric_id:         selectedFabricId,
           fabric_name:       selectedFabricName
@@ -269,6 +308,19 @@ export default function Upload() {
         const newPatternId = patRes.data.pattern_id;
         setPatternId(newPatternId);
         setPatternData(patRes.data);
+
+        if (patRes.data.validation_passed === false || patRes.data.fabric_estimate_blocked) {
+          const errs = (patRes.data.validation?.errors || []).join(' ');
+          setError(
+            errs
+              ? `Pattern validation failed: ${errs}`
+              : 'Pattern validation failed. Fabric estimate is blocked until errors are fixed.'
+          );
+          setYardageData(null);
+          setPatternGenerated(true);
+          setShow2DView(true);
+          return;
+        }
 
         const yardRes = await exportAPI.yardage(newPatternId, {
           fabric_width_cm: fabricWidth
@@ -437,62 +489,63 @@ export default function Upload() {
                 />
               </div>
 
+              {[
+                ['bust_cm', 'Bust (cm)'],
+                ['waist_cm', 'Waist (cm)'],
+                ['hip_cm', 'Hip (cm)'],
+                ['height_cm', 'Height (cm)'],
+                ['neck_cm', 'Neck (cm)'],
+                ['shoulder_cm', 'Shoulder length (cm)'],
+                ['across_back_cm', 'Across-back width (cm)'],
+                ['back_waist_length_cm', 'Back waist length (cm)'],
+                ['armhole_depth_cm', 'Armhole depth (cm)'],
+                ['garment_length_cm', 'Garment length (cm)'],
+                ['bicep_cm', 'Bicep (cm)'],
+                ['sleeve_cm', 'Sleeve length (cm)'],
+                ['wrist_cm', 'Wrist (cm)'],
+              ].map(([key, label]) => (
+                <div className="form-field" key={key}>
+                  <label className="form-label">{label}</label>
+                  <input
+                    className="form-input"
+                    type="number"
+                    value={meas[key]}
+                    onFocus={() => setActiveField(key)}
+                    onChange={(e) => {
+                      setError('');
+                      setMeas({ ...meas, [key]: e.target.value });
+                    }}
+                    placeholder={`Enter ${label.toLowerCase()}`}
+                  />
+                </div>
+              ))}
+
               <div className="form-field">
-                <label className="form-label">Bust (cm)</label>
-                <input
-                  className="form-input"
-                  type="number"
-                  value={meas.bust_cm}
-                  onFocus={() => setActiveField('bust_cm')}
-                  onChange={(e) => {
-                    setError('');
-                    setMeas({ ...meas, bust_cm: e.target.value });
-                  }}
-                  placeholder="Enter bust measurement"
-                />
+                <label className="form-label">Required fit</label>
+                <select
+                  className="form-select"
+                  value={meas.fit_preference}
+                  onChange={(e) => setMeas({ ...meas, fit_preference: e.target.value })}
+                >
+                  <option value="close">Close fit</option>
+                  <option value="standard">Standard fit</option>
+                  <option value="loose">Loose fit</option>
+                </select>
               </div>
+
               <div className="form-field">
-                <label className="form-label">Waist (cm)</label>
-                <input
-                  className="form-input"
-                  type="number"
-                  value={meas.waist_cm}
-                  onFocus={() => setActiveField('waist_cm')}
-                  onChange={(e) => {
-                    setError('');
-                    setMeas({ ...meas, waist_cm: e.target.value });
-                  }}
-                  placeholder="Enter waist measurement"
-                />
+                <label className="form-label">Fabric type / stretch</label>
+                <select
+                  className="form-select"
+                  value={meas.fabric_type}
+                  onChange={(e) => setMeas({ ...meas, fabric_type: e.target.value })}
+                >
+                  <option value="woven">Woven (no stretch)</option>
+                  <option value="knit">Knit (moderate stretch)</option>
+                  <option value="stretch-knit">Stretch-knit (high stretch)</option>
+                </select>
               </div>
-              <div className="form-field">
-                <label className="form-label">Hip (cm)</label>
-                <input
-                  className="form-input"
-                  type="number"
-                  value={meas.hip_cm}
-                  onFocus={() => setActiveField('hip_cm')}
-                  onChange={(e) => {
-                    setError('');
-                    setMeas({ ...meas, hip_cm: e.target.value });
-                  }}
-                  placeholder="Enter hip measurement"
-                />
-              </div>
-              <div className="form-field">
-                <label className="form-label">Height (cm)</label>
-                <input
-                  className="form-input"
-                  type="number"
-                  value={meas.height_cm}
-                  onFocus={() => setActiveField('height_cm')}
-                  onChange={(e) => {
-                    setError('');
-                    setMeas({ ...meas, height_cm: e.target.value });
-                  }}
-                  placeholder="Enter height measurement"
-                />
-              </div>
+
               <div className="form-field" style={{ gridColumn: '1/-1' }}>
                 <FabricRecommendation
                   detectedFeatures={features}
@@ -500,7 +553,7 @@ export default function Upload() {
                   onSelectFabric={(id, name, type) => {
                     setSelectedFabricId(id);
                     setSelectedFabricName(name);
-                    setMeas((prev) => ({ ...prev, fabric_type: type }));
+                    setMeas((prev) => ({ ...prev, fabric_type: type || prev.fabric_type }));
                     setFabricValidationError('');
                     setError('');
                   }}

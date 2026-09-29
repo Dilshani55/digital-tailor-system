@@ -5,6 +5,50 @@ from app.models.measurement import MeasurementProfile
 
 measurements_bp = Blueprint("measurements", __name__)
 
+LOCKED_FLOAT_FIELDS = [
+    "bust_cm", "waist_cm", "hip_cm", "height_cm",
+    "neck_cm", "shoulder_cm", "across_back_cm", "back_waist_length_cm",
+    "armhole_cm", "armhole_depth_cm", "garment_length_cm",
+    "bicep_cm", "sleeve_cm", "wrist_cm",
+]
+
+FIT_OPTIONS = {"close", "standard", "loose"}
+FABRIC_OPTIONS = {"woven", "knit", "stretch-knit"}
+
+
+def _profile_dict(profile):
+    return {
+        "client_name": profile.client_name,
+        "email": profile.email,
+        "notes": profile.notes,
+        "bust_cm": profile.bust_cm,
+        "waist_cm": profile.waist_cm,
+        "hip_cm": profile.hip_cm,
+        "height_cm": profile.height_cm,
+        "neck_cm": getattr(profile, "neck_cm", None),
+        "shoulder_cm": getattr(profile, "shoulder_cm", None),
+        "across_back_cm": getattr(profile, "across_back_cm", None),
+        "back_waist_length_cm": getattr(profile, "back_waist_length_cm", None),
+        "armhole_cm": getattr(profile, "armhole_cm", None),
+        "armhole_depth_cm": getattr(profile, "armhole_depth_cm", None)
+            or getattr(profile, "armhole_cm", None),
+        "garment_length_cm": getattr(profile, "garment_length_cm", None),
+        "bicep_cm": getattr(profile, "bicep_cm", None),
+        "sleeve_cm": getattr(profile, "sleeve_cm", None),
+        "wrist_cm": getattr(profile, "wrist_cm", None),
+        "fabric_type": profile.fabric_type,
+        "fit_preference": getattr(profile, "fit_preference", "standard"),
+        "unit": profile.unit,
+    }
+
+
+def _float_or_default(data, key, default):
+    val = data.get(key, default)
+    if val is None or val == "":
+        return float(default)
+    return float(val)
+
+
 # ── SAVE MEASUREMENT PROFILE ──────────────────────────────────────────────────
 @measurements_bp.route("/", methods=["POST"])
 @jwt_required()
@@ -17,10 +61,25 @@ def save_measurements():
 
     data = request.get_json() or {}
 
-    required = ["bust_cm", "waist_cm", "hip_cm", "height_cm"]
+    required = [
+        "bust_cm", "waist_cm", "hip_cm", "height_cm",
+        "neck_cm", "shoulder_cm", "across_back_cm", "back_waist_length_cm",
+        "armhole_depth_cm", "garment_length_cm",
+        "bicep_cm", "sleeve_cm", "wrist_cm",
+    ]
     for field in required:
-        if field not in data or data[field] is None:
+        if field not in data or data[field] is None or str(data[field]).strip() == "":
             return jsonify({"error": f"{field} is required"}), 400
+
+    fabric_type = data.get("fabric_type", "woven")
+    if fabric_type not in FABRIC_OPTIONS:
+        return jsonify({"error": f"fabric_type must be one of {sorted(FABRIC_OPTIONS)}"}), 400
+
+    fit_preference = data.get("fit_preference", "standard")
+    if fit_preference not in FIT_OPTIONS:
+        return jsonify({"error": f"fit_preference must be one of {sorted(FIT_OPTIONS)}"}), 400
+
+    armhole_depth = float(data["armhole_depth_cm"])
 
     profile = MeasurementProfile(
         user_id     = user,
@@ -31,12 +90,18 @@ def save_measurements():
         waist_cm    = float(data["waist_cm"]),
         hip_cm      = float(data["hip_cm"]),
         height_cm   = float(data["height_cm"]),
-        shoulder_cm = float(data.get("shoulder_cm", 12.0)),
-        neck_cm     = float(data.get("neck_cm", 36.0)),
-        armhole_cm  = float(data.get("armhole_cm", 20.0)),
-        sleeve_cm   = float(data.get("sleeve_cm", 55.0)),
-        garment_length_cm = float(data.get("garment_length_cm", 65.0)),
-        fabric_type = data.get("fabric_type", "woven"),
+        neck_cm     = float(data["neck_cm"]),
+        shoulder_cm = float(data["shoulder_cm"]),
+        across_back_cm = float(data["across_back_cm"]),
+        back_waist_length_cm = float(data["back_waist_length_cm"]),
+        armhole_cm  = float(data.get("armhole_cm", armhole_depth)),
+        armhole_depth_cm = armhole_depth,
+        garment_length_cm = float(data["garment_length_cm"]),
+        bicep_cm    = float(data["bicep_cm"]),
+        sleeve_cm   = float(data["sleeve_cm"]),
+        wrist_cm    = float(data["wrist_cm"]),
+        fabric_type = fabric_type,
+        fit_preference = fit_preference,
         unit        = data.get("unit", "cm")
     )
     profile.save()
@@ -44,22 +109,7 @@ def save_measurements():
     return jsonify({
         "message": "Measurement profile saved successfully",
         "measurement_id": str(profile.id),
-        "profile": {
-            "client_name": profile.client_name,
-            "email": profile.email,
-            "notes": profile.notes,
-            "bust_cm": profile.bust_cm,
-            "waist_cm": profile.waist_cm,
-            "hip_cm": profile.hip_cm,
-            "height_cm": profile.height_cm,
-            "shoulder_cm": profile.shoulder_cm,
-            "neck_cm": profile.neck_cm,
-            "armhole_cm": profile.armhole_cm,
-            "sleeve_cm": profile.sleeve_cm,
-            "garment_length_cm": profile.garment_length_cm,
-            "fabric_type": profile.fabric_type,
-            "unit": profile.unit
-        }
+        "profile": _profile_dict(profile)
     }), 201
 
 
@@ -81,24 +131,10 @@ def get_measurement(measurement_id):
     if str(profile.user_id.id) != current_user_id:
         return jsonify({"error": "Unauthorized"}), 403
 
-    return jsonify({
-        "measurement_id": str(profile.id),
-        "client_name": profile.client_name or "Customer Profile",
-        "email": profile.email,
-        "notes": profile.notes,
-        "bust_cm": profile.bust_cm,
-        "waist_cm": profile.waist_cm,
-        "hip_cm": profile.hip_cm,
-        "height_cm": profile.height_cm,
-        "shoulder_cm": profile.shoulder_cm,
-        "neck_cm": profile.neck_cm,
-        "armhole_cm": profile.armhole_cm,
-        "sleeve_cm": profile.sleeve_cm,
-        "garment_length_cm": profile.garment_length_cm,
-        "fabric_type": profile.fabric_type,
-        "unit": profile.unit,
-        "created_at": str(profile.created_at)
-    }), 200
+    payload = _profile_dict(profile)
+    payload["measurement_id"] = str(profile.id)
+    payload["created_at"] = str(profile.created_at)
+    return jsonify(payload), 200
 
 
 # ── GET ALL MEASUREMENT PROFILES FOR USER ─────────────────────────────────────
@@ -115,24 +151,10 @@ def get_all_measurements():
 
     result = []
     for p in profiles:
-        result.append({
-            "measurement_id": str(p.id),
-            "client_name": p.client_name or "Customer Profile",
-            "email": p.email,
-            "notes": p.notes,
-            "bust_cm": p.bust_cm,
-            "waist_cm": p.waist_cm,
-            "hip_cm": p.hip_cm,
-            "height_cm": p.height_cm,
-            "shoulder_cm": p.shoulder_cm,
-            "neck_cm": p.neck_cm,
-            "armhole_cm": p.armhole_cm,
-            "sleeve_cm": p.sleeve_cm,
-            "garment_length_cm": p.garment_length_cm,
-            "fabric_type": p.fabric_type,
-            "unit": p.unit,
-            "created_at": str(p.created_at)
-        })
+        item = _profile_dict(p)
+        item["measurement_id"] = str(p.id)
+        item["created_at"] = str(p.created_at)
+        result.append(item)
 
     return jsonify({
         "total": len(result),
@@ -168,7 +190,7 @@ def delete_measurement(measurement_id):
 def update_measurement(measurement_id):
     current_user_id = get_jwt_identity()
     measurement_id = measurement_id.strip("<>")
-    
+
     try:
         profile = MeasurementProfile.objects(id=measurement_id).first()
     except Exception:
@@ -188,28 +210,31 @@ def update_measurement(measurement_id):
         profile.email = data["email"]
     if "notes" in data:
         profile.notes = data["notes"]
-    if "bust_cm" in data:
-        profile.bust_cm = float(data["bust_cm"])
-    if "waist_cm" in data:
-        profile.waist_cm = float(data["waist_cm"])
-    if "hip_cm" in data:
-        profile.hip_cm = float(data["hip_cm"])
-    if "height_cm" in data:
-        profile.height_cm = float(data["height_cm"])
-    if "shoulder_cm" in data:
-        profile.shoulder_cm = float(data["shoulder_cm"])
-    if "neck_cm" in data:
-        profile.neck_cm = float(data["neck_cm"])
-    if "armhole_cm" in data:
-        profile.armhole_cm = float(data["armhole_cm"])
-    if "sleeve_cm" in data:
-        profile.sleeve_cm = float(data["sleeve_cm"])
-    if "garment_length_cm" in data:
-        profile.garment_length_cm = float(data["garment_length_cm"])
+
+    for field in LOCKED_FLOAT_FIELDS:
+        if field in data and data[field] is not None and str(data[field]).strip() != "":
+            setattr(profile, field, float(data[field]))
+
+    # Keep armhole_cm in sync when only armhole_depth_cm is sent
+    if "armhole_depth_cm" in data and "armhole_cm" not in data:
+        profile.armhole_cm = float(data["armhole_depth_cm"])
+
     if "fabric_type" in data:
+        if data["fabric_type"] not in FABRIC_OPTIONS:
+            return jsonify({"error": f"fabric_type must be one of {sorted(FABRIC_OPTIONS)}"}), 400
         profile.fabric_type = data["fabric_type"]
+
+    if "fit_preference" in data:
+        if data["fit_preference"] not in FIT_OPTIONS:
+            return jsonify({"error": f"fit_preference must be one of {sorted(FIT_OPTIONS)}"}), 400
+        profile.fit_preference = data["fit_preference"]
+
     if "unit" in data:
         profile.unit = data["unit"]
 
     profile.save()
-    return jsonify({"message": "Measurement profile updated successfully", "profile_id": str(profile.id)}), 200
+    return jsonify({
+        "message": "Measurement profile updated successfully",
+        "profile_id": str(profile.id),
+        "profile": _profile_dict(profile)
+    }), 200

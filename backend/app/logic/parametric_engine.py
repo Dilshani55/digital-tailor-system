@@ -1,5 +1,6 @@
 import math
 from app.logic.ease_rules import apply_ease, get_neckline_depth, get_sleeve_length
+from app.logic.block_selection import select_drafting_block
 
 
 def calculate_shoelace_area(points):
@@ -23,8 +24,8 @@ def calculate_shoelace_area(points):
 class ParametricEngine:
     """
     Generates 2D garment pattern block coordinates from body measurements
-    and detected garment features, following Winifred Aldrich's
-    Metric Pattern Cutting for Women's Wear (5th Edition) standards.
+    and confirmed garment features, following Winifred Aldrich's
+    Metric Pattern Cutting for Women's Wear standards.
 
     All measurements and coordinates are in centimetres (cm).
     Origin point (0, 0) is always top-left of each pattern piece.
@@ -34,25 +35,30 @@ class ParametricEngine:
         """
         Args:
             measurements (dict): body measurements from MeasurementProfile
-                                 {bust_cm, waist_cm, hip_cm, height_cm, fabric_type}
-            features     (dict): detected garment features from YOLOv8
-                                 {neckline, sleeves, darts, seams, garment_type}
+            features     (dict): confirmed CAD features {neckline, sleeves, ...}
         """
         self.raw          = measurements
         self.features     = features
         self.fabric_type  = measurements.get("fabric_type", "woven")
         self.garment_type = features.get("garment_type", "blouse")
+        self.fit_preference = measurements.get("fit_preference", "standard")
 
-        # Apply ease allowance
-        self.eased = apply_ease(measurements, self.fabric_type)
+        # Step 5 — drafting method selection
+        self.block = select_drafting_block(self.garment_type, self.fabric_type)
 
-        # Derived measurements (Aldrich formulas)
+        # Apply ease (fabric + fit)
+        self.eased = apply_ease(
+            measurements, self.fabric_type, self.fit_preference
+        )
+
+        # Derived measurements (Aldrich + locked user measurements)
         self._compute_derived()
 
 
     def _compute_derived(self):
         """Computes all derived measurements used across pattern pieces."""
         e = self.eased
+        raw = self.raw
 
         # Half measurements (pattern is drafted for half the body)
         self.half_bust  = e["bust_cm"]  / 2
@@ -64,27 +70,79 @@ class ParametricEngine:
         self.quarter_waist = e["waist_cm"] / 4
         self.quarter_hip   = e["hip_cm"]   / 4
 
-        # Body length proportions (Aldrich Chapter 2 formulas)
+        # Back waist length — prefer locked measurement
         height = e["height_cm"]
-        self.back_neck_to_waist = height * 0.2413    # ~39cm for 162cm height
-        self.waist_to_hip       = height * 0.1173    # ~19cm
-        self.nape_to_hip        = self.back_neck_to_waist + self.waist_to_hip
+        locked_bwl = raw.get("back_waist_length_cm") or e.get("back_waist_length_cm")
+        if locked_bwl:
+            self.back_neck_to_waist = float(locked_bwl)
+        else:
+            self.back_neck_to_waist = height * 0.2413
 
-        # Shoulder and armhole
-        self.shoulder_width   = (self.half_bust / 4) + e["shoulder"]
-        self.armhole_depth    = (self.half_bust / 4) + 5.0
-        self.back_width       = (self.half_bust / 6) + 5.5
-        self.front_width      = (self.half_bust / 6) + 4.0
+        self.waist_to_hip = height * 0.1173
+        self.nape_to_hip  = self.back_neck_to_waist + self.waist_to_hip
 
-        # Neck measurements
-        self.back_neck_width  = (self.half_bust / 6) - 1.0
+        # Garment length / crop hem (from high shoulder / nape toward hem)
+        locked_len = raw.get("garment_length_cm") or e.get("garment_length_cm")
+        if locked_len:
+            self.garment_length = float(locked_len)
+        elif self.block["is_crop"]:
+            self.garment_length = self.back_neck_to_waist * 0.72
+        else:
+            self.garment_length = self.nape_to_hip
+
+        # Shoulder — prefer locked shoulder length
+        locked_shoulder = raw.get("shoulder_cm") or e.get("shoulder_cm")
+        if locked_shoulder:
+            self.shoulder_width = float(locked_shoulder) + e["shoulder"]
+        else:
+            self.shoulder_width = (self.half_bust / 4) + e["shoulder"]
+
+        # Armhole depth — prefer locked measurement
+        locked_ad = raw.get("armhole_depth_cm") or raw.get("armhole_cm") or e.get("armhole_depth_cm")
+        if locked_ad:
+            self.armhole_depth = float(locked_ad)
+        else:
+            self.armhole_depth = (self.half_bust / 4) + 5.0
+
+        # Across-back / front widths
+        locked_ab = raw.get("across_back_cm") or e.get("across_back_cm")
+        if locked_ab:
+            # across-back is full width; half-block uses half
+            self.back_width = float(locked_ab) / 2.0
+            self.front_width = self.back_width - 1.0
+        else:
+            self.back_width  = (self.half_bust / 6) + 5.5
+            self.front_width = (self.half_bust / 6) + 4.0
+
+        # Neck — prefer locked neck circumference
+        locked_neck = raw.get("neck_cm") or e.get("neck_cm")
+        if locked_neck:
+            # Aldrich: back neck width ≈ neck/5 − small constant (half-body)
+            self.back_neck_width = max(5.5, (float(locked_neck) / 5.0) - 0.2)
+        else:
+            self.back_neck_width = (self.half_bust / 6) - 1.0
         self.back_neck_rise   = 2.0
         self.front_neck_depth = get_neckline_depth(
-                                    self.features.get("neckline", "round neck"))
+            self.features.get("neckline", "round neck")
+        )
 
-        # Dart
-        self.dart_width       = 2.5 if self.features.get("darts") != "no dart" else 0.0
+        # Sleeve inputs
+        self.bicep_cm = float(raw.get("bicep_cm") or e.get("bicep_cm") or (self.half_bust / 2 + 3.0))
+        self.wrist_cm = float(raw.get("wrist_cm") or e.get("wrist_cm") or 16.0)
+        self.user_sleeve_cm = raw.get("sleeve_cm") or e.get("sleeve_cm")
 
+        # Darts — woven blocks only; knit / t-shirt / crop knit: no darts
+        feature_darts = self.features.get("darts", "bust dart")
+        if self.block["allow_darts"] and feature_darts != "no dart":
+            self.dart_width = 2.5
+        else:
+            self.dart_width = 0.0
+
+        sleeve_type = self.features.get("sleeves", "short sleeve")
+        self.block["add_armhole_facing"] = (sleeve_type == "sleeveless")
+        self.block["add_neckband"] = bool(
+            self.block.get("add_neckband") and self.block["is_knit_block"]
+        )
 
     # ── BACK BODICE ───────────────────────────────────────────────────────────
     def draft_back_bodice(self):
@@ -93,23 +151,28 @@ class ParametricEngine:
         Returns ordered list of (x, y) coordinate points in cm.
         Label key is included for each point for the PDF guide.
         """
-        e   = self.eased
         bw  = self.back_neck_to_waist
         qb  = self.quarter_bust
         qw  = self.quarter_waist
         ad  = self.armhole_depth
+        hem_y = max(ad + 2.0, min(self.garment_length, self.nape_to_hip + 5.0))
 
         # ── Construction lines ────────────────────────────────────────────────
         A = (0, 0)
         B = (0, ad)
-        C = (0, bw)
-        D = (0, bw + self.waist_to_hip)
+        C = (0, bw) if bw <= hem_y else (0, hem_y)
+        D = (0, hem_y)
 
         # ── Width lines ───────────────────────────────────────────────────────
         A1 = (self.back_neck_width, 0)
         B1 = (qb, ad)
-        C1 = (qw + self.dart_width / 2, bw)
-        D1 = (self.quarter_hip, bw + self.waist_to_hip)
+        C1 = (qw + self.dart_width / 2, min(bw, hem_y))
+        # Hem width: blouse/T use hip or bust; crop uses bust/waist blend
+        if self.block["is_crop"] or hem_y <= bw + 2:
+            hem_w = max(qw, qb * 0.95)
+        else:
+            hem_w = self.quarter_hip
+        D1 = (hem_w, hem_y)
 
         # ── Shoulder point ────────────────────────────────────────────────────
         shoulder_rise = self.shoulder_width * math.tan(math.radians(18))
@@ -124,43 +187,44 @@ class ParametricEngine:
         arm_mid_y = ad - (ad - shoulder_rise) / 2
         ARM_MID   = (arm_mid_x, arm_mid_y)
 
-        # ── Dart construction (back waist dart) ───────────────────────────────
+        # ── Dart construction (back waist dart) — woven only ──────────────────
         dart_x     = qw / 2
-        dart_top   = (dart_x, bw - 8.0)    # dart point (8cm above waist)
-        dart_left  = (dart_x - self.dart_width / 2, bw)
-        dart_right = (dart_x + self.dart_width / 2, bw)
+        dart_top   = (dart_x, min(bw, hem_y) - 8.0)
+        dart_left  = (dart_x - self.dart_width / 2, min(bw, hem_y))
+        dart_right = (dart_x + self.dart_width / 2, min(bw, hem_y))
 
-        # ── Assemble pattern piece as ordered polygon ─────────────────────────
+        outline = [A2, A3, A1, SP, ARM_MID, B1, D1]
+        if self.dart_width > 0 and bw <= hem_y + 0.1:
+            outline.extend([C1, dart_right, dart_top, dart_left])
+        outline.extend([C if bw <= hem_y else D, D, B, A2])
+
         piece = {
             "name": "Back Bodice",
+            "block_type": self.block["block_label"],
             "cut_count": 1,
             "cut_on_fold": True,
             "seam_allowance_cm": 1.5,
             "points": {
-                "A":  A,    # nape of neck
-                "A1": A1,   # neck shoulder end
-                "A2": A2,   # neck curve
-                "A3": A3,   # neck curve control
-                "SP": SP,   # shoulder point
+                "A":  A,
+                "A1": A1,
+                "A2": A2,
+                "A3": A3,
+                "SP": SP,
                 "ARM_MID": ARM_MID,
-                "B1": B1,   # bust line side
-                "B":  B,    # bust line centre back
-                "C":  C,    # waist centre back
-                "D":  D,    # hip centre back
-                "D1": D1,   # hip side
-                "C1": C1,   # waist side
+                "B1": B1,
+                "B":  B,
+                "C":  C,
+                "D":  D,
+                "D1": D1,
+                "C1": C1,
                 "DART_TOP":   dart_top,
                 "DART_LEFT":  dart_left,
                 "DART_RIGHT": dart_right
             },
-            "outline": [
-                A2, A3, A1, SP, ARM_MID, B1,
-                D1, C1, dart_right, dart_top, dart_left,
-                C, D, B, A2
-            ],
+            "outline": outline,
             "grain_line": {
                 "start": (qb / 2, ad),
-                "end":   (qb / 2, bw)
+                "end":   (qb / 2, max(ad + 1.0, hem_y - 2.0))
             }
         }
         return piece
@@ -172,35 +236,39 @@ class ParametricEngine:
         Drafts the front bodice block.
         Front is wider than back to accommodate bust shaping.
         """
-        e   = self.eased
         bw  = self.back_neck_to_waist
         qb  = self.quarter_bust
         qw  = self.quarter_waist
         ad  = self.armhole_depth
+        hem_y = max(ad + 2.0, min(self.garment_length, self.nape_to_hip + 5.0))
 
-        A  = (0, self.front_neck_depth)   # centre front neck
-        B  = (0, ad)                       # bust line centre front
-        C  = (0, bw)                       # waist centre front
-        D  = (0, bw + self.waist_to_hip)   # hip centre front
+        A  = (0, self.front_neck_depth)
+        B  = (0, ad)
+        C  = (0, bw) if bw <= hem_y else (0, hem_y)
+        D  = (0, hem_y)
 
         front_bust = qb + 0.5
         B1 = (front_bust, ad)
-        C1 = (qw + self.dart_width / 2, bw)
-        D1 = (self.quarter_hip + 0.5, bw + self.waist_to_hip)
+        C1 = (qw + self.dart_width / 2, min(bw, hem_y))
+        if self.block["is_crop"] or hem_y <= bw + 2:
+            hem_w = max(qw, front_bust * 0.95)
+        else:
+            hem_w = self.quarter_hip + 0.5
+        D1 = (hem_w, hem_y)
 
         shoulder_rise = self.shoulder_width * math.tan(math.radians(15))
         SP = (self.shoulder_width, shoulder_rise)
 
-        A_top = (0, 0)                              # top of centre front
-        A1    = (self.back_neck_width + 0.5, 0)    # shoulder end of neckline
+        A_top = (0, 0)
+        A1    = (self.back_neck_width + 0.5, 0)
 
         arm_mid_x = front_bust - (front_bust - self.front_width) / 2
         arm_mid_y = ad - (ad - shoulder_rise) / 2
         ARM_MID   = (arm_mid_x, arm_mid_y)
 
-        dart_apex_x = qb * 0.55     # bust point approximately
+        dart_apex_x = qb * 0.55
         dart_apex_y = ad + 2.0
-        dart_angle  = 12.0          # degrees
+        dart_angle  = 12.0
         dart_length = 8.0
 
         dart_left  = (
@@ -214,27 +282,25 @@ class ParametricEngine:
         DART_APEX = (dart_apex_x, dart_apex_y)
 
         neckline_type = self.features.get("neckline", "round neck")
-        if neckline_type == "sweetheart neck":
-            # Winifred Aldrich Sweetheart neckline arch
-            neck_curve = (
-                A1[0] * 0.45,
-                self.front_neck_depth * 0.40
-            )
-        elif neckline_type == "square neck":
-            # Winifred Aldrich Square Neckline corner point
-            neck_curve = (
-                A1[0],
-                self.front_neck_depth
-            )
+        if neckline_type in ("sweetheart neck", "sweetheart-neck"):
+            neck_curve = (A1[0] * 0.45, self.front_neck_depth * 0.40)
+        elif neckline_type in ("square neck", "square-neck"):
+            neck_curve = (A1[0], self.front_neck_depth)
         else:
-            neck_curve = (
-                A1[0] * 0.3,
-                self.front_neck_depth * 0.7
-            )
+            neck_curve = (A1[0] * 0.3, self.front_neck_depth * 0.7)
 
+        outline = [A_top, A1, neck_curve, A, B]
+        if bw <= hem_y:
+            outline.append(C)
+        outline.append(D)
+        outline.append(D1)
+        if self.dart_width > 0:
+            outline.extend([C1, dart_right, DART_APEX, dart_left])
+        outline.extend([B1, ARM_MID, SP, A_top])
 
         piece = {
             "name": "Front Bodice",
+            "block_type": self.block["block_label"],
             "cut_count": 1,
             "cut_on_fold": True,
             "seam_allowance_cm": 1.5,
@@ -255,14 +321,10 @@ class ParametricEngine:
                 "DART_LEFT":  dart_left,
                 "DART_RIGHT": dart_right
             },
-            "outline": [
-                A_top, A1, neck_curve, A, B, C, D,
-                D1, C1, dart_right, DART_APEX, dart_left,
-                B1, ARM_MID, SP, A_top
-            ],
+            "outline": outline,
             "grain_line": {
                 "start": (qb / 2, ad),
-                "end":   (qb / 2, bw)
+                "end":   (qb / 2, max(ad + 1.0, hem_y - 2.0))
             }
         }
         return piece
@@ -286,32 +348,44 @@ class ParametricEngine:
         if sleeve_type == "sleeveless":
             return None
 
-        sleeve_length = get_sleeve_length(sleeve_type)
-        is_puff = (sleeve_type == "puff sleeve")
-        is_bell = (sleeve_type in ["bell sleeve", "flared sleeve", "ruffle sleeve", "tiered sleeve"])
-        is_bishop = (sleeve_type in ["bishop sleeve", "balloon sleeve", "lantern sleeve"])
+        # Prefer user sleeve length measurement when provided
+        if self.user_sleeve_cm:
+            sleeve_length = float(self.user_sleeve_cm)
+        else:
+            sleeve_length = get_sleeve_length(sleeve_type)
+
+        is_puff = (sleeve_type in ("puff sleeve", "puff-sleeve"))
+        is_bell = (sleeve_type in [
+            "bell sleeve", "flared sleeve", "ruffle sleeve", "tiered sleeve",
+            "bell-sleeve", "flutter-sleeve",
+        ])
+        is_bishop = (sleeve_type in [
+            "bishop sleeve", "balloon sleeve", "lantern sleeve", "bishop-sleeve",
+        ])
         is_leg_mutton = (sleeve_type == "leg-o'-mutton sleeve")
-        is_cap = (sleeve_type in ["cap sleeve", "petal sleeve"])
+        is_cap = (sleeve_type in ["cap sleeve", "petal sleeve", "cap-length"])
         is_cape = (sleeve_type in ["cape sleeve", "butterfly sleeve"])
         is_cold_shoulder = (sleeve_type in ["cold shoulder sleeve", "slit sleeve"])
-        is_batwing = (sleeve_type in ["batwing sleeve", "kimono sleeve"])
+        is_batwing = (sleeve_type in ["batwing sleeve", "kimono sleeve", "kimono-sleeve", "dolman-sleeve"])
 
-        # Sleeve cap depth and bicep width according to Aldrich standards
+        # Sleeve cap depth and bicep width — prefer locked bicep measurement
+        bicep_width = max(self.bicep_cm / 2.0 + 2.0, self.half_bust / 2)
+
         if is_cap:
             sleeve_head = self.armhole_depth * 0.50
-            sleeve_width = self.half_bust / 2 + 1.5
+            sleeve_width = bicep_width + 1.5
         elif is_puff or is_leg_mutton:
             sleeve_head = self.armhole_depth * 0.90
-            sleeve_width = self.half_bust / 2 + 6.0
+            sleeve_width = bicep_width + 6.0
         elif is_bishop:
             sleeve_head = self.armhole_depth * 0.75
-            sleeve_width = self.half_bust / 2 + 7.5
+            sleeve_width = bicep_width + 7.5
         elif is_batwing:
             sleeve_head = self.armhole_depth * 1.30
-            sleeve_width = self.half_bust / 2 + 10.0
+            sleeve_width = bicep_width + 10.0
         else:
             sleeve_head = self.armhole_depth * 0.75
-            sleeve_width = self.half_bust / 2 + 3.0
+            sleeve_width = bicep_width + 3.0
 
         CROWN = (sleeve_width / 2, 0)
         UL = (0, sleeve_head)
@@ -393,9 +467,10 @@ class ParametricEngine:
             outline = [CROWN, CROWN_R, UR, HR, HL, UL, CROWN_L, CROWN]
 
         else:
-            # Standard set-in sleeve
+            # Standard set-in sleeve — taper toward wrist when long
             if sleeve_length > 45.0:
-                taper = 3.5
+                wrist_half = max(self.wrist_cm / 2.0 + 1.0, 4.0)
+                taper = max(0.0, (sleeve_width - wrist_half * 2) / 2.0)
             elif sleeve_length > 30.0:
                 taper = 2.0
             elif is_puff:
@@ -429,7 +504,7 @@ class ParametricEngine:
 
         # For Bishop and Balloon sleeves, draft an accompanying wrist cuff piece
         if is_bishop:
-            cuff_width = 22.0
+            cuff_width = max(self.wrist_cm + 2.0, 18.0)
             cuff_height = 5.0
             cuff_piece = {
                 "name": "Sleeve Wrist Cuff",
@@ -455,6 +530,52 @@ class ParametricEngine:
 
         return main_piece
 
+    def draft_neckband(self):
+        """Simple rectangular neckband for knit T-shirt constructions."""
+        if not self.block.get("add_neckband"):
+            return None
+        neck = float(self.raw.get("neck_cm") or 36.0)
+        band_len = neck * 0.85
+        band_h = 3.0
+        return {
+            "name": "Neckband",
+            "cut_count": 1,
+            "cut_on_fold": False,
+            "seam_allowance_cm": 0.7,
+            "points": {
+                "TL": (0, 0), "TR": (band_len, 0),
+                "BR": (band_len, band_h), "BL": (0, band_h),
+            },
+            "outline": [(0, 0), (band_len, 0), (band_len, band_h), (0, band_h), (0, 0)],
+            "grain_line": {
+                "start": (band_len / 2, 0),
+                "end": (band_len / 2, band_h),
+            },
+        }
+
+    def draft_armhole_facing(self):
+        """Armhole facing strip for sleeveless garments."""
+        if not self.block.get("add_armhole_facing"):
+            return None
+        # Approximate armhole perimeter from depth + width
+        facing_len = self.armhole_depth * 2.2 + self.back_width
+        facing_w = 4.0
+        return {
+            "name": "Armhole Facing",
+            "cut_count": 2,
+            "cut_on_fold": False,
+            "seam_allowance_cm": 0.7,
+            "points": {
+                "TL": (0, 0), "TR": (facing_len, 0),
+                "BR": (facing_len, facing_w), "BL": (0, facing_w),
+            },
+            "outline": [(0, 0), (facing_len, 0), (facing_len, facing_w), (0, facing_w), (0, 0)],
+            "grain_line": {
+                "start": (facing_len / 2, 0),
+                "end": (facing_len / 2, facing_w),
+            },
+        }
+
 
     # ── GENERATE FULL PATTERN ─────────────────────────────────────────────────
     def generate(self):
@@ -465,6 +586,8 @@ class ParametricEngine:
         back   = self.draft_back_bodice()
         front  = self.draft_front_bodice()
         sleeve = self.draft_sleeve()
+        neckband = self.draft_neckband()
+        facing = self.draft_armhole_facing()
 
         pieces = [back, front]
         if sleeve:
@@ -472,6 +595,10 @@ class ParametricEngine:
                 pieces.extend(sleeve)
             else:
                 pieces.append(sleeve)
+        if neckband:
+            pieces.append(neckband)
+        if facing:
+            pieces.append(facing)
 
         for piece in pieces:
             outline = piece["outline"]
@@ -499,6 +626,7 @@ class ParametricEngine:
         return {
             "garment_type":   self.garment_type,
             "fabric_type":    self.fabric_type,
+            "drafting_block": self.block,
             "pattern_pieces": pieces,
             "measurements_used": {
                 "raw":   self.raw,
@@ -506,7 +634,15 @@ class ParametricEngine:
                     "bust_cm":   round(self.eased["bust_cm"],  2),
                     "waist_cm":  round(self.eased["waist_cm"], 2),
                     "hip_cm":    round(self.eased["hip_cm"],   2),
-                    "height_cm": round(self.eased["height_cm"],2)
+                    "height_cm": round(self.eased["height_cm"],2),
+                    "fit_preference": self.fit_preference,
+                },
+                "derived": {
+                    "back_waist_length_cm": round(self.back_neck_to_waist, 2),
+                    "armhole_depth_cm": round(self.armhole_depth, 2),
+                    "shoulder_width_cm": round(self.shoulder_width, 2),
+                    "across_back_half_cm": round(self.back_width, 2),
+                    "garment_length_cm": round(self.garment_length, 2),
                 }
             },
             "construction_notes": notes
@@ -516,14 +652,18 @@ class ParametricEngine:
     def _build_notes(self):
         """Returns tailor construction notes based on features."""
         notes = [
+            f"Drafting block: {self.block['block_label']} "
+            f"(garment={self.garment_type}, fabric={self.fabric_type}).",
             f"All seam allowances: 1.5 cm unless stated.",
             f"Fabric type: {self.fabric_type} — "
             f"ease applied: bust +{self.eased['bust_cm'] - self.raw['bust_cm']:.1f} cm, "
-            f"waist +{self.eased['waist_cm'] - self.raw['waist_cm']:.1f} cm.",
+            f"waist +{self.eased['waist_cm'] - self.raw['waist_cm']:.1f} cm "
+            f"(fit: {self.fit_preference}).",
             f"Neckline: {self.features.get('neckline', 'round neck')} — "
             f"depth {self.front_neck_depth:.1f} cm from centre front.",
             f"Sleeves: {self.features.get('sleeves', 'short sleeve')} — "
-            f"length {get_sleeve_length(self.features.get('sleeves', 'short sleeve')):.1f} cm.",
+            f"length {get_sleeve_length(self.features.get('sleeves', 'short sleeve')) if not self.user_sleeve_cm else float(self.user_sleeve_cm):.1f} cm.",
+            f"Garment length used: {self.garment_length:.1f} cm.",
         ]
 
         if self.dart_width > 0:
@@ -532,7 +672,12 @@ class ParametricEngine:
                 f"width {self.dart_width:.1f} cm."
             )
         else:
-            notes.append("No darts — suitable for stretch-knit or T-shirt constructions.")
+            notes.append("No darts — knit block or stretch construction.")
+
+        if self.block.get("add_neckband"):
+            notes.append("Include knit neckband — stretch greatest around the neck.")
+        if self.block.get("add_armhole_facing"):
+            notes.append("Sleeveless: include armhole facing pieces.")
 
         if self.fabric_type == "stretch-knit":
             notes.append(

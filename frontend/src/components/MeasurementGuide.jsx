@@ -48,6 +48,60 @@ export default function MeasurementGuide({ activeField, setActiveField, meas }) 
         'Look straight ahead horizontally'
       ],
     },
+    neck_cm: {
+      title: 'Neck Circumference',
+      color: 'var(--text-accent, #2D5A43)',
+      tip: 'Measure around the base of the neck where a collar would sit. Keep one finger under the tape for comfort.',
+      dos: ['Tape snug but not tight', 'Measure at base of neck', 'Keep tape level'],
+    },
+    shoulder_cm: {
+      title: 'Shoulder Length',
+      color: 'var(--text-accent, #2D5A43)',
+      tip: 'Measure from the side-neck point to the shoulder tip (end of shoulder bone).',
+      dos: ['Find the neck-shoulder join', 'End at shoulder bone tip', 'Keep tape along shoulder slope'],
+    },
+    across_back_cm: {
+      title: 'Across-Back Width',
+      color: 'var(--text-accent, #2D5A43)',
+      tip: 'Measure across the back from armhole crease to armhole crease, about mid-shoulder-blade level.',
+      dos: ['Arms relaxed at sides', 'Do not stretch the tape', 'Keep level across the back'],
+    },
+    back_waist_length_cm: {
+      title: 'Back Waist Length',
+      color: 'var(--text-accent, #2D5A43)',
+      tip: 'Measure from the prominent bone at the base of the neck (nape) down the spine to the natural waist.',
+      dos: ['Locate nape bone', 'Follow spine to waist crease', 'Stand upright naturally'],
+    },
+    armhole_depth_cm: {
+      title: 'Armhole Depth',
+      color: 'var(--text-accent, #2D5A43)',
+      tip: 'Measure from the shoulder tip straight down to the underarm crease (scye depth).',
+      dos: ['Arm relaxed', 'Measure vertical drop only', 'Do not wrap under the arm for this field'],
+    },
+    garment_length_cm: {
+      title: 'Garment Length',
+      color: 'var(--text-accent, #2D5A43)',
+      tip: 'Desired finished length from high point of shoulder (or nape for back) to hem.',
+      dos: ['Decide blouse / T-shirt / crop length', 'Measure over body standing straight', 'Include intended hem position'],
+    },
+    bicep_cm: {
+      title: 'Bicep Circumference',
+      color: 'var(--text-accent, #2D5A43)',
+      tip: 'Measure around the fullest part of the upper arm with the arm relaxed.',
+      dos: ['Arm hanging naturally', 'Fullest upper-arm point', 'Do not flex the muscle'],
+    },
+    sleeve_cm: {
+      title: 'Sleeve Length',
+      color: 'var(--text-accent, #2D5A43)',
+      tip: 'Measure from shoulder tip down the outside of the arm to the desired sleeve hem (wrist for long sleeve).',
+      dos: ['Arm slightly bent', 'Follow outer arm line', 'Match intended sleeve style length'],
+    },
+    wrist_cm: {
+      title: 'Wrist Circumference',
+      color: 'var(--text-accent, #2D5A43)',
+      tip: 'Measure around the wrist bone. Used for long-sleeve openings and cuffs.',
+      dos: ['Over the wrist bone', 'Snug but movable', 'Needed mainly for long sleeves'],
+    },
   };
 
   const activeInfo = guideData[activeField] || guideData.bust_cm;
