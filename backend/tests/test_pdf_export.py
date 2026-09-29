@@ -74,7 +74,7 @@ class TestPrintablePdf(unittest.TestCase):
 
     def test_summary_page_contents(self):
         text = self.doc[1].get_text()
-        for word in ("Bust", "Waist", "Cotton Poplin", "Fabric estimate", "Front Bodice", "Back Bodice", "Seam allowance"):
+        for word in ("Bust", "Waist", "Cotton Poplin", "Fabric estimate", "Front Bodice", "Back Bodice", "hem SA"):
             self.assertIn(word, text)
         self.assertIn("Round Neck", self.doc[0].get_text())
 

@@ -84,11 +84,11 @@ export default function RegisterForm({ onSubmit, loading, error, onSwitchTab, on
 
       <form onSubmit={handleFormSubmit} className="space-y-4">
         <div>
-          <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+          <label className="block text-xs font-semibold text-slate-700 mb-1.5" htmlFor="reg-fullName">
             Full Name
           </label>
           <input
-            type="text"
+            id="reg-fullName" type="text"
             name="fullName"
             value={form.fullName}
             onChange={handleChange}
@@ -103,11 +103,11 @@ export default function RegisterForm({ onSubmit, loading, error, onSwitchTab, on
         </div>
 
         <div>
-          <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+          <label className="block text-xs font-semibold text-slate-700 mb-1.5" htmlFor="reg-email">
             Email Address
           </label>
           <input
-            type="email"
+            id="reg-email" type="email"
             name="email"
             value={form.email}
             onChange={handleChange}
@@ -122,11 +122,11 @@ export default function RegisterForm({ onSubmit, loading, error, onSwitchTab, on
         </div>
 
         <div>
-          <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+          <label className="block text-xs font-semibold text-slate-700 mb-1.5" htmlFor="reg-password">
             Password
           </label>
           <PasswordInput
-            name="password"
+            id="reg-password" name="password"
             value={form.password}
             onChange={handleChange}
             placeholder="Create a password"
@@ -143,11 +143,11 @@ export default function RegisterForm({ onSubmit, loading, error, onSwitchTab, on
         </div>
 
         <div>
-          <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+          <label className="block text-xs font-semibold text-slate-700 mb-1.5" htmlFor="reg-confirmPassword">
             Confirm Password
           </label>
           <PasswordInput
-            name="confirmPassword"
+            id="reg-confirmPassword" name="confirmPassword"
             value={form.confirmPassword}
             onChange={handleChange}
             placeholder="Confirm your password"

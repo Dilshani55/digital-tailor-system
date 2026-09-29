@@ -96,6 +96,11 @@ class TestFinalPatternSeamAllowance(unittest.TestCase):
         self.assertNotIn("sleeve", types(_gen("crop-top", "round-neck", "sleeveless")))
         self.assertIn("sleeve", types(_gen("blouse", "round-neck", "long-sleeve")))
 
+    def test_engine_notes_do_not_claim_missing_seam_allowance(self):
+        notes = " ".join(_gen("blouse", "round-neck", "short-sleeve")["construction_notes"])
+        self.assertNotIn("NOT yet included", notes)
+        self.assertIn("include seam allowances", notes)
+
     def test_deterministic(self):
         a, b = _gen("blouse", "round-neck", "short-sleeve"), _gen("blouse", "round-neck", "short-sleeve")
         self.assertEqual(a["pattern_pieces"][0]["cutting_line"], b["pattern_pieces"][0]["cutting_line"])

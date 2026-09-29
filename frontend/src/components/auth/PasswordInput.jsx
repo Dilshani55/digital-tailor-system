@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { Eye, EyeOff } from 'lucide-react';
 
-export default function PasswordInput({ name, value, onChange, placeholder, required }) {
+export default function PasswordInput({ id, name, value, onChange, placeholder, required }) {
   const [show, setShow] = useState(false);
 
   return (
     <div style={{ position: 'relative' }}>
       <input
+        id={id}
         type={show ? 'text' : 'password'}
         name={name}
         value={value}
@@ -18,6 +19,7 @@ export default function PasswordInput({ name, value, onChange, placeholder, requ
       />
       <button
         type="button"
+        aria-label={show ? 'Hide password' : 'Show password'}
         onClick={() => setShow(!show)}
         style={{
           position: 'absolute',

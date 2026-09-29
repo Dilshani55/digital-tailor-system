@@ -62,11 +62,11 @@ export default function LoginForm({ onSubmit, loading, error, onSwitchTab, onGoo
 
       <form onSubmit={handleFormSubmit} className="space-y-4">
         <div>
-          <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+          <label className="block text-xs font-semibold text-slate-700 mb-1.5" htmlFor="login-email">
             Email Address
           </label>
           <input
-            type="email"
+            id="login-email" type="email"
             name="email"
             value={form.email}
             onChange={handleChange}
@@ -81,11 +81,11 @@ export default function LoginForm({ onSubmit, loading, error, onSwitchTab, onGoo
         </div>
 
         <div>
-          <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+          <label className="block text-xs font-semibold text-slate-700 mb-1.5" htmlFor="login-password">
             Password
           </label>
           <PasswordInput
-            name="password"
+            id="login-password" name="password"
             value={form.password}
             onChange={handleChange}
             placeholder="Enter your password"

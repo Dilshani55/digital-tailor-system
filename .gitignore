@@ -71,3 +71,6 @@ scratch/
 .pytest_cache/
 ai_training/data/
 evidence/
+
+frontend/test-results/
+frontend/playwright-report/

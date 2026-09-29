@@ -127,7 +127,7 @@ class ParametricEngine:
             f"Drafting block: {self.block['block_label']} (garment={self.garment_type}, fabric={self.fabric_type}).",
             f"Ease used (project assumption): bust +{ease.bust_cm:g}, waist +{ease.waist_cm:g}, hip +{ease.hip_cm:g} cm "
             f"(fit: {ease.fit_preference}); sleeve bicep +{ease.bicep_cm:g}, wrist +{ease.wrist_cm:g} cm.",
-            "All seam allowances are NOT yet included in the geometry (cutting lines are stitching lines).",
+            "Cutting lines include seam allowances (the dashed line is the sewing line); allowances per edge type are in each piece's data.",
         ]
         for t in final.transformations:
             note = t.get("note") or t.get("rule") or t.get("type")

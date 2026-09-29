@@ -266,15 +266,18 @@ class PDFGenerator:
 
         self._text(2 * CM, y, "Pattern pieces", 11, True, BLUE)
         y -= 0.6 * CM
-        heads = ["Piece", "Cut", "On fold", "Seam allowance", "Size with SA (cm)"]
-        xs = [2, 8.2, 10.2, 12.4, 16.0]
+        heads = ["Piece", "Cut", "On fold", "Seam / neck / hem SA (cm)", "Size with SA (cm)"]
+        xs = [2, 7.4, 9.0, 11.2, 16.2]
         for h, x in zip(heads, xs):
             self._text(x * CM, y, h, 8.5, True)
         y -= 0.5 * CM
         for p in self.pieces:
             box = p["cut_bounding_box"] or p["bounding_box"]
             sa = p.get("seam_allowances") or {}
-            sa_txt = ", ".join(f"{k} {v:g}" for k, v in sa.items()) if sa else f"{p.get('seam_allowance_cm')}"
+            if sa and all(k in sa for k in ("seam", "neckline", "hem")):
+                sa_txt = f"{sa['seam']:g} / {sa['neckline']:g} / {sa['hem']:g}"
+            else:
+                sa_txt = f"{sa.get('strip', p.get('seam_allowance_cm'))} (all edges)" if sa else f"{p.get('seam_allowance_cm')}"
             for t, x in zip([p["name"], str(p["cut_count"]), "yes" if p["cut_on_fold"] else "no", sa_txt[:34],
                              f"{box['width_cm']:.1f} x {box['height_cm']:.1f}"], xs):
                 self._text(x * CM, y, t, 8)
