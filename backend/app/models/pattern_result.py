@@ -16,5 +16,7 @@ class PatternResult(Document):
     selected_fabric_id = StringField(default="cotton-poplin")
     selected_fabric_name = StringField(default="Cotton Poplin")
     validation_report = DictField(default=dict)
+    design_spec = DictField(default=dict)            # canonical confirmed design used for this pattern
+    measurements_snapshot = DictField(default=dict)  # validated canonical-cm measurements used for this pattern
     validation_passed = BooleanField(default=True)
     generated_at = DateTimeField(default=lambda: datetime.now(timezone.utc))

@@ -4,6 +4,7 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 from app.models.design_image import DesignImage
 from app.models.user import User
 from app.utils.helpers import allowed_file, save_image, get_image_dimensions
+from app.logic import feature_schema
 
 images_bp = Blueprint("images", __name__)
 
@@ -144,6 +145,7 @@ def analyse_image(image_id):
     design_image.detected_features = features
     design_image.garment_attributes = garment_attributes
     design_image.confirmed_attributes = {}
+    design_image.design_spec = {}
     design_image.confirmed_at = None
     # confidence_score = mean top-1 softmax confidence of the 4 classifier heads
     # (a real model output). The CV heuristic contributes no confidence.
@@ -167,21 +169,15 @@ def analyse_image(image_id):
 
 from datetime import datetime, timezone
 
-ACTIVE_TAXONOMY = {
-    "garment_type": ["blouse", "t-shirt", "crop-top"],
-    "neckline_type": [
-        "round-neck", "v-neck", "square-neck", "scoop-neck", "boat-neck",
-        "sweetheart-neck", "halter-neck", "high-neck", "collared-neck", "off-shoulder"
-    ],
-    "sleeve_length": [
-        "sleeveless", "cap-length", "short-sleeve", "elbow-length",
-        "three-quarter-sleeve", "long-sleeve"
-    ],
-    "sleeve_style": [
-        "none", "regular-sleeve", "puff-sleeve", "bell-sleeve", "bishop-sleeve",
-        "flutter-sleeve", "raglan-sleeve", "dolman-sleeve", "kimono-sleeve"
-    ]
-}
+# Single source of truth: app.logic.feature_schema (kept as a dict of lists for older imports).
+ACTIVE_TAXONOMY = {head: list(values) for head, values in feature_schema.TAXONOMY.items()}
+
+
+# ── DESIGN FEATURE SCHEMA (taxonomy + engine support levels) ─────────────────
+@images_bp.route("/design-schema", methods=["GET"])
+@jwt_required()
+def design_schema():
+    return jsonify(feature_schema.schema_payload()), 200
 
 
 # ── GET IMAGE DETAILS ─────────────────────────────────────────────────────────
@@ -208,6 +204,7 @@ def get_image(image_id):
         "detected_features":    design_image.detected_features,
         "garment_attributes":   getattr(design_image, "garment_attributes", {}),
         "confirmed_attributes": getattr(design_image, "confirmed_attributes", {}),
+        "design_spec":          getattr(design_image, "design_spec", {}),
         "confirmed_at":          str(design_image.confirmed_at) if getattr(design_image, "confirmed_at", None) else None,
         "confidence_score":     design_image.confidence_score,
         "uploaded_at":          str(design_image.uploaded_at)
@@ -234,21 +231,14 @@ def confirm_attributes(image_id):
 
     data = request.get_json() or {}
 
-    required_heads = ["garment_type", "neckline_type", "sleeve_length", "sleeve_style"]
-    confirmed_data = {}
-
-    for head in required_heads:
-        val = data.get(head)
-        if not val or not isinstance(val, str):
-            return jsonify({"error": f"Missing or invalid attribute '{head}'"}), 400
-
-        val = val.strip()
-        if val not in ACTIVE_TAXONOMY[head]:
-            return jsonify({
-                "error": f"Invalid attribute value '{val}' for '{head}'. Must be one of the active 28-class taxonomy values."
-            }), 400
-
-        confirmed_data[head] = val
+    confirmed_data, field_errors = feature_schema.validate_attributes(data)
+    if field_errors:
+        first = next(iter(field_errors.values()))
+        return jsonify({
+            "error": first["message"],
+            "error_code": "INVALID_DESIGN_ATTRIBUTES",
+            "field_errors": field_errors,
+        }), 400
 
     # Persist confirmed choices separately from raw AI model predictions
     design_image.confirmed_attributes = confirmed_data
@@ -261,6 +251,12 @@ def confirm_attributes(image_id):
     updated_features.update(cad_features)
     updated_features["source"] = "user_confirmed"  # darts/seams are rule-derived from garment_type
     design_image.detected_features = updated_features
+
+    # Canonical design specification: confirmed values + provenance (ML vs user-corrected)
+    # + rule-based derived features + model/checkpoint metadata + engine support.
+    spec = feature_schema.build_design_spec(
+        confirmed_data, getattr(design_image, "garment_attributes", None), cad_features)
+    design_image.design_spec = spec
     design_image.save()
 
     return jsonify({
@@ -269,7 +265,13 @@ def confirm_attributes(image_id):
         "confirmed_attributes": confirmed_data,
         "detected_features": updated_features,
         "confirmed_at": str(design_image.confirmed_at),
-        "status": "confirmed — ready for measurements and pattern generation"
+        "design_spec": spec,
+        "engine_support": spec["support"],
+        "status": (
+            "confirmed — ready for measurements and pattern generation"
+            if spec["support"]["supported"]
+            else "confirmed — but the design contains features the pattern engine cannot draft yet"
+        )
     }), 200
 
 

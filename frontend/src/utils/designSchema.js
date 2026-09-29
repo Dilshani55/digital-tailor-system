@@ -1,0 +1,96 @@
+// Design-feature schema used by the confirmation UI.
+// MUST stay identical to backend/app/logic/feature_schema.py (values, order and support
+// levels). A backend test (test_feature_contract.py) fails if the two drift apart.
+//
+// Support levels describe what the CURRENT drafting engine really does with a value:
+//   implemented   – geometry reflects the value
+//   approximated  – accepted, but only part of the design is reflected
+//   unsupported   – cannot be drafted; pattern generation is rejected (never substituted)
+
+export const IMPLEMENTED = 'implemented';
+export const APPROXIMATED = 'approximated';
+export const UNSUPPORTED = 'unsupported';
+
+export const HEADS = ['garment_type', 'neckline_type', 'sleeve_length', 'sleeve_style'];
+
+export const HEAD_TITLES = {
+  garment_type: 'Garment Type',
+  neckline_type: 'Neckline Type',
+  sleeve_length: 'Sleeve Length',
+  sleeve_style: 'Sleeve Style',
+};
+
+const NOT_CONNECTED = 'Style geometry is not connected to the confirmed-design flow yet.';
+const SLEEVE_MEASURED = 'Length is taken from the measured sleeve_cm, not from the design.';
+
+export const DESIGN_SCHEMA = {
+  garment_type: [
+    { value: 'blouse', label: 'Blouse', support: IMPLEMENTED, note: 'Woven bodice block with bust/waist darts.' },
+    { value: 't-shirt', label: 'T-Shirt', support: IMPLEMENTED, note: 'Knit bodice block, no darts, neckband piece.' },
+    { value: 'crop-top', label: 'Crop-Top', support: APPROXIMATED, note: 'Crop block selected, but the hem length still comes from the measured garment_length_cm.' },
+  ],
+  neckline_type: [
+    { value: 'round-neck', label: 'Round Neck', support: IMPLEMENTED, note: '' },
+    { value: 'v-neck', label: 'V-Neck', support: APPROXIMATED, note: 'Front neck is deepened, but the curve is not yet a true V shape.' },
+    { value: 'square-neck', label: 'Square Neck', support: IMPLEMENTED, note: '' },
+    { value: 'scoop-neck', label: 'Scoop Neck', support: APPROXIMATED, note: 'Currently drafted as a round neck (scoop depth not yet applied).' },
+    { value: 'boat-neck', label: 'Boat Neck', support: APPROXIMATED, note: 'Only the front neck depth is adjusted; no wide boat shape yet.' },
+    { value: 'sweetheart-neck', label: 'Sweetheart Neck', support: APPROXIMATED, note: 'Simplified sweetheart curve.' },
+    { value: 'halter-neck', label: 'Halter Neck', support: UNSUPPORTED, note: 'Halter/strap construction is not implemented.' },
+    { value: 'high-neck', label: 'High Neck', support: APPROXIMATED, note: 'Shallow neck only; no collar-stand piece is generated.' },
+    { value: 'collared-neck', label: 'Collared Neck', support: UNSUPPORTED, note: 'No collar piece is generated.' },
+    { value: 'off-shoulder', label: 'Off-Shoulder', support: UNSUPPORTED, note: 'Off-shoulder construction is not implemented.' },
+  ],
+  sleeve_length: [
+    { value: 'sleeveless', label: 'Sleeveless', support: IMPLEMENTED, note: 'Armhole facing pieces are generated.' },
+    { value: 'cap-length', label: 'Cap Length', support: APPROXIMATED, note: SLEEVE_MEASURED },
+    { value: 'short-sleeve', label: 'Short Sleeve', support: APPROXIMATED, note: SLEEVE_MEASURED },
+    { value: 'elbow-length', label: 'Elbow Length', support: APPROXIMATED, note: SLEEVE_MEASURED },
+    { value: 'three-quarter-sleeve', label: 'Three-Quarter Sleeve', support: APPROXIMATED, note: SLEEVE_MEASURED },
+    { value: 'long-sleeve', label: 'Long Sleeve', support: APPROXIMATED, note: SLEEVE_MEASURED },
+  ],
+  sleeve_style: [
+    { value: 'none', label: 'None (No Special Style)', support: IMPLEMENTED, note: 'Plain set-in sleeve (or none if sleeveless).' },
+    { value: 'regular-sleeve', label: 'Regular Sleeve', support: IMPLEMENTED, note: 'Plain set-in sleeve.' },
+    { value: 'puff-sleeve', label: 'Puff Sleeve', support: UNSUPPORTED, note: NOT_CONNECTED },
+    { value: 'bell-sleeve', label: 'Bell Sleeve', support: UNSUPPORTED, note: NOT_CONNECTED },
+    { value: 'bishop-sleeve', label: 'Bishop Sleeve', support: UNSUPPORTED, note: NOT_CONNECTED },
+    { value: 'flutter-sleeve', label: 'Flutter Sleeve', support: UNSUPPORTED, note: NOT_CONNECTED },
+    { value: 'raglan-sleeve', label: 'Raglan Sleeve', support: UNSUPPORTED, note: 'Raglan construction is not implemented.' },
+    { value: 'dolman-sleeve', label: 'Dolman Sleeve', support: UNSUPPORTED, note: NOT_CONNECTED },
+    { value: 'kimono-sleeve', label: 'Kimono Sleeve', support: UNSUPPORTED, note: NOT_CONNECTED },
+  ],
+};
+
+/** { head: [{value,label}] } — the shape the review UI has always used. */
+export const ACTIVE_TAXONOMY_OPTIONS = Object.fromEntries(
+  HEADS.map((h) => [h, DESIGN_SCHEMA[h].map(({ value, label }) => ({ value, label }))]),
+);
+
+export function supportOf(head, value) {
+  return (DESIGN_SCHEMA[head] || []).find((o) => o.value === value) || null;
+}
+
+/** Mirrors backend validate_attributes' relationship rule. Returns a message or ''. */
+export function consistencyError(selections) {
+  if (selections?.sleeve_length === 'sleeveless' && selections?.sleeve_style
+      && selections.sleeve_style !== 'none') {
+    return `A sleeveless garment cannot have sleeve style '${selections.sleeve_style}'. `
+      + "Choose sleeve style 'none' or change the sleeve length.";
+  }
+  return '';
+}
+
+/** Unsupported / approximated selections among the four heads (empty entries ignored). */
+export function supportReport(selections) {
+  const unsupported = [];
+  const approximated = [];
+  HEADS.forEach((head) => {
+    const opt = supportOf(head, selections?.[head]);
+    if (!opt) return;
+    const item = { head, value: opt.value, label: opt.label, note: opt.note };
+    if (opt.support === UNSUPPORTED) unsupported.push(item);
+    else if (opt.support === APPROXIMATED) approximated.push(item);
+  });
+  return { supported: unsupported.length === 0, unsupported, approximated };
+}

@@ -9,6 +9,8 @@ from app.logic.parametric_engine import ParametricEngine
 from app.logic.fabric_recommendation import validate_fabric_id, get_fabric_by_id
 from app.logic.taxonomy_map import confirmed_to_cad_features
 from app.logic.pattern_validator import validate_pattern
+from app.logic import feature_schema
+from datetime import datetime, timezone
 
 patterns_bp = Blueprint("patterns", __name__)
 
@@ -88,12 +90,21 @@ def generate_pattern():
     if not measurement:
         return jsonify({"error": "Measurement profile not found"}), 404
 
-    # 3. Fetch design image and enforce user confirmation (locked workflow step 3)
-    custom_features = data.get("detected_features") or {}
-    custom_confirmed = data.get("confirmed_attributes") or {}
+    # 3. Design specification. ONLY the user-confirmed, taxonomy-validated attributes
+    #    are canonical. Client-supplied "detected_features" are ignored entirely.
+    client_confirmed = data.get("confirmed_attributes")
     is_manual = image_id in MANUAL_IMAGE_IDS
 
     if is_manual:
+        # Manual mode (no image / no classifier): the user's selections ARE the design.
+        clean, field_errors = feature_schema.validate_attributes(client_confirmed)
+        if field_errors:
+            first = next(iter(field_errors.values()))
+            return jsonify({
+                "error": first["message"],
+                "error_code": "INVALID_DESIGN_ATTRIBUTES",
+                "field_errors": field_errors,
+            }), 400
         design_image = DesignImage.objects(
             user_id   = user,
             file_path = "manual_selection.png"
@@ -103,37 +114,14 @@ def generate_pattern():
                 user_id           = user,
                 file_path         = "manual_selection.png",
                 detected_features = {},
-                confidence_score  = 1.0
+                confidence_score  = 0.0   # no model ran; nothing to report
             )
-            design_image.save()
-
-        # Manual path: accept confirmed_attributes from client and persist
-        heads = ["garment_type", "neckline_type", "sleeve_length", "sleeve_style"]
-        if all(custom_confirmed.get(h) for h in heads):
-            design_image.confirmed_attributes = {h: custom_confirmed[h] for h in heads}
-            design_image.detected_features = confirmed_to_cad_features(
-                design_image.confirmed_attributes
-            )
-            design_image.save()
-        elif custom_features and isinstance(custom_features, dict):
-            # Accept hyphen taxonomy packed into detected_features from older UI
-            packed = {
-                "garment_type": custom_features.get("garment_type"),
-                "neckline_type": custom_features.get("neckline_type")
-                    or custom_features.get("neckline"),
-                "sleeve_length": custom_features.get("sleeve_length")
-                    or custom_features.get("sleeves"),
-                "sleeve_style": custom_features.get("sleeve_style") or "regular-sleeve",
-            }
-            if all(packed.values()) and "-" in str(packed.get("neckline_type", "")):
-                design_image.confirmed_attributes = packed
-                design_image.detected_features = confirmed_to_cad_features(packed)
-                design_image.save()
-            else:
-                updated = dict(design_image.detected_features or {})
-                updated.update(custom_features)
-                design_image.detected_features = updated
-                design_image.save()
+        cad = confirmed_to_cad_features(clean)
+        design_image.confirmed_attributes = clean
+        design_image.detected_features = dict(cad, source="user_confirmed")
+        design_image.design_spec = feature_schema.build_design_spec(clean, None, cad)
+        design_image.confirmed_at = datetime.now(timezone.utc)
+        design_image.save()
     else:
         try:
             design_image = DesignImage.objects(
@@ -146,17 +134,53 @@ def generate_pattern():
         if not design_image:
             return jsonify({"error": "Design image not found"}), 404
 
-    confirmed = getattr(design_image, "confirmed_attributes", None) or {}
-    required_heads = ["garment_type", "neckline_type", "sleeve_length", "sleeve_style"]
-    if not all(confirmed.get(h) for h in required_heads):
+    stored_confirmed = getattr(design_image, "confirmed_attributes", None) or {}
+    if not all(stored_confirmed.get(h) for h in feature_schema.HEADS):
         return jsonify({
             "error": "Garment features must be confirmed before pattern generation. "
-                     "Call POST /api/images/{id}/confirm-attributes first."
+                     "Call POST /api/images/{id}/confirm-attributes first.",
+            "error_code": "DESIGN_NOT_CONFIRMED",
         }), 400
 
-    # Prefer CAD features derived from confirmed taxonomy
-    features_dict = confirmed_to_cad_features(confirmed)
-    design_image.detected_features = features_dict
+    clean, field_errors = feature_schema.validate_attributes(stored_confirmed)
+    if field_errors:
+        first = next(iter(field_errors.values()))
+        return jsonify({
+            "error": f"Stored confirmed attributes are invalid: {first['message']}",
+            "error_code": "INVALID_DESIGN_ATTRIBUTES",
+            "field_errors": field_errors,
+        }), 400
+
+    # If the client also sent its confirmed attributes they must equal what is stored,
+    # otherwise the user's latest correction was never confirmed on the server.
+    if not is_manual and client_confirmed:
+        client_clean, _ = feature_schema.validate_attributes(client_confirmed)
+        if client_clean != clean:
+            return jsonify({
+                "error": "The confirmed design sent by the client differs from the confirmed design "
+                         "stored on the server. Re-confirm the design features and try again.",
+                "error_code": "CONFIRMED_DESIGN_MISMATCH",
+                "stored_confirmed_attributes": clean,
+            }), 409
+
+    # Unsupported designs are rejected explicitly — never replaced by another design.
+    report = feature_schema.support_report(clean)
+    if not report["supported"]:
+        return jsonify({
+            "error": feature_schema.unsupported_message(report),
+            "error_code": "UNSUPPORTED_DESIGN",
+            "unsupported_features": report["unsupported"],
+        }), 422
+
+    features_dict = confirmed_to_cad_features(clean)
+    design_spec = getattr(design_image, "design_spec", None) or {}
+    if design_spec.get("attributes") != clean:
+        # Confirmed before design_spec existed: rebuild it from the stored prediction + confirmation.
+        design_spec = feature_schema.build_design_spec(
+            clean, getattr(design_image, "garment_attributes", None), features_dict)
+    design_spec["support"] = report      # always reflect the current engine support levels
+    design_image.detected_features = dict(features_dict, source="user_confirmed")
+    design_image.design_spec = design_spec
     design_image.save()
 
     # 4. Create session to track this generation
@@ -195,6 +219,7 @@ def generate_pattern():
             selected_fabric_id  = selected_fabric_id,
             selected_fabric_name= selected_fabric_name,
             validation_report   = validation,
+            design_spec         = design_spec,
             validation_passed   = bool(validation.get("passed")),
         )
         pattern_result.save()
@@ -221,6 +246,7 @@ def generate_pattern():
             "selected_fabric_name": selected_fabric_name,
             "pieces_count":        len(pattern["pattern_pieces"]),
             "drafting_block":      pattern.get("drafting_block"),
+            "design_spec":         design_spec,
             "validation":          validation,
             "validation_passed":   bool(validation.get("passed")),
             "fabric_estimate_blocked": not bool(validation.get("passed")),

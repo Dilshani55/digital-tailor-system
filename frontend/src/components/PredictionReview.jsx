@@ -1,51 +1,12 @@
 import { useState, useEffect } from 'react';
 import { CheckCircle2, AlertTriangle, Sparkles, RefreshCw, HelpCircle } from 'lucide-react';
 
-export const ACTIVE_TAXONOMY_OPTIONS = {
-  garment_type: [
-    { value: 'blouse', label: 'Blouse' },
-    { value: 't-shirt', label: 'T-Shirt' },
-    { value: 'crop-top', label: 'Crop-Top' },
-  ],
-  neckline_type: [
-    { value: 'round-neck', label: 'Round Neck' },
-    { value: 'v-neck', label: 'V-Neck' },
-    { value: 'square-neck', label: 'Square Neck' },
-    { value: 'scoop-neck', label: 'Scoop Neck' },
-    { value: 'boat-neck', label: 'Boat Neck' },
-    { value: 'sweetheart-neck', label: 'Sweetheart Neck' },
-    { value: 'halter-neck', label: 'Halter Neck' },
-    { value: 'high-neck', label: 'High Neck' },
-    { value: 'collared-neck', label: 'Collared Neck' },
-    { value: 'off-shoulder', label: 'Off-Shoulder' },
-  ],
-  sleeve_length: [
-    { value: 'sleeveless', label: 'Sleeveless' },
-    { value: 'cap-length', label: 'Cap Length' },
-    { value: 'short-sleeve', label: 'Short Sleeve' },
-    { value: 'elbow-length', label: 'Elbow Length' },
-    { value: 'three-quarter-sleeve', label: 'Three-Quarter Sleeve' },
-    { value: 'long-sleeve', label: 'Long Sleeve' },
-  ],
-  sleeve_style: [
-    { value: 'none', label: 'None (No Special Style)' },
-    { value: 'regular-sleeve', label: 'Regular Sleeve' },
-    { value: 'puff-sleeve', label: 'Puff Sleeve' },
-    { value: 'bell-sleeve', label: 'Bell Sleeve' },
-    { value: 'bishop-sleeve', label: 'Bishop Sleeve' },
-    { value: 'flutter-sleeve', label: 'Flutter Sleeve' },
-    { value: 'raglan-sleeve', label: 'Raglan Sleeve' },
-    { value: 'dolman-sleeve', label: 'Dolman Sleeve' },
-    { value: 'kimono-sleeve', label: 'Kimono Sleeve' },
-  ]
-};
+import {
+  ACTIVE_TAXONOMY_OPTIONS, HEAD_TITLES, supportOf, supportReport, consistencyError, UNSUPPORTED, APPROXIMATED,
+} from '../utils/designSchema';
 
-const HEAD_TITLES = {
-  garment_type: 'Garment Type',
-  neckline_type: 'Neckline Type',
-  sleeve_length: 'Sleeve Length',
-  sleeve_style: 'Sleeve Style'
-};
+// Re-exported for existing importers; the single frontend definition lives in utils/designSchema.js.
+export { ACTIVE_TAXONOMY_OPTIONS };
 
 export default function PredictionReview({
   garmentAttributes,
@@ -111,6 +72,8 @@ export default function PredictionReview({
     selections.sleeve_length &&
     selections.sleeve_style
   );
+  const report = supportReport(selections);
+  const consistency = consistencyError(selections);
 
   return (
     <div
@@ -244,6 +207,28 @@ export default function PredictionReview({
         </div>
       )}
 
+      {consistency && (
+        <div
+          role="alert"
+          style={{ background: '#FEE2E2', border: '1px solid #EF4444', borderRadius: '8px', padding: '8px 12px', fontSize: '12px', color: '#991B1B', marginBottom: '12px' }}
+          data-testid="consistency-error"
+        >
+          {consistency}
+        </div>
+      )}
+
+      {report.unsupported.length > 0 && (
+        <div
+          role="alert"
+          style={{ background: '#FEE2E2', border: '1px solid #EF4444', borderRadius: '8px', padding: '8px 12px', fontSize: '12px', color: '#991B1B', marginBottom: '12px' }}
+          data-testid="unsupported-alert"
+        >
+          <strong>Cannot be drafted yet:</strong>{' '}
+          {report.unsupported.map((u) => `${HEAD_TITLES[u.head]}: ${u.label}`).join('; ')}.
+          The system will not substitute a different design — please choose a supported option.
+        </div>
+      )}
+
       {/* 4 Classification Heads Grid */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px', marginBottom: '16px' }}>
         {Object.keys(HEAD_TITLES).map((headKey) => {
@@ -316,6 +301,19 @@ export default function PredictionReview({
                   </option>
                 ))}
               </select>
+              {(() => {
+                const opt = supportOf(headKey, selections[headKey]);
+                if (!opt || (opt.support !== UNSUPPORTED && opt.support !== APPROXIMATED) || !opt.note) return null;
+                const bad = opt.support === UNSUPPORTED;
+                return (
+                  <div
+                    style={{ fontSize: '10px', marginTop: '6px', color: bad ? '#991B1B' : '#92400E' }}
+                    data-testid={`support-note-${headKey}`}
+                  >
+                    {bad ? 'Unsupported' : 'Approximated'}: {opt.note}
+                  </div>
+                );
+              })()}
             </div>
           );
         })}
@@ -338,7 +336,7 @@ export default function PredictionReview({
               gap: '6px',
             }}
             onClick={handleConfirmSubmit}
-            disabled={!isComplete || isSubmitting}
+            disabled={!isComplete || Boolean(consistency) || isSubmitting}
             data-testid="confirm-btn"
           >
             {isSubmitting ? (

@@ -7,6 +7,7 @@ import MeasurementGuide from '../components/MeasurementGuide';
 import FabricRecommendation from '../components/FabricRecommendation';
 import PredictionReview from '../components/PredictionReview';
 import PatternPreview from '../components/PatternPreview';
+import { supportReport } from '../utils/designSchema';
 import { formatResult, CALCULATION_FAILED, NOT_CALCULATED as NOT_CALCULATED_LABEL } from '../utils/results';
 import {
   imagesAPI, measurementsAPI, patternsAPI, exportAPI, researchAPI
@@ -243,6 +244,15 @@ export default function Upload() {
       setError('Please review and click "Confirm Design Features" before saving measurements and proceeding.');
       return;
     }
+    const designSupport = supportReport(confirmedAttributes || {});
+    if (!designSupport.supported) {
+      setError(
+        'This design cannot be drafted yet: '
+        + designSupport.unsupported.map((u) => `${u.head.replace(/_/g, ' ')} = ${u.label}`).join('; ')
+        + '. Edit & re-confirm with a supported option (the system will not substitute another design).'
+      );
+      return;
+    }
     const required = [
       'bust_cm', 'waist_cm', 'hip_cm', 'height_cm',
       'neck_cm', 'shoulder_cm', 'across_back_cm', 'back_waist_length_cm',
@@ -308,7 +318,6 @@ export default function Upload() {
           measurement_id:    measurementId,
           image_id:          imageId || 'manual',
           confirmed_attributes: confirmedAttributes || undefined,
-          detected_features: features,
           fabric_id:         selectedFabricId,
           fabric_name:       selectedFabricName
         });
