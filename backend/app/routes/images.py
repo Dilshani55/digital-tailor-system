@@ -3,7 +3,7 @@ from flask import Blueprint, request, jsonify, current_app, send_from_directory
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from app.models.design_image import DesignImage
 from app.models.user import User
-from app.utils.helpers import allowed_file, save_image, get_image_dimensions
+from app.utils.helpers import allowed_file, save_image, get_image_dimensions, InvalidImageError
 from app.logic import feature_schema
 
 images_bp = Blueprint("images", __name__)
@@ -39,7 +39,10 @@ def upload_image():
     upload_folder = current_app.config["UPLOAD_FOLDER"]
     os.makedirs(upload_folder, exist_ok=True)
 
-    filename = save_image(file, upload_folder)
+    try:
+        filename = save_image(file, upload_folder)
+    except InvalidImageError as err:
+        return jsonify({"error": str(err), "error_code": "INVALID_IMAGE"}), 400
     filepath = os.path.join(upload_folder, filename)
 
     # 5. Get image dimensions

@@ -12,6 +12,7 @@ import Customers      from './pages/Customers';
 import Settings       from './pages/Settings';
 import ResearcherDashboard from './pages/ResearcherDashboard';
 import FabricSavings from './pages/FabricSavings';
+import PatternDetail from './pages/PatternDetail';
 import LoadingSpinner from './components/LoadingSpinner';
 
 // Protected route wrapper with Sidebar layout
@@ -52,6 +53,9 @@ function AppRoutes() {
       <Route path="/history" element={
         <ProtectedLayout><History /></ProtectedLayout>
       }/>
+      <Route path="/patterns/:patternId" element={
+        <ProtectedLayout><PatternDetail /></ProtectedLayout>
+      }/>
       <Route path="/fabric-savings" element={
         <ProtectedLayout><FabricSavings /></ProtectedLayout>
       }/>
@@ -67,6 +71,7 @@ function AppRoutes() {
       <Route path="/researcher" element={
         <ProtectedLayout><ResearcherDashboard /></ProtectedLayout>
       }/>
+      <Route path="*" element={<Navigate to="/" />} />
     </Routes>
   );
 }

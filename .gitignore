@@ -63,3 +63,11 @@ runs/
 Research papres  for my research literature review/
 backend/tests/nesting_benchmark_results.csv
 scratch/
+
+# Raw downloaded datasets (large, local only)
+/Dataset/
+
+# Test / tool caches and generated audit output
+.pytest_cache/
+ai_training/data/
+evidence/

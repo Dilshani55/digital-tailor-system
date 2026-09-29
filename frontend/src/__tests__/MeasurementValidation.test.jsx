@@ -90,13 +90,15 @@ describe('measurementSchema utils', () => {
 // ── the wizard's measurement step ─────────────────────────────────────────────
 function openMeasurementStep({ neckline = 'round-neck', sleeveStyle = 'regular-sleeve' } = {}) {
   const view = render(<MemoryRouter><Upload /></MemoryRouter>);
-  fireEvent.click(screen.getByText('Measurements', { selector: '.wstep-lbl' }));
+  fireEvent.click(screen.getByText('No photo — choose the design manually'));
   const set = (testId, value) => fireEvent.change(screen.getByTestId(testId), { target: { value } });
   set('select-garment_type', 'blouse');
   set('select-neckline_type', neckline);
   set('select-sleeve_length', 'short-sleeve');
   set('select-sleeve_style', sleeveStyle);
   fireEvent.click(screen.getByTestId('confirm-btn'));
+  const next = screen.getByText('Continue to measurements');
+  if (!next.disabled) fireEvent.click(next);
   return view;
 }
 
@@ -197,11 +199,29 @@ describe('Measurement form in the Upload wizard', () => {
     expect(screen.queryByTestId('error-bust_cm')).toBeNull();
   });
 
-  it('blocks a confirmed design the engine cannot draft before saving measurements', () => {
+  it('does not let an unsupported design reach the measurement step', () => {
     openMeasurementStep({ neckline: 'halter-neck' });
-    fillAll(VALID);
-    save();
-    expect(screen.getAllByText(/cannot be drafted yet/i).length).toBeGreaterThan(0);
+    expect(screen.getByText('Continue to measurements').disabled).toBe(true);
+    expect(document.querySelector('#meas-bust_cm')).toBeNull();
     expect(measurementsAPI.save).not.toHaveBeenCalled();
+  });
+
+  it('does not let an out-of-scope combination through (t-shirt with square neck)', () => {
+    const view = render(<MemoryRouter><Upload /></MemoryRouter>);
+    fireEvent.click(screen.getByText('No photo — choose the design manually'));
+    const set = (id, v) => fireEvent.change(screen.getByTestId(id), { target: { value: v } });
+    set('select-garment_type', 't-shirt');
+    set('select-neckline_type', 'square-neck');
+    set('select-sleeve_length', 'short-sleeve');
+    set('select-sleeve_style', 'regular-sleeve');
+    fireEvent.click(screen.getByTestId('confirm-btn'));
+    expect(screen.getByText('Continue to measurements').disabled).toBe(true);
+    view.unmount();
+  });
+
+  it('only lets the user open steps they have already reached', () => {
+    render(<MemoryRouter><Upload /></MemoryRouter>);
+    expect(screen.getByText('Measurements', { selector: '.wstep-lbl' }).closest('button').disabled).toBe(true);
+    expect(screen.getByText('Upload', { selector: '.wstep-lbl' }).closest('button').disabled).toBe(false);
   });
 });

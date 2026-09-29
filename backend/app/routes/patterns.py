@@ -298,6 +298,9 @@ def get_pattern(pattern_id):
     if str(pattern.session_id.user_id.id) != current_user_id:
         return jsonify({"error": "Unauthorized"}), 403
 
+    from app.models.pdf_export import PdfExport
+    exports = PdfExport.objects(pattern_id=pattern).order_by("-exported_at")
+    spec = pattern.design_spec or {}
     return jsonify({
         "pattern_id":   str(pattern.id),
         "garment_type": pattern.garment_type,
@@ -314,6 +317,12 @@ def get_pattern(pattern_id):
             }
             for p in pattern.pattern_coordinates
         ],
+        "pattern_pieces": pattern.pattern_coordinates,
+        "design_attributes": spec.get("attributes") or {},
+        "validation": pattern.validation_report or {},
+        "validation_passed": bool(pattern.validation_passed),
+        "measurements_snapshot": pattern.measurements_snapshot or {},
+        "exports": [{"export_id": str(e.id), "filename": e.file_path, "exported_at": str(e.exported_at)} for e in exports],
         "generated_at": str(pattern.generated_at)
     }), 200
 

@@ -3,8 +3,9 @@
  * its own: every outline comes from `piece.segments` (lines + cubic Bezier curves, cm) or, for
  * older records, from the flattened `piece.outline`.
  *
- * "Not to scale for printing": pieces are fit to the view and laid side by side. A 1:1 printable
- * pattern (with seam allowance) is a later stage.
+ * "Not to scale for printing": pieces are fit to the view and laid side by side. The printable 1:1
+ * tiled PDF is produced by the export step. When a piece carries `cutting_line` (seam allowance
+ * geometry) it is drawn solid, the sewing (seam) line dashed, and notches as triangles.
  */
 const PIECE_COLORS = ['#38BDF8', '#52B788', '#F59E0B', '#A78BFA', '#F472B6', '#74C69D'];
 
@@ -43,6 +44,7 @@ export default function PatternPreview({
   armholeSleeve = null,
   transformations = null,
 }) {
+  const hasCut = (pieces || []).some((p) => Array.isArray(p?.cutting_line) && p.cutting_line.length > 2);
   const list = (pieces || []).filter((p) => p && (p.segments?.length || p.outline?.length));
 
   if (!list.length) {
@@ -57,7 +59,7 @@ export default function PatternPreview({
   const gap = 5;
   let cursor = 0;
   const laidOut = list.map((piece, idx) => {
-    const box = piece.bounding_box || {};
+    const box = piece.cut_bounding_box || piece.bounding_box || {};
     const pts = outlinePoints(piece);
     const minX = box.min_x ?? Math.min(...pts.map((p) => p[0]));
     const minY = box.min_y ?? Math.min(...pts.map((p) => p[1]));
@@ -84,7 +86,9 @@ export default function PatternPreview({
       </div>
       <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '10px' }}>
         Prototype custom pattern, mathematically generated from your measurements and the confirmed design;
-        geometry validated only (not fit-tested or professionally validated). No seam allowance is included yet.
+        geometry validated only (not fit-tested or professionally validated).
+        {hasCut ? ' Solid outline = cutting line (seam allowance included); dashed line = sewing line; triangles = notches.'
+          : ' Seam allowance geometry is not part of this record.'}
         {draftingBlock?.block_label ? ` Block: ${draftingBlock.block_label}.` : ''}
         {fabricWidth ? ` Fabric width reference: ${fabricWidth} cm.` : ''}
       </div>
@@ -121,7 +125,18 @@ export default function PatternPreview({
             const fold = piece.fold_line;
             return (
               <g key={`${piece.name}-${idx}`} data-testid={`piece-${idx}`}>
-                <path d={piecePath(piece, dx, dy)} fill="rgba(15,23,42,0.85)" stroke={color} strokeWidth="0.35" />
+                {Array.isArray(piece.cutting_line) && piece.cutting_line.length > 2 && (
+                  <polygon data-testid={`cutting-line-${idx}`}
+                           points={piece.cutting_line.map((q) => `${q[0] + dx},${q[1] + dy}`).join(' ')}
+                           fill="rgba(56,189,248,0.07)" stroke="#F8FAFC" strokeWidth="0.3" />
+                )}
+                <path d={piecePath(piece, dx, dy)} fill={piece.cutting_line ? 'none' : 'rgba(15,23,42,0.85)'} stroke={color}
+                      strokeWidth="0.3" strokeDasharray={piece.cutting_line ? '1.2,0.8' : undefined} />
+                {(piece.notches || []).map((n) => (
+                  <polygon key={n.id} data-testid={`notch-${n.id}`}
+                           points={`${n.point[0] + dx - 0.5},${n.point[1] + dy - 0.5} ${n.point[0] + dx + 0.5},${n.point[1] + dy - 0.5} ${n.point[0] + dx},${n.point[1] + dy + 0.7}`}
+                           fill="#FACC15" />
+                ))}
                 {(piece.darts || []).map((d) => {
                   const pts = d.lower_apex ? [d.apex, d.leg_a, d.lower_apex, d.leg_b, d.apex] : [d.leg_a, d.apex, d.leg_b];
                   return (
@@ -144,7 +159,7 @@ export default function PatternPreview({
                   {(piece.name || `Piece ${idx + 1}`).toUpperCase()}
                 </text>
                 <text x={x0 + w / 2} y={-0.1} fill="#94A3B8" fontSize="1.7" textAnchor="middle">
-                  {fmt(w)} × {fmt(piece.bounding_box?.height_cm)} cm
+                  {fmt(w)} × {fmt((piece.cut_bounding_box || piece.bounding_box)?.height_cm)} cm
                 </text>
               </g>
             );

@@ -2,9 +2,29 @@ from flask import Blueprint, request, jsonify
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
 from app.models.user import User
 import bcrypt
+import json
+import re
+import urllib.parse
+import urllib.request
 from datetime import timedelta
+from flask import current_app
 
 auth_bp = Blueprint("auth", __name__)
+
+EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+GOOGLE_TOKENINFO = "https://oauth2.googleapis.com/tokeninfo?id_token="
+
+
+def verify_google_credential(credential, client_id):
+    """Returns Google's verified claims for an ID token issued to OUR client id, else None."""
+    try:
+        with urllib.request.urlopen(GOOGLE_TOKENINFO + urllib.parse.quote(credential), timeout=8) as resp:
+            claims = json.loads(resp.read().decode("utf-8"))
+    except Exception:
+        return None
+    if claims.get("aud") != client_id or str(claims.get("email_verified")).lower() != "true" or not claims.get("email"):
+        return None
+    return claims
 
 # ── REGISTER ──────────────────────────────────────────────────────────────────
 @auth_bp.route("/register", methods=["POST"])
@@ -16,6 +36,11 @@ def register():
     for field in required:
         if field not in data or not data[field]:
             return jsonify({"error": f"{field} is required"}), 400
+
+    if not EMAIL_RE.match(str(data["email"]).strip()):
+        return jsonify({"error": "Please enter a valid email address."}), 400
+    if len(str(data["password"])) < 8:
+        return jsonify({"error": "Password must be at least 8 characters."}), 400
 
     # 2. Check if email already exists
     if User.objects(email=data["email"]).first():
@@ -87,45 +112,35 @@ def login():
 # ── GOOGLE LOGIN ──────────────────────────────────────────────────────────────
 @auth_bp.route("/google-login", methods=["POST"])
 def google_login():
-    data = request.get_json() or {}
-    email = data.get("email")
-    full_name = data.get("full_name")
+    """Signs in with a Google ID token that Google itself vouches for (never a client-supplied email)."""
+    client_id = current_app.config.get("GOOGLE_CLIENT_ID")
+    if not client_id:
+        return jsonify({"error": "Google sign-in is not set up on this server.",
+                        "error_code": "GOOGLE_NOT_CONFIGURED"}), 503
+    data = request.get_json(silent=True) or {}
+    credential = data.get("credential")
+    if not credential or not isinstance(credential, str):
+        return jsonify({"error": "A Google sign-in credential is required."}), 400
+    claims = verify_google_credential(credential, client_id)
+    if not claims:
+        return jsonify({"error": "Google could not verify that sign-in. Please try again.",
+                        "error_code": "GOOGLE_VERIFICATION_FAILED"}), 401
 
-    if not email or not full_name:
-        return jsonify({"error": "Email and full_name are required"}), 400
-
-    # Find or create user
+    email = claims["email"]
     user = User.objects(email=email).first()
     if not user:
-        # Create a mock password hash for google profiles
-        hashed = bcrypt.hashpw(
-            "google-oauth-dummy-password".encode("utf-8"),
-            bcrypt.gensalt()
-        ).decode("utf-8")
-        user = User(
-            full_name = full_name,
-            email     = email,
-            password  = hashed
-        )
+        # Google-only account: an unusable random password (nobody can log in with a password)
+        import secrets
+        hashed = bcrypt.hashpw(secrets.token_hex(32).encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+        user = User(full_name=claims.get("name") or email.split("@")[0], email=email, password=hashed)
         user.save()
 
-    # Generate valid JWT token signed by our app's secret key
-    token = create_access_token(
-        identity = str(user.id),
-        expires_delta = timedelta(hours=24)
-    )
-
+    token = create_access_token(identity=str(user.id), expires_delta=timedelta(hours=24))
     return jsonify({
         "message": "Google login successful",
         "token": token,
-        "user": {
-            "id":        str(user.id),
-            "full_name": user.full_name,
-            "email":     user.email
-        }
+        "user": {"id": str(user.id), "full_name": user.full_name, "email": user.email},
     }), 200
-
-
 # ── GET PROFILE (protected route example) ────────────────────────────────────
 @auth_bp.route("/profile", methods=["GET"])
 @jwt_required()
