@@ -20,7 +20,7 @@ export const MEASUREMENT_FIELDS = [
   { key: 'armhole_depth_cm', label: 'Armhole depth', min: 15, max: 30 },
   { key: 'garment_length_cm', label: 'Garment length', min: 20, max: 110 },
   { key: 'bicep_cm', label: 'Bicep', min: 18, max: 50 },
-  { key: 'sleeve_cm', label: 'Sleeve length', min: 5, max: 75 },
+  { key: 'sleeve_cm', label: 'Sleeve length (full arm)', min: 40, max: 75 },
   { key: 'wrist_cm', label: 'Wrist', min: 10, max: 25 },
 ];
 

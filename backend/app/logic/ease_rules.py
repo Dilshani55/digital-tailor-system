@@ -1,4 +1,4 @@
-# ── Ease allowance rules based on Winifred Aldrich standards ──────────────────
+# ── Ease allowance rules (PROJECT ASSUMPTIONS — not verified against a published table) ──
 # Positive = add room, Negative = reduce (for stretch fabrics)
 
 EASE_RULES = {

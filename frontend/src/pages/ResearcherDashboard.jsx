@@ -122,7 +122,7 @@ export default function ResearcherDashboard() {
                 <BarChart2 size={16} style={{ color: 'var(--text-accent)' }} />
               </div>
               <strong style={{ fontSize: '28px', color: 'var(--text-primary)' }}>{metrics.total_patterns}</strong>
-              <small style={{ display: 'block', marginTop: '4px', fontSize: '11px', color: 'var(--text-muted)' }}>Aldrich CAD files calculated</small>
+              <small style={{ display: 'block', marginTop: '4px', fontSize: '11px', color: 'var(--text-muted)' }}>Patterns generated</small>
             </div>
 
             <div className="ui-card" style={{ padding: '20px' }}>

@@ -1,284 +1,179 @@
 /**
- * Renders real parametric pattern outlines from the API (cm coordinates).
- * Screen view is fit-to-canvas; download SVG is true 1cm = 1cm scale.
+ * Pattern Preview — renders the geometry returned by the API. It contains NO piece dimensions of
+ * its own: every outline comes from `piece.segments` (lines + cubic Bezier curves, cm) or, for
+ * older records, from the flattened `piece.outline`.
+ *
+ * "Not to scale for printing": pieces are fit to the view and laid side by side. A 1:1 printable
+ * pattern (with seam allowance) is a later stage.
  */
-const PIECE_COLORS = [
-  '#38BDF8',
-  '#52B788',
-  '#74C69D',
-  '#F59E0B',
-  '#A78BFA',
-  '#F472B6',
-];
+const PIECE_COLORS = ['#38BDF8', '#52B788', '#F59E0B', '#A78BFA', '#F472B6', '#74C69D'];
 
-function normalizeOutline(outline) {
-  if (!Array.isArray(outline) || outline.length < 2) return [];
-  return outline.map((pt) => {
-    if (Array.isArray(pt)) return [Number(pt[0]), Number(pt[1])];
-    if (pt && typeof pt === 'object') return [Number(pt.x ?? pt[0]), Number(pt.y ?? pt[1])];
-    return [0, 0];
-  });
+const pt = (p) => (Array.isArray(p) ? [Number(p[0]), Number(p[1])] : [Number(p?.x ?? 0), Number(p?.y ?? 0)]);
+
+export function outlinePoints(piece) {
+  return (piece?.outline || []).map(pt);
 }
 
-function boundsOf(pieces) {
-  let minX = Infinity;
-  let minY = Infinity;
-  let maxX = -Infinity;
-  let maxY = -Infinity;
-  pieces.forEach((piece) => {
-    normalizeOutline(piece.outline).forEach(([x, y]) => {
-      minX = Math.min(minX, x);
-      minY = Math.min(minY, y);
-      maxX = Math.max(maxX, x);
-      maxY = Math.max(maxY, y);
+/** SVG path data from the API segments (real curves), shifted by (dx, dy). Falls back to the polyline outline. */
+export function piecePath(piece, dx = 0, dy = 0) {
+  const shift = ([x, y]) => `${x + dx} ${y + dy}`;
+  const segs = piece?.segments;
+  if (Array.isArray(segs) && segs.length) {
+    let d = '';
+    segs.forEach((s, i) => {
+      const p = (s.p || []).map(pt);
+      if (i === 0) d += `M ${shift(p[0])}`;
+      if (s.type === 'cubic' && p.length === 4) d += ` C ${shift(p[1])}, ${shift(p[2])}, ${shift(p[3])}`;
+      else d += ` L ${shift(p[p.length - 1])}`;
     });
-  });
-  if (!Number.isFinite(minX)) {
-    return { minX: 0, minY: 0, maxX: 40, maxY: 40, width: 40, height: 40 };
+    return `${d} Z`;
   }
-  return {
-    minX,
-    minY,
-    maxX,
-    maxY,
-    width: Math.max(1, maxX - minX),
-    height: Math.max(1, maxY - minY),
-  };
+  const pts = outlinePoints(piece);
+  if (!pts.length) return '';
+  return `M ${shift(pts[0])}${pts.slice(1).map((q) => ` L ${shift(q)}`).join('')} Z`;
 }
 
-function toPath(outline) {
-  const pts = normalizeOutline(outline);
-  if (!pts.length) return '';
-  const [x0, y0] = pts[0];
-  let d = `M ${x0} ${y0}`;
-  for (let i = 1; i < pts.length; i += 1) {
-    d += ` L ${pts[i][0]} ${pts[i][1]}`;
-  }
-  d += ' Z';
-  return d;
-}
+const fmt = (v, d = 1) => (Number.isFinite(Number(v)) ? Number(v).toFixed(d) : '—');
 
 export default function PatternPreview({
   pieces = [],
-  fabricWidth = 114,
+  fabricWidth = null,
   validation = null,
   draftingBlock = null,
+  armholeSleeve = null,
+  transformations = null,
 }) {
-  const list = (pieces || []).filter((p) => p && (p.outline || p.bounding_box));
+  const list = (pieces || []).filter((p) => p && (p.segments?.length || p.outline?.length));
 
   if (!list.length) {
     return (
       <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '13px' }}>
-        No pattern piece coordinates available yet. Generate a pattern first.
+        No pattern geometry available yet. Generate a pattern first.
       </div>
     );
   }
 
-  // Lay pieces side-by-side for preview (not nesting layout)
-  const laidOut = [];
-  let cursorX = 0;
-  const gap = 4;
-  list.forEach((piece, idx) => {
-    const outline = normalizeOutline(piece.outline);
-    if (!outline.length) return;
-    const xs = outline.map((p) => p[0]);
-    const ys = outline.map((p) => p[1]);
-    const localMinX = Math.min(...xs);
-    const localMinY = Math.min(...ys);
-    const w = (piece.bounding_box?.width_cm) || (Math.max(...xs) - localMinX);
-    const h = (piece.bounding_box?.height_cm) || (Math.max(...ys) - localMinY);
-    const dx = cursorX - localMinX;
-    const dy = -localMinY;
-    const shifted = outline.map(([x, y]) => [x + dx, y + dy]);
-    let grain = null;
-    if (piece.grain_line?.start && piece.grain_line?.end) {
-      const s = piece.grain_line.start;
-      const e = piece.grain_line.end;
-      const sx = Array.isArray(s) ? s[0] : s.x;
-      const sy = Array.isArray(s) ? s[1] : s.y;
-      const ex = Array.isArray(e) ? e[0] : e.x;
-      const ey = Array.isArray(e) ? e[1] : e.y;
-      grain = {
-        start: [sx + dx, sy + dy],
-        end: [ex + dx, ey + dy],
-      };
-    }
-    laidOut.push({
-      ...piece,
-      _outline: shifted,
-      _grain: grain,
-      _color: PIECE_COLORS[idx % PIECE_COLORS.length],
-      _labelX: cursorX + w / 2,
-      _labelY: 2,
-      _width: w,
-      _height: h,
-    });
-    cursorX += w + gap;
+  // Lay pieces side by side (a preview arrangement, not a marker/nesting layout).
+  const gap = 5;
+  let cursor = 0;
+  const laidOut = list.map((piece, idx) => {
+    const box = piece.bounding_box || {};
+    const pts = outlinePoints(piece);
+    const minX = box.min_x ?? Math.min(...pts.map((p) => p[0]));
+    const minY = box.min_y ?? Math.min(...pts.map((p) => p[1]));
+    const w = box.width_cm ?? Math.max(...pts.map((p) => p[0])) - minX;
+    const h = box.height_cm ?? Math.max(...pts.map((p) => p[1])) - minY;
+    const dx = cursor - minX;
+    const dy = -minY;
+    cursor += w + gap;
+    return { piece, idx, dx, dy, w, h, x0: cursor - w - gap };
   });
 
-  const b = boundsOf(laidOut.map((p) => ({ outline: p._outline })));
+  const totalW = Math.max(cursor - gap, 10);
+  const maxH = Math.max(...laidOut.map((l) => l.h), 10);
   const pad = 6;
-  const viewW = b.width + pad * 2;
-  const viewH = b.height + pad * 2 + 10;
-  const vb = `${b.minX - pad} ${b.minY - pad - 4} ${viewW} ${viewH}`;
+  const viewBox = `${-pad} ${-pad - 6} ${totalW + pad * 2} ${maxH + pad * 2 + 10}`;
 
-  const downloadSvg = () => {
-    // True-scale SVG: 1 user unit = 1 cm
-    const parts = list.map((piece, idx) => {
-      const outline = normalizeOutline(piece.outline);
-      if (!outline.length) return '';
-      const xs = outline.map((p) => p[0]);
-      const ys = outline.map((p) => p[1]);
-      const minX = Math.min(...xs);
-      const minY = Math.min(...ys);
-      const shifted = outline.map(([x, y]) => [x - minX, y - minY]);
-      const color = PIECE_COLORS[idx % PIECE_COLORS.length];
-      const w = piece.bounding_box?.width_cm ?? (Math.max(...xs) - minX);
-      const h = piece.bounding_box?.height_cm ?? (Math.max(...ys) - minY);
-      return `
-  <g id="piece-${idx}" transform="translate(0, ${(list.slice(0, idx).reduce((acc, p) => acc + (p.bounding_box?.height_cm || 20) + 3, 0))})">
-    <path d="${toPath(shifted)}" fill="none" stroke="${color}" stroke-width="0.15" />
-    <text x="0.5" y="-0.4" font-size="0.8" fill="#111">${piece.name || `Piece ${idx + 1}`} (${Number(w).toFixed(1)}×${Number(h).toFixed(1)} cm)</text>
-  </g>`;
-    }).join('\n');
-
-    const totalH = list.reduce((acc, p) => acc + (p.bounding_box?.height_cm || 20) + 3, 2);
-    const maxW = Math.max(...list.map((p) => p.bounding_box?.width_cm || 20), 10);
-    const svg = `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="${maxW}cm" height="${totalH}cm" viewBox="0 0 ${maxW} ${totalH}">
-  <title>Digital Tailor — true-scale pattern pieces (1 unit = 1 cm)</title>
-  <desc>Print at 100% scale. Seam allowance already included in outline where drafted.</desc>
-  ${parts}
-</svg>`;
-    const blob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'pattern-pieces-true-scale.svg';
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  const validationPassed = validation?.passed !== false;
-  const validationErrors = validation?.errors || [];
-  const validationWarnings = validation?.warnings || [];
+  const passed = validation?.passed !== false;
+  const errors = validation?.errors || [];
 
   return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', gap: '8px', flexWrap: 'wrap' }}>
-        <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-          Live outlines from parametric engine · preview fit-to-view · fabric width ref {fabricWidth} cm
-          {draftingBlock?.block_label ? ` · ${draftingBlock.block_label}` : ''}
-        </div>
-        <button
-          type="button"
-          className="btn btn-outline"
-          onClick={downloadSvg}
-          style={{ height: '32px', fontSize: '12px' }}
-        >
-          Download true-scale SVG
-        </button>
+    <div data-testid="pattern-preview">
+      <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '2px' }}>
+        Pattern Preview — Not to Scale for Printing
+      </div>
+      <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '10px' }}>
+        Prototype custom pattern, mathematically generated from your measurements and the confirmed design;
+        geometry validated only (not fit-tested or professionally validated). No seam allowance is included yet.
+        {draftingBlock?.block_label ? ` Block: ${draftingBlock.block_label}.` : ''}
+        {fabricWidth ? ` Fabric width reference: ${fabricWidth} cm.` : ''}
       </div>
 
       {validation && (
         <div
+          data-testid="geometry-validation"
           style={{
-            marginBottom: '10px',
-            padding: '10px 12px',
-            borderRadius: '8px',
-            border: `1px solid ${validationPassed ? '#52B788' : '#EF4444'}`,
-            background: validationPassed ? 'rgba(82,183,136,0.08)' : 'rgba(239,68,68,0.08)',
-            fontSize: '12px',
+            marginBottom: '10px', padding: '8px 12px', borderRadius: '8px', fontSize: '12px',
+            border: `1px solid ${passed ? '#52B788' : '#EF4444'}`,
+            background: passed ? 'rgba(82,183,136,0.08)' : 'rgba(239,68,68,0.08)',
           }}
         >
-          <div style={{ fontWeight: 600, marginBottom: '4px', color: validationPassed ? '#2D6A4F' : '#B91C1C' }}>
-            {validationPassed ? 'Pattern validation passed' : 'Pattern validation failed — fabric estimate blocked'}
+          <div style={{ fontWeight: 600, color: passed ? '#2D6A4F' : '#B91C1C' }}>
+            {passed ? 'Geometry validation passed' : 'Geometry validation failed'}
           </div>
-          {validationErrors.map((e) => (
-            <div key={e} style={{ color: '#B91C1C' }}>• {e}</div>
-          ))}
-          {validationWarnings.slice(0, 2).map((w) => (
-            <div key={w} style={{ color: '#92400E' }}>• {w}</div>
-          ))}
+          {errors.map((e) => <div key={e} style={{ color: '#B91C1C' }}>• {e}</div>)}
+          {armholeSleeve && (
+            <div data-testid="armhole-sleeve" style={{ color: 'var(--text-secondary)', marginTop: '4px' }}>
+              Armhole seam: front {fmt(armholeSleeve.front_armhole_seam_cm)} + back {fmt(armholeSleeve.back_armhole_seam_cm)} ={' '}
+              {fmt(armholeSleeve.total_armhole_seam_cm)} cm · sleeve cap seam {fmt(armholeSleeve.sleeve_cap_seam_cm)} cm ·
+              ease {fmt(armholeSleeve.cap_ease_cm)} cm
+            </div>
+          )}
         </div>
       )}
 
-      <div
-        style={{
-          width: '100%',
-          height: '320px',
-          background: '#0F172A',
-          border: '1px solid var(--border)',
-          borderRadius: '8px',
-          overflow: 'hidden',
-        }}
-      >
-        <svg viewBox={vb} style={{ width: '100%', height: '100%' }} preserveAspectRatio="xMidYMid meet">
-          <defs>
-            <pattern id="pattern-grid" width="2" height="2" patternUnits="userSpaceOnUse">
-              <path d="M 2 0 L 0 0 0 2" fill="none" stroke="#1E293B" strokeWidth="0.08" />
-            </pattern>
-          </defs>
-          <rect x={b.minX - pad} y={b.minY - pad - 4} width={viewW} height={viewH} fill="url(#pattern-grid)" />
-
-          {laidOut.map((piece, idx) => (
-            <g key={`${piece.name}-${idx}`}>
-              <path
-                d={toPath(piece._outline)}
-                fill="rgba(15,23,42,0.85)"
-                stroke={piece._color}
-                strokeWidth="0.35"
-              />
-              {piece._grain && (
-                <line
-                  x1={piece._grain.start[0]}
-                  y1={piece._grain.start[1]}
-                  x2={piece._grain.end[0]}
-                  y2={piece._grain.end[1]}
-                  stroke="#F8FAFC"
-                  strokeWidth="0.2"
-                  strokeDasharray="1,0.6"
-                  opacity="0.55"
-                />
-              )}
-              <text
-                x={piece._labelX}
-                y={piece._labelY}
-                fill="#F8FAFC"
-                fontSize="2.2"
-                textAnchor="middle"
-                fontWeight="600"
-              >
-                {(piece.name || `Piece ${idx + 1}`).toUpperCase()}
-              </text>
-              <text
-                x={piece._labelX}
-                y={piece._labelY + 2.6}
-                fill="#94A3B8"
-                fontSize="1.8"
-                textAnchor="middle"
-              >
-                {Number(piece._width).toFixed(1)} × {Number(piece._height).toFixed(1)} cm
-                {piece.seam_allowance_cm != null ? ` · SA ${piece.seam_allowance_cm} cm` : ''}
-              </text>
-            </g>
-          ))}
+      <div style={{ width: '100%', background: '#0F172A', border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden' }}>
+        <svg viewBox={viewBox} style={{ width: '100%', height: '340px' }} preserveAspectRatio="xMidYMid meet" role="img"
+             aria-label="Pattern pieces preview, not to scale for printing">
+          {laidOut.map(({ piece, idx, dx, dy, w, x0 }) => {
+            const color = PIECE_COLORS[idx % PIECE_COLORS.length];
+            const grain = piece.grain_line;
+            const fold = piece.fold_line;
+            return (
+              <g key={`${piece.name}-${idx}`} data-testid={`piece-${idx}`}>
+                <path d={piecePath(piece, dx, dy)} fill="rgba(15,23,42,0.85)" stroke={color} strokeWidth="0.35" />
+                {(piece.darts || []).map((d) => {
+                  const pts = d.lower_apex ? [d.apex, d.leg_a, d.lower_apex, d.leg_b, d.apex] : [d.leg_a, d.apex, d.leg_b];
+                  return (
+                    <polyline
+                      key={d.id}
+                      points={pts.map((q) => `${q[0] + dx},${q[1] + dy}`).join(' ')}
+                      fill="none" stroke="#FB923C" strokeWidth="0.25"
+                    />
+                  );
+                })}
+                {fold && (
+                  <line x1={fold.start[0] + dx} y1={fold.start[1] + dy} x2={fold.end[0] + dx} y2={fold.end[1] + dy}
+                        stroke="#34D399" strokeWidth="0.6" />
+                )}
+                {grain && (
+                  <line x1={grain.start[0] + dx} y1={grain.start[1] + dy} x2={grain.end[0] + dx} y2={grain.end[1] + dy}
+                        stroke="#F8FAFC" strokeWidth="0.2" strokeDasharray="1,0.6" opacity="0.6" />
+                )}
+                <text x={x0 + w / 2} y={-2.2} fill="#F8FAFC" fontSize="2.1" textAnchor="middle" fontWeight="600">
+                  {(piece.name || `Piece ${idx + 1}`).toUpperCase()}
+                </text>
+                <text x={x0 + w / 2} y={-0.1} fill="#94A3B8" fontSize="1.7" textAnchor="middle">
+                  {fmt(w)} × {fmt(piece.bounding_box?.height_cm)} cm
+                </text>
+              </g>
+            );
+          })}
         </svg>
       </div>
 
       <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '12px' }}>
         {list.map((piece, idx) => (
-          <span
-            key={`${piece.name}-chip-${idx}`}
-            className="chip"
-            style={{ color: PIECE_COLORS[idx % PIECE_COLORS.length], borderColor: PIECE_COLORS[idx % PIECE_COLORS.length] }}
-          >
-            ✓ {piece.name}
+          <span key={`${piece.name}-chip-${idx}`} className="chip"
+                style={{ color: PIECE_COLORS[idx % PIECE_COLORS.length], borderColor: PIECE_COLORS[idx % PIECE_COLORS.length] }}>
+            {piece.name}
             {piece.cut_count ? ` × ${piece.cut_count}` : ''}
-            {piece.cut_on_fold ? ' (on fold)' : ''}
+            {piece.cut_on_fold ? ' (cut on fold)' : ''}
           </span>
         ))}
       </div>
+
+      {Array.isArray(transformations) && transformations.length > 0 && (
+        <ul data-testid="transformations" style={{ margin: '12px 0 0', paddingLeft: '18px', fontSize: '11px', color: 'var(--text-secondary)' }}>
+          {transformations.map((t) => (
+            <li key={t.id}>
+              <strong>{t.id.replace(/_/g, ' ')}</strong>: {t.type?.replace(/_/g, ' ')}
+              {t.status && t.status !== 'applied' ? ` — ${t.status.replace(/_/g, ' ')}` : ''}
+              {t.note ? ` (${t.note})` : ''}
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

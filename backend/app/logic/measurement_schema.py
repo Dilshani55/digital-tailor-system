@@ -50,7 +50,7 @@ _FIELDS = (
     ("armhole_depth_cm", "Armhole depth", "Shoulder line down to the underarm level", (15.0, 30.0)),
     ("garment_length_cm", "Garment length", "Desired finished length from the high shoulder", (20.0, 110.0)),
     ("bicep_cm", "Bicep", "Fullest part of the upper arm", (18.0, 50.0)),
-    ("sleeve_cm", "Sleeve length", "Shoulder tip to desired sleeve hem", (5.0, 75.0)),
+    ("sleeve_cm", "Sleeve length (full arm)", "Shoulder tip down the arm to the wrist bone (FULL arm length; short/elbow sleeves are derived from it)", (40.0, 75.0)),
     ("wrist_cm", "Wrist", "Circumference at the wrist bone", (10.0, 25.0)),
 )
 

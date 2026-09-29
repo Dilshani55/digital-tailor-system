@@ -55,7 +55,7 @@ export default function Register() {
 
           <div className="my-8 space-y-3">
             {[
-              "Automated Aldrich 2D Bodice & Sleeve Blocks",
+              "Automated parametric 2D bodice & sleeve blocks",
               "2D Fabric Nesting (90cm, 114cm, 150cm rolls)",
               "Downloadable Ready-to-Cut Technical PDF Guides",
             ].map((text, i) => (

@@ -654,7 +654,7 @@ export default function Upload() {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '8px' }}>
               <div>
                 <div style={{ fontSize: '15px', fontWeight: '600', color: 'var(--text-primary)', marginBottom: '4px' }}>
-                  Step 3: View 2D Aldrich Pattern & Fabric Cutting Layout
+                  Step 3: Pattern Preview & Fabric Cutting Layout
                 </div>
                 <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
                   Select fabric bolt width to preview parametric drafting pieces, seam allowances, and cutting layout.
@@ -703,7 +703,7 @@ export default function Upload() {
             {!patternGenerated ? (
               <div style={{ background: 'var(--surface-1)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '24px', textAlign: 'center', marginBottom: '16px' }}>
                 <div style={{ fontSize: '14px', color: 'var(--text-primary)', marginBottom: '12px' }}>
-                  Ready to draft 2D Aldrich parametric pattern for <strong>{meas.client_name || 'Customer'}</strong>
+                  Ready to draft a parametric pattern (prototype) for <strong>{meas.client_name || 'Customer'}</strong>
                 </div>
                 <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '20px' }}>
                   {(features.garment_type || 'GARMENT').toUpperCase()} · {features.neckline || 'Custom neckline'} · {features.sleeves || 'Custom sleeves'} · {meas.fabric_type} fabric
@@ -736,11 +736,11 @@ export default function Upload() {
                   </div>
                 </div>
 
-                {/* 2D Pattern CAD Canvas Viewer */}
+                {/* Pattern preview: renders the API geometry (no hard-coded pieces) */}
                 <div style={{ background: 'var(--surface-1)', border: '1px solid var(--border)', borderRadius: '12px', padding: '18px', marginBottom: '16px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
                     <span style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text-primary)' }}>
-                      2D Parametric Pattern Pieces & Cutting Layout Canvas ({fabricWidth}cm Fabric)
+                      Generated pattern geometry
                     </span>
                     <button
                       onClick={() => setShow2DView(false)}
@@ -749,157 +749,14 @@ export default function Upload() {
                       ✕ Close 2D View
                     </button>
                   </div>
-
-                  {/* Interactive SVG 2D Pattern Canvas */}
-                  <div style={{ width: '100%', height: '240px', background: '#0F172A', border: '1px solid var(--border)', borderRadius: '8px', position: 'relative', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <svg viewBox="0 0 800 240" style={{ width: '100%', height: '100%' }}>
-                      <defs>
-                        <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
-                          <path d="M 20 0 L 0 0 0 20" fill="none" stroke="#1E293B" strokeWidth="0.8" />
-                        </pattern>
-                      </defs>
-                      <rect width="800" height="240" fill="url(#grid)" />
-
-                      <line x1="10" y1="20" x2="790" y2="20" stroke="var(--text-accent)" strokeWidth="1.5" strokeDasharray="4,2" />
-                      <line x1="10" y1="220" x2="790" y2="220" stroke="var(--text-accent)" strokeWidth="1.5" strokeDasharray="4,2" />
-                      <text x="15" y="16" fill="var(--text-accent)" fontSize="10" fontFamily="monospace">FABRIC FOLD ({fabricWidth}cm)</text>
-
-                      <g transform="translate(40, 30)">
-                        <path d="M 0 0 L 140 0 L 140 160 L 20 160 Q 0 100 0 0 Z" fill="#0F172A" stroke="var(--text-accent)" strokeWidth="2" />
-                        <path d="M -5 -5 L 145 -5 L 145 165 L 15 165 Q -5 100 -5 -5 Z" fill="none" stroke="var(--text-accent)" strokeWidth="1" strokeDasharray="3,3" opacity="0.5" />
-                        <text x="35" y="70" fill="#F8FAFC" fontSize="11" fontWeight="bold">BACK BODICE</text>
-                        <text x="45" y="90" fill="#94A3B8" fontSize="9">44cm × 40cm</text>
-                        <text x="45" y="105" fill="#52B788" fontSize="9">+1.5cm Seam</text>
-                      </g>
-
-                      <g transform="translate(230, 30)">
-                        <path d="M 0 0 L 140 0 C 140 40, 160 80, 140 160 L 0 160 Z" fill="#0F172A" stroke="#52B788" strokeWidth="2" />
-                        <polygon points="140,75 80,85 140,95" fill="#1E293B" stroke="var(--text-accent)" strokeWidth="1.5" />
-                        <text x="30" y="70" fill="#F8FAFC" fontSize="11" fontWeight="bold">FRONT BODICE</text>
-                        <text x="40" y="90" fill="#94A3B8" fontSize="9">46cm × 42cm</text>
-                        <text x="40" y="105" fill="var(--text-accent)" fontSize="9">Bust Dart Included</text>
-                      </g>
-
-                      {features.sleeves !== 'sleeveless' && (
-                        <g transform="translate(430, 30)">
-                          <path
-                            d={
-                              features.sleeves === 'puff sleeve'
-                                ? "M 15 25 C 30 -20, 90 -20, 105 25 L 95 150 L 5 150 Z"
-                                : (features.sleeves === 'bell sleeve' || features.sleeves === 'flared sleeve' || features.sleeves === 'ruffle sleeve' || features.sleeves === 'tiered sleeve')
-                                  ? "M 20 0 C 60 -15, 100 0, 110 40 L 140 160 L -20 160 L 0 40 Z"
-                                  : (features.sleeves === 'bishop sleeve' || features.sleeves === 'balloon sleeve' || features.sleeves === 'lantern sleeve')
-                                    ? "M 15 0 C 55 -15, 95 0, 105 35 L 125 135 L -5 135 L 5 35 Z M 15 140 L 105 140 L 105 155 L 15 155 Z"
-                                    : features.sleeves === 'leg-o\'-mutton sleeve'
-                                      ? "M 15 20 C 25 -25, 95 -25, 110 20 L 75 160 L 45 160 L 0 40 Z"
-                                      : (features.sleeves === 'cap sleeve' || features.sleeves === 'petal sleeve')
-                                        ? "M 15 0 C 55 -15, 95 0, 105 30 L 95 70 C 60 85, 40 85, 10 70 Z"
-                                        : (features.sleeves === 'cold shoulder sleeve' || features.sleeves === 'slit sleeve')
-                                          ? "M 15 20 C 35 35, 85 35, 105 20 L 90 150 L 10 150 Z"
-                                          : (features.sleeves === 'cape sleeve' || features.sleeves === 'butterfly sleeve')
-                                            ? "M 20 0 C 60 -15, 100 0, 110 30 L 150 120 C 90 150, 40 150, -20 120 Z"
-                                            : "M 20 0 C 60 -15, 100 0, 110 40 L 90 150 L 0 150 L -10 40 Z"
-                            }
-                            fill="#0F172A" stroke="#74C69D" strokeWidth="2"
-                          />
-                          <text x="18" y="70" fill="#F8FAFC" fontSize="11" fontWeight="bold">
-                            {features.sleeves === 'single sleeve' || features.neckline === 'one-shoulder' ? 'SLEEVE (Single)' : `SLEEVE (L: ${features.sleeves.split(' ')[0]})`}
-                          </text>
-                          <text x="20" y="90" fill="#94A3B8" fontSize="9">
-                            {features.sleeves === 'puff sleeve'
-                              ? '30.5cm × 20cm (Gathers)'
-                              : (features.sleeves === 'bell sleeve' || features.sleeves === 'flared sleeve')
-                                ? '43.5cm × 56cm (Flared)'
-                                : (features.sleeves === 'bishop sleeve' || features.sleeves === 'balloon sleeve')
-                                  ? '40cm × 58cm (+ Cuff)'
-                                  : features.sleeves === 'leg-o\'-mutton sleeve'
-                                    ? '30.5cm × 58cm (Puff/Tight)'
-                                    : features.sleeves === 'cap sleeve'
-                                      ? '26cm × 10cm (Cap)'
-                                      : features.sleeves === 'cold shoulder sleeve'
-                                        ? '27.5cm × 50cm (Cutout)'
-                                        : features.sleeves === 'cape sleeve'
-                                          ? '47.5cm × 35cm (Drape)'
-                                          : features.sleeves === 'long sleeve'
-                                            ? '27.5cm × 58cm'
-                                            : features.sleeves === 'three-quarter sleeve'
-                                              ? '27.5cm × 45cm'
-                                              : features.sleeves === 'elbow sleeve'
-                                                ? '27.5cm × 32cm'
-                                                : '27.5cm × 22cm'}
-                          </text>
-                        </g>
-                      )}
-
-                      {features.sleeves !== 'sleeveless' && features.sleeves !== 'single sleeve' && features.neckline !== 'one-shoulder' && (
-                        <g transform="translate(580, 30)">
-                          <path
-                            d={
-                              features.sleeves === 'puff sleeve'
-                                ? "M 15 25 C 30 -20, 90 -20, 105 25 L 95 150 L 5 150 Z"
-                                : (features.sleeves === 'bell sleeve' || features.sleeves === 'flared sleeve' || features.sleeves === 'ruffle sleeve' || features.sleeves === 'tiered sleeve')
-                                  ? "M 20 0 C 60 -15, 100 0, 110 40 L 140 160 L -20 160 L 0 40 Z"
-                                  : (features.sleeves === 'bishop sleeve' || features.sleeves === 'balloon sleeve' || features.sleeves === 'lantern sleeve')
-                                    ? "M 15 0 C 55 -15, 95 0, 105 35 L 125 135 L -5 135 L 5 35 Z M 15 140 L 105 140 L 105 155 L 15 155 Z"
-                                    : features.sleeves === 'leg-o\'-mutton sleeve'
-                                      ? "M 15 20 C 25 -25, 95 -25, 110 20 L 75 160 L 45 160 L 0 40 Z"
-                                      : (features.sleeves === 'cap sleeve' || features.sleeves === 'petal sleeve')
-                                        ? "M 15 0 C 55 -15, 95 0, 105 30 L 95 70 C 60 85, 40 85, 10 70 Z"
-                                        : (features.sleeves === 'cold shoulder sleeve' || features.sleeves === 'slit sleeve')
-                                          ? "M 15 20 C 35 35, 85 35, 105 20 L 90 150 L 10 150 Z"
-                                          : (features.sleeves === 'cape sleeve' || features.sleeves === 'butterfly sleeve')
-                                            ? "M 20 0 C 60 -15, 100 0, 110 30 L 150 120 C 90 150, 40 150, -20 120 Z"
-                                            : "M 20 0 C 60 -15, 100 0, 110 40 L 90 150 L 0 150 L -10 40 Z"
-                            }
-                            fill="#0F172A" stroke="#74C69D" strokeWidth="2"
-                          />
-                          <text x="18" y="70" fill="#F8FAFC" fontSize="11" fontWeight="bold">
-                            {`SLEEVE (R: ${features.sleeves.split(' ')[0]})`}
-                          </text>
-                          <text x="20" y="90" fill="#94A3B8" fontSize="9">
-                            {features.sleeves === 'puff sleeve'
-                              ? '30.5cm × 20cm (Gathers)'
-                              : (features.sleeves === 'bell sleeve' || features.sleeves === 'flared sleeve')
-                                ? '43.5cm × 56cm (Flared)'
-                                : (features.sleeves === 'bishop sleeve' || features.sleeves === 'balloon sleeve')
-                                  ? '40cm × 58cm (+ Cuff)'
-                                  : features.sleeves === 'leg-o\'-mutton sleeve'
-                                    ? '30.5cm × 58cm (Puff/Tight)'
-                                    : features.sleeves === 'cap sleeve'
-                                      ? '26cm × 10cm (Cap)'
-                                      : features.sleeves === 'cold shoulder sleeve'
-                                        ? '27.5cm × 50cm (Cutout)'
-                                        : features.sleeves === 'cape sleeve'
-                                          ? '47.5cm × 35cm (Drape)'
-                                          : features.sleeves === 'long sleeve'
-                                            ? '27.5cm × 58cm'
-                                            : features.sleeves === 'three-quarter sleeve'
-                                              ? '27.5cm × 45cm'
-                                              : features.sleeves === 'elbow sleeve'
-                                                ? '27.5cm × 32cm'
-                                                : '27.5cm × 22cm'}
-                          </text>
-                        </g>
-                      )}
-                    </svg>
-                  </div>
-                </div>
-
-                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '20px' }}>
-                  <span className="chip" style={{ color: 'var(--text-accent)', borderColor: 'var(--text-accent)' }}>✓ Back Bodice Block</span>
-                  <span className="chip" style={{ color: 'var(--text-accent)', borderColor: 'var(--text-accent)' }}>
-                    {features.neckline === 'one-shoulder' ? '✓ One-Shoulder Bodice' : features.neckline === 'sweetheart neck' ? '✓ Sweetheart Neck Bodice' : '✓ Front Bodice Block'}
-                  </span>
-                  <span className="chip" style={{ color: '#74C69D', borderColor: '#74C69D' }}>
-                    {features.sleeves === 'sleeveless'
-                      ? '✓ Sleeveless'
-                      : (features.sleeves === 'single sleeve' || features.neckline === 'one-shoulder')
-                        ? '✓ Single Sleeve × 1'
-                        : ['bishop sleeve', 'balloon sleeve', 'lantern sleeve'].includes(features.sleeves)
-                          ? `✓ ${features.sleeves.toUpperCase()} × 2 (+ Cuffs × 2)`
-                          : `✓ ${features.sleeves.toUpperCase()} × 2`}
-                  </span>
-                  <span className="chip" style={{ color: '#2D6A4F', borderColor: '#2D6A4F' }}>✓ Fitted Bust Dart</span>
+                  <PatternPreview
+                    pieces={patternData?.pattern_pieces}
+                    fabricWidth={fabricWidth}
+                    validation={patternData?.validation}
+                    draftingBlock={patternData?.drafting_block}
+                    armholeSleeve={patternData?.armhole_sleeve}
+                    transformations={patternData?.final_pattern?.transformations}
+                  />
                 </div>
 
                 {/* Mathematical Pattern & Fabric Calculation Breakdown Card */}
@@ -1116,7 +973,7 @@ export default function Upload() {
             )}
 
             {loading ? (
-              <LoadingSpinner message="Generating Aldrich pattern pieces & 2D layout..." />
+              <LoadingSpinner message="Generating pattern pieces & 2D layout..." />
             ) : (
               <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '16px' }}>
                 <button className="btn btn-outline" onClick={() => setStep(2)}>

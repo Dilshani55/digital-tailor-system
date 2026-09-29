@@ -457,7 +457,7 @@ class TestGenerateUsesValidatedMeasurements(unittest.TestCase):
             pr.return_value.id = "p1"
             sess.return_value.id = "s1"
             from app.logic.parametric_engine import ParametricEngine as Real
-            eng.side_effect = engine or (lambda m, f: Real(m, f))
+            eng.side_effect = engine or (lambda m, f, design_spec=None: Real(m, f, design_spec=design_spec))
             resp = _app().test_client().post("/api/patterns/generate", headers=_headers(), json={
                 "measurement_id": "m1", "image_id": "img1", "fabric_id": "cotton-poplin"})
             return resp, eng, pr
@@ -532,9 +532,9 @@ class TestEndToEndContract(unittest.TestCase):
         seen = {}
         from app.logic.parametric_engine import ParametricEngine as Real
 
-        def capture(m, f):
+        def capture(m, f, design_spec=None):
             seen["m"], seen["f"] = m, f
-            return Real(m, f)
+            return Real(m, f, design_spec=design_spec)
 
         with patch("app.routes.patterns.User") as u, patch("app.routes.patterns.MeasurementProfile") as mp, \
              patch("app.routes.patterns.DesignImage") as di, patch("app.routes.patterns.Session") as sess, \

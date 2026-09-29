@@ -67,7 +67,7 @@ export default function Settings() {
                   onChange={(e) => setPresets({ ...presets, seam_allowance: e.target.value })}
                 >
                   <option value="1.0">1.0 cm (Narrow seams)</option>
-                  <option value="1.5">1.5 cm (Standard Winifred Aldrich)</option>
+                  <option value="1.5">1.5 cm (project default)</option>
                   <option value="2.0">2.0 cm (Generous fit allowance)</option>
                 </select>
               </div>

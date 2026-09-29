@@ -16,6 +16,7 @@ class PatternResult(Document):
     selected_fabric_id = StringField(default="cotton-poplin")
     selected_fabric_name = StringField(default="Cotton Poplin")
     validation_report = DictField(default=dict)
+    base_block = DictField(default=dict)             # base block stage (drafting values, ease, geometry)
     design_spec = DictField(default=dict)            # canonical confirmed design used for this pattern
     measurements_snapshot = DictField(default=dict)  # validated canonical-cm measurements used for this pattern
     validation_passed = BooleanField(default=True)

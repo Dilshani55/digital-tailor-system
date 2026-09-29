@@ -93,8 +93,8 @@ export default function MeasurementGuide({ activeField, setActiveField, meas }) 
     sleeve_cm: {
       title: 'Sleeve Length',
       color: 'var(--text-accent, #2D5A43)',
-      tip: 'Measure from shoulder tip down the outside of the arm to the desired sleeve hem (wrist for long sleeve).',
-      dos: ['Arm slightly bent', 'Follow outer arm line', 'Match intended sleeve style length'],
+      tip: 'Measure the FULL arm: from shoulder tip down the outside of the arm to the wrist bone. Short, elbow and three-quarter sleeves are derived from this length.',
+      dos: ['Arm slightly bent', 'Follow outer arm line', 'Always measure to the wrist, whatever sleeve length you want'],
     },
     wrist_cm: {
       title: 'Wrist Circumference',
@@ -503,7 +503,7 @@ export default function MeasurementGuide({ activeField, setActiveField, meas }) 
             justify: 'space-between',
             alignItems: 'center'
           }}>
-            <span>Winifred Aldrich Standard Measurement Protocol</span>
+            <span>Body Measurement Protocol</span>
             <span style={{ fontSize: '11px', color: 'var(--text-accent, #2D5A43)', fontWeight: '600' }}>
               Sri Lankan Master Tailoring Guidelines
             </span>
@@ -559,7 +559,7 @@ export default function MeasurementGuide({ activeField, setActiveField, meas }) 
             flexWrap: 'wrap',
             gap: '8px'
           }}>
-            <span><strong>Automatic Ease Allowances (Aldrich Method):</strong></span>
+            <span><strong>Automatic Ease Allowances (project defaults):</strong></span>
             <span>Woven: +10cm Bust / +8cm Waist / +10cm Hip</span>
             <span>Knit: +6cm Bust / +4cm Waist / +6cm Hip</span>
             <span>Stretch: -2cm Ease</span>

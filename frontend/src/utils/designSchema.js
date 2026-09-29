@@ -20,34 +20,33 @@ export const HEAD_TITLES = {
   sleeve_style: 'Sleeve Style',
 };
 
-const NOT_CONNECTED = 'Style geometry is not connected to the confirmed-design flow yet.';
-const SLEEVE_MEASURED = 'Length is taken from the measured sleeve_cm, not from the design.';
+const NOT_CONNECTED = 'No geometry for this sleeve style has been implemented.';
 
 export const DESIGN_SCHEMA = {
   garment_type: [
-    { value: 'blouse', label: 'Blouse', support: IMPLEMENTED, note: 'Woven bodice block with bust/waist darts.' },
-    { value: 't-shirt', label: 'T-Shirt', support: IMPLEMENTED, note: 'Knit bodice block, no darts, neckband piece.' },
-    { value: 'crop-top', label: 'Crop-Top', support: APPROXIMATED, note: 'Crop block selected, but the hem length still comes from the measured garment_length_cm.' },
+    { value: 'blouse', label: 'Blouse', support: IMPLEMENTED, note: 'Woven bodice block with waist darts; hem must reach the waist line.' },
+    { value: 't-shirt', label: 'T-Shirt', support: IMPLEMENTED, note: 'Knit bodice block, no darts, neckband piece; hem must reach the waist line.' },
+    { value: 'crop-top', label: 'Crop-Top', support: IMPLEMENTED, note: 'Hem must be 2 cm or more above the waist line; a longer garment length is reported as a conflict.' },
   ],
   neckline_type: [
-    { value: 'round-neck', label: 'Round Neck', support: IMPLEMENTED, note: '' },
-    { value: 'v-neck', label: 'V-Neck', support: APPROXIMATED, note: 'Front neck is deepened, but the curve is not yet a true V shape.' },
-    { value: 'square-neck', label: 'Square Neck', support: IMPLEMENTED, note: '' },
-    { value: 'scoop-neck', label: 'Scoop Neck', support: APPROXIMATED, note: 'Currently drafted as a round neck (scoop depth not yet applied).' },
-    { value: 'boat-neck', label: 'Boat Neck', support: APPROXIMATED, note: 'Only the front neck depth is adjusted; no wide boat shape yet.' },
-    { value: 'sweetheart-neck', label: 'Sweetheart Neck', support: APPROXIMATED, note: 'Simplified sweetheart curve.' },
+    { value: 'round-neck', label: 'Round Neck', support: IMPLEMENTED, note: 'Curved round neck.' },
+    { value: 'v-neck', label: 'V-Neck', support: IMPLEMENTED, note: 'True V: straight edges to a centre-front point.' },
+    { value: 'square-neck', label: 'Square Neck', support: IMPLEMENTED, note: 'Square front neck with straight edges.' },
+    { value: 'scoop-neck', label: 'Scoop Neck', support: APPROXIMATED, note: 'Drafted as the base round neck; scoop depth is NOT applied.' },
+    { value: 'boat-neck', label: 'Boat Neck', support: APPROXIMATED, note: 'Drafted as the base round neck; boat shape is NOT applied.' },
+    { value: 'sweetheart-neck', label: 'Sweetheart Neck', support: APPROXIMATED, note: 'Drafted as the base round neck; sweetheart shape is NOT applied.' },
     { value: 'halter-neck', label: 'Halter Neck', support: UNSUPPORTED, note: 'Halter/strap construction is not implemented.' },
-    { value: 'high-neck', label: 'High Neck', support: APPROXIMATED, note: 'Shallow neck only; no collar-stand piece is generated.' },
+    { value: 'high-neck', label: 'High Neck', support: APPROXIMATED, note: 'Drafted as the base round neck; no stand/collar piece is generated.' },
     { value: 'collared-neck', label: 'Collared Neck', support: UNSUPPORTED, note: 'No collar piece is generated.' },
     { value: 'off-shoulder', label: 'Off-Shoulder', support: UNSUPPORTED, note: 'Off-shoulder construction is not implemented.' },
   ],
   sleeve_length: [
-    { value: 'sleeveless', label: 'Sleeveless', support: IMPLEMENTED, note: 'Armhole facing pieces are generated.' },
-    { value: 'cap-length', label: 'Cap Length', support: APPROXIMATED, note: SLEEVE_MEASURED },
-    { value: 'short-sleeve', label: 'Short Sleeve', support: APPROXIMATED, note: SLEEVE_MEASURED },
-    { value: 'elbow-length', label: 'Elbow Length', support: APPROXIMATED, note: SLEEVE_MEASURED },
-    { value: 'three-quarter-sleeve', label: 'Three-Quarter Sleeve', support: APPROXIMATED, note: SLEEVE_MEASURED },
-    { value: 'long-sleeve', label: 'Long Sleeve', support: APPROXIMATED, note: SLEEVE_MEASURED },
+    { value: 'sleeveless', label: 'Sleeveless', support: IMPLEMENTED, note: 'No sleeve piece; armhole facing strips are generated.' },
+    { value: 'cap-length', label: 'Cap Length', support: UNSUPPORTED, note: 'A cap-length sleeve is shorter than the sleeve cap; not implemented.' },
+    { value: 'short-sleeve', label: 'Short Sleeve', support: IMPLEMENTED, note: '40% of the measured full-arm length (project assumption).' },
+    { value: 'elbow-length', label: 'Elbow Length', support: IMPLEMENTED, note: '58% of the measured full-arm length (project assumption).' },
+    { value: 'three-quarter-sleeve', label: 'Three-Quarter Sleeve', support: IMPLEMENTED, note: '75% of the measured full-arm length (project assumption).' },
+    { value: 'long-sleeve', label: 'Long Sleeve', support: IMPLEMENTED, note: 'Full measured arm length, tapering to the wrist.' },
   ],
   sleeve_style: [
     { value: 'none', label: 'None (No Special Style)', support: IMPLEMENTED, note: 'Plain set-in sleeve (or none if sleeveless).' },

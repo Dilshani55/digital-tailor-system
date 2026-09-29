@@ -8,7 +8,7 @@ from app.models.user import User
 from app.logic.parametric_engine import ParametricEngine
 from app.logic.fabric_recommendation import validate_fabric_id, get_fabric_by_id
 from app.logic.taxonomy_map import confirmed_to_cad_features
-from app.logic.pattern_validator import validate_pattern
+from app.logic.drafting.ease import DraftingError
 from app.logic import feature_schema
 from app.logic import measurement_schema as ms
 from datetime import datetime, timezone
@@ -187,18 +187,14 @@ def generate_pattern():
     try:
         # 5. Engine input = the validated measurements from step 3b (never defaults).
         # 6–7. Run parametric engine with confirmed CAD features
-        engine  = ParametricEngine(measurements_dict, features_dict)
+        engine  = ParametricEngine(measurements_dict, features_dict, design_spec=design_spec)
         pattern = engine.generate()
 
-        # 8. Geometric pattern validation (locked workflow step 8)
-        validation = validate_pattern(
-            pattern["pattern_pieces"],
-            garment_type=pattern.get("garment_type", "blouse"),
-            fabric_type=pattern.get("fabric_type", "woven"),
-            sleeves=features_dict.get("sleeves", "short sleeve"),
-            measurements_used=pattern.get("measurements_used"),
-            drafting_block=pattern.get("drafting_block"),
-        )
+        # 8. Geometry validation. The engine already raised DraftingError if either the base
+        #    block or the final pattern failed; these reports are stored as research evidence.
+        validation = dict(pattern["validation"]["final_pattern"])
+        validation["base_block"] = pattern["validation"]["base_block"]
+        validation["passed"] = bool(validation["passed"] and validation["base_block"]["passed"])
 
         # 9. Save pattern result to MongoDB
         pattern_result = PatternResult(
@@ -210,6 +206,7 @@ def generate_pattern():
             selected_fabric_name= selected_fabric_name,
             validation_report   = validation,
             design_spec         = design_spec,
+            base_block          = pattern["base_block"],
             measurements_snapshot = measurements_snapshot,
             validation_passed   = bool(validation.get("passed")),
         )
@@ -238,6 +235,11 @@ def generate_pattern():
             "pieces_count":        len(pattern["pattern_pieces"]),
             "drafting_block":      pattern.get("drafting_block"),
             "design_spec":         design_spec,
+            "engine_version":      pattern["engine_version"],
+            "disclaimer":          pattern["disclaimer"],
+            "base_block":          pattern["base_block"],
+            "final_pattern":       pattern["final_pattern"],
+            "armhole_sleeve":      pattern["armhole_sleeve"],
             "validation":          validation,
             "validation_passed":   bool(validation.get("passed")),
             "fabric_estimate_blocked": not bool(validation.get("passed")),
@@ -264,6 +266,12 @@ def generate_pattern():
                 else "Fix validation errors before requesting fabric estimate"
             )
         }), status_code
+
+    except DraftingError as e:
+        # Unsupported/contradictory design, undraftable measurements or failed geometry validation.
+        session.status = "rejected"
+        session.save()
+        return jsonify(e.to_dict()), 422
 
     except Exception as e:
         session.status = "failed"

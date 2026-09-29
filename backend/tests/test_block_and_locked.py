@@ -58,7 +58,7 @@ class TestLockedMeasurements(unittest.TestCase):
             "garment_length_cm": 55.0,
             "neck_cm": 36.0,
             "bicep_cm": 28.0,
-            "sleeve_cm": 22.0,
+            "sleeve_cm": 55.0,   # FULL arm length (a short sleeve is derived from it)
             "wrist_cm": 16.0,
         }
         features = {

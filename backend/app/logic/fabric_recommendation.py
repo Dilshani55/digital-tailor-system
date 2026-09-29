@@ -354,6 +354,19 @@ def get_fabric_by_id(fabric_id):
     return FABRIC_KNOWLEDGE_BASE[fabric_id.strip().lower()]
 
 
+def normalize_feature_label(value):
+    """
+    THE canonical form of a garment-feature label for rule matching.
+
+    The UI/API send confirmed taxonomy labels ("sweetheart-neck", "t-shirt", "short-sleeve") while
+    older callers send spaced CAD labels ("sweetheart neck", "short sleeve"). Both normalise to the
+    same lower-case, single-space form so every rule compares like with like.
+    """
+    text = str(value or "").strip().lower().replace("_", " ").replace("-", " ")
+    text = " ".join(text.split())
+    return {"off shoulder": "off the shoulder", "collar": "collared neck"}.get(text, text)
+
+
 def recommend_fabrics(garment_type, neckline=None, sleeves=None, darts=None, seams=None):
     """
     Explainable rule-based fabric recommendation engine.
@@ -367,17 +380,18 @@ def recommend_fabrics(garment_type, neckline=None, sleeves=None, darts=None, sea
     - status ('Best Match', 'Highly Suitable', 'Suitable', 'Less Suitable')
     - rationale/explanation (str)
     """
-    garment_type_norm = (garment_type or "").strip().lower()
-    neckline_norm = (neckline or "").strip().lower()
-    sleeves_norm = (sleeves or "").strip().lower()
-    darts_norm = (darts or "").strip().lower()
+    garment_label = (garment_type or "").strip().lower()      # for display text only
+    garment_type_norm = normalize_feature_label(garment_type)
+    neckline_norm = normalize_feature_label(neckline)
+    sleeves_norm = normalize_feature_label(sleeves)
+    darts_norm = normalize_feature_label(darts)
     
     # Flags derived from multi-feature analysis
-    requires_stretch = garment_type_norm in ["t-shirt", "tshirt", "stretch-top", "fitted-top", "activewear"]
-    requires_structure = garment_type_norm in ["crop-top", "croptop", "corset", "structured-blouse", "waistcoat"] or "dart" in darts_norm
+    requires_stretch = garment_type_norm in ["t shirt", "tshirt", "stretch top", "fitted top", "activewear"]
+    requires_structure = garment_type_norm in ["crop top", "croptop", "corset", "structured blouse", "waistcoat"] or "dart" in darts_norm
     requires_drape = garment_type_norm in ["blouse"] or any(s in sleeves_norm for s in ["bell", "flared", "bishop", "balloon", "cape", "butterfly"])
-    is_sleeveless = sleeves_norm in ["sleeveless", "none", "off-the-shoulder"]
-    is_cowl_or_party = neckline_norm in ["sweetheart neck", "off-the-shoulder", "halter neck", "boat neck"]
+    is_sleeveless = sleeves_norm in ["sleeveless", "none", "off the shoulder"]
+    is_cowl_or_party = neckline_norm in ["sweetheart neck", "off the shoulder", "halter neck", "boat neck"]
     
     scores = {}
     explanations = {}
@@ -390,7 +404,7 @@ def recommend_fabrics(garment_type, neckline=None, sleeves=None, darts=None, sea
         if requires_stretch:
             if fabric["stretch"] == "Stretchable":
                 score += 25
-                reasons.append(f"Ideal elasticity for the detected {garment_type_norm or 'stretch'} fit")
+                reasons.append(f"Ideal elasticity for the detected {garment_label or 'stretch'} fit")
             elif fabric["stretch"] == "Slight Stretch":
                 score += 10
                 reasons.append("Slight stretch provides flexibility")
@@ -406,7 +420,7 @@ def recommend_fabrics(garment_type, neckline=None, sleeves=None, darts=None, sea
         if requires_structure:
             if fid in ["cotton-poplin", "cotton-twill", "linen-blend"]:
                 score += 20
-                reasons.append(f"Provides crisp structural body required for the {garment_type_norm or 'structured'} design")
+                reasons.append(f"Provides crisp structural body required for the {garment_label or 'structured'} design")
             elif fid in ["silk-chiffon", "georgette", "rayon"]:
                 score -= 10
                 reasons.append("Highly fluid drape may not hold sharp structured body lines")
@@ -415,7 +429,7 @@ def recommend_fabrics(garment_type, neckline=None, sleeves=None, darts=None, sea
         if requires_drape:
             if fid in ["rayon", "silk-chiffon", "georgette", "crepe-de-chine"]:
                 score += 25
-                reasons.append(f"Delivers smooth fluid drape essential for flowing {garment_type_norm or 'blouse'} and sleeve styles")
+                reasons.append(f"Delivers smooth fluid drape essential for flowing {garment_label or 'blouse'} and sleeve styles")
             elif fid == "linen-blend":
                 score += 15
                 reasons.append("Offers medium relaxed drape suitable for casual blouse silhouettes")
@@ -430,10 +444,10 @@ def recommend_fabrics(garment_type, neckline=None, sleeves=None, darts=None, sea
         if is_cowl_or_party:
             if fid in ["satin", "silk-chiffon", "crepe-de-chine"]:
                 score += 15
-                reasons.append(f"Enhances the elegant {neckline_norm or 'decorative'} neckline aesthetic")
+                reasons.append(f"Enhances the elegant {(neckline or '').strip().lower() or 'decorative'} neckline aesthetic")
         
         # Rule 5: Climate & Warm-Weather Sleeveless Prioritisation
-        if is_sleeveless or garment_type_norm in ["crop-top", "blouse"]:
+        if is_sleeveless or garment_type_norm in ["crop top", "blouse"]:
             if fabric["breathability"].startswith("High") or fabric["breathability"].startswith("Very High"):
                 score += 5
                 reasons.append("Highly breathable material optimized for warm Sri Lankan climate")
@@ -444,7 +458,7 @@ def recommend_fabrics(garment_type, neckline=None, sleeves=None, darts=None, sea
         
         # Build explanation string
         if not reasons:
-            reasons.append(f"Good general-purpose material for {garment_type_norm or 'garment'} tailoring")
+            reasons.append(f"Good general-purpose material for {garment_label or 'garment'} tailoring")
         
         explanation = f"This material is recommended because it is {fabric['weight'].lower()} weight and {reasons[0].lower()}."
         explanations[fid] = explanation

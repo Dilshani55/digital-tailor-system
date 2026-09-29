@@ -46,14 +46,14 @@ export default function Login() {
               AI Digital Tailor System
             </h1>
             <p className="text-slate-400 text-sm mt-3 leading-relaxed">
-              Automated 2D pattern drafting and fabric waste minimization platform powered by Computer Vision & Aldrich Geometry.
+              Automated 2D pattern drafting and fabric waste minimization platform powered by Computer Vision & parametric pattern geometry.
             </p>
           </div>
 
           <div className="my-8 space-y-4">
             {[
               { icon: Bot, title: 'YOLOv8 Vision AI', desc: 'Detects necklines, sleeves & garment structure' },
-              { icon: Ruler, title: 'Aldrich Metric Engine', desc: 'Generates custom technical cutting blocks' },
+              { icon: Ruler, title: 'Parametric Pattern Engine', desc: 'Generates custom technical cutting blocks' },
               { icon: Recycle, title: '2D Fabric Nesting', desc: 'Minimizes textile waste & calculates yardage' },
             ].map((feat, i) => {
               const Icon = feat.icon;

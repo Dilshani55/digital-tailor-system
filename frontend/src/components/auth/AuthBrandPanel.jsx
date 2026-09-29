@@ -69,7 +69,7 @@ export default function AuthBrandPanel() {
         {/* Core AI engine block */}
         <div style={{ background: 'rgba(42, 111, 78, 0.1)', border: '1px solid rgba(42, 111, 78, 0.3)', padding: '14px', borderRadius: '10px', textAlign: 'center' }}>
           <div style={{ fontSize: '13px', fontWeight: '700', color: '#FAF8F5' }}>TailorAI Metric Engine</div>
-          <p style={{ fontSize: '10px', color: '#CDC7BD', marginTop: '2px' }}>Aldrich calculations & piece scale formulas</p>
+          <p style={{ fontSize: '10px', color: '#CDC7BD', marginTop: '2px' }}>Parametric drafting calculations</p>
         </div>
 
         {/* Output processing Indicator */}

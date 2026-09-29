@@ -216,7 +216,7 @@ def generate_pdf(pattern_id):
             return _nesting_failure_response(err)
 
         # Rebuild pattern data for PDF (includes construction notes)
-        engine       = ParametricEngine(measurements, features)
+        engine       = ParametricEngine(measurements, features, design_spec=(pattern.design_spec or None))
         pattern_data = engine.generate()
 
         # Set up output path

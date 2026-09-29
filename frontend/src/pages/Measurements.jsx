@@ -481,7 +481,7 @@ export default function Measurements() {
               </div>
             </div>
 
-            {/* Height (Hidden Aldrich baseline) */}
+            {/* Height (validation only; not used by the drafting equations) */}
             <div style={{ gridColumn: 'span 2', marginTop: '8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--surface-2)', padding: '10px 14px', borderRadius: '8px', border: '1px solid var(--border)' }}>
               <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Baseline Proportional Height:</span>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>

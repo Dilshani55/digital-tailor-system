@@ -129,24 +129,15 @@ class TestValidation(unittest.TestCase):
         report = fs.support_report(GOOD)
         self.assertTrue(report["supported"])
 
-    def test_unwired_sleeve_styles_really_are_ignored_by_engine(self):
-        """
-        Documents WHY sleeve styles are 'unsupported': the current engine produces an
-        identical sleeve for puff/bell/bishop as for a regular sleeve. If this test starts
-        failing, the engine gained style geometry — update feature_schema support levels.
-        """
+    def test_engine_rejects_unsupported_sleeve_styles_instead_of_ignoring_them(self):
+        """Defence in depth: even called directly, the engine refuses styles it cannot draft."""
         from app.logic.parametric_engine import ParametricEngine
-        m = dict(bust_cm=88, waist_cm=70, hip_cm=94, height_cm=162, neck_cm=36, shoulder_cm=12,
-                 across_back_cm=34, back_waist_length_cm=40, armhole_depth_cm=20, garment_length_cm=65,
-                 bicep_cm=28, sleeve_cm=55, wrist_cm=16, fabric_type="woven", fit_preference="standard")
-        boxes = {}
-        for style in ("regular-sleeve", "puff-sleeve", "bell-sleeve", "bishop-sleeve"):
-            feats = confirmed_to_cad_features(dict(GOOD, sleeve_style=style))
-            pieces = ParametricEngine(m, feats).generate()["pattern_pieces"]
-            boxes[style] = [(p["name"], p["bounding_box"]["width_cm"], p["bounding_box"]["height_cm"]) for p in pieces]
-        self.assertEqual(boxes["puff-sleeve"], boxes["regular-sleeve"])
-        self.assertEqual(boxes["bell-sleeve"], boxes["regular-sleeve"])
-        self.assertEqual(boxes["bishop-sleeve"], boxes["regular-sleeve"])
+        from app.logic.drafting.ease import DraftingError
+        from tests.fixtures import measurements
+        for style in ("puff-sleeve", "bell-sleeve", "bishop-sleeve"):
+            with self.assertRaises(DraftingError) as ctx:
+                ParametricEngine(measurements(), confirmed_to_cad_features(dict(GOOD, sleeve_style=style))).generate()
+            self.assertEqual(ctx.exception.code, "UNSUPPORTED_DESIGN", style)
 
 
 class TestDesignSpec(unittest.TestCase):
@@ -268,9 +259,9 @@ class TestGenerateRoute(unittest.TestCase):
         seen = {}
         from app.logic.parametric_engine import ParametricEngine as Real
 
-        def capture(measurements, features):
+        def capture(measurements, features, design_spec=None):
             seen["features"], seen["measurements"] = features, measurements
-            return Real(measurements, features)
+            return Real(measurements, features, design_spec=design_spec)
 
         resp, pr, _ = self._generate(self.base(), image, engine=capture)
         self.assertEqual(resp.status_code, 201, resp.get_json())
@@ -286,9 +277,9 @@ class TestGenerateRoute(unittest.TestCase):
         seen = {}
         from app.logic.parametric_engine import ParametricEngine as Real
 
-        def capture(m, f):
+        def capture(m, f, design_spec=None):
             seen["features"] = f
-            return Real(m, f)
+            return Real(m, f, design_spec=design_spec)
 
         resp, _, _ = self._generate(
             self.base(detected_features={"neckline": "halter neck", "sleeves": "sleeveless"}), image, engine=capture)

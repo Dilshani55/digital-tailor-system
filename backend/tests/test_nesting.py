@@ -6,6 +6,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from app.logic.nesting_algorithm import NestingAlgorithm, Rectangle, calculate_shoelace_area
 from app.logic.parametric_engine import ParametricEngine
+from tests.fixtures import measurements
 
 class TestNesting(unittest.TestCase):
     def setUp(self):
@@ -84,29 +85,22 @@ class TestNesting(unittest.TestCase):
             self.assertIn("polygon_area_cm2", p)
 
     def test_sleeve_quantity_rules(self):
-        """Verify 2 sleeves for normal short-sleeve vs 1 sleeve for asymmetric one-sleeve design."""
+        """A normal short-sleeve design cuts two sleeves."""
         # Standard short sleeve
         engine_std = ParametricEngine(
-            {"bust_cm": 90, "waist_cm": 72, "hip_cm": 96, "height_cm": 165, "fabric_type": "woven"},
+            measurements("medium"),
             {"garment_type": "blouse", "neckline": "round neck", "sleeves": "short sleeve"}
         )
         pattern_std = engine_std.generate()
         sleeve_std = [p for p in pattern_std["pattern_pieces"] if "Sleeve" in p["name"]][0]
         self.assertEqual(sleeve_std["cut_count"], 2)
 
-        # Asymmetric one-shoulder / single sleeve
-        engine_asym = ParametricEngine(
-            {"bust_cm": 90, "waist_cm": 72, "hip_cm": 96, "height_cm": 165, "fabric_type": "woven"},
-            {"garment_type": "blouse", "neckline": "one-shoulder", "sleeves": "single sleeve"}
-        )
-        pattern_asym = engine_asym.generate()
-        sleeve_asym = [p for p in pattern_asym["pattern_pieces"] if "Sleeve" in p["name"]][0]
-        self.assertEqual(sleeve_asym["cut_count"], 1)
+        # Single-sleeve / one-shoulder designs are NOT supported (rejected by the engine, not approximated).
 
     def test_pattern_dimensions_invariant_on_fabric_width_change(self):
         """Verify pattern piece dimensions do not change when only fabric width changes."""
         engine = ParametricEngine(
-            {"bust_cm": 88, "waist_cm": 70, "hip_cm": 94, "height_cm": 162, "fabric_type": "woven"},
+            measurements("medium"),
             {"garment_type": "blouse", "neckline": "v-neck", "sleeves": "short sleeve"}
         )
         pat_data = engine.generate()

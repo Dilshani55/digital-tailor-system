@@ -17,7 +17,7 @@ export default function LoadingSpinner({ message = "Processing AI calculations..
         {message}
       </p>
       <p className="text-xs text-slate-500 mt-1 font-mono">
-        Winifred Aldrich Parametric Engine
+        Parametric Pattern Engine
       </p>
     </div>
   );
