@@ -41,7 +41,32 @@ The acceptance gate re-computed the locked-benchmark row through the production 
 
 ## 4. Controlled experiments and the deployment decision
 
-EXPERIMENTS_PLACEHOLDER
+Three controlled experiments were run on the **same** train/validation manifests (fingerprints above), same backbone, CPU, two-stage schedule (3 head-only + up to 8 fine-tune epochs, best epoch chosen by validation mean macro-F1). Only the named factor changed. The locked benchmark and test split were never used for training or model selection.
+
+| Run | Change vs the deployed recipe | Epochs | Best validation mean macro-F1 | Checkpoint SHA-256 (prefix) |
+|---|---|---:|---:|---|
+| **deployed (M12/"M13")** | class-weighted cross-entropy, seed 42 | 11 | **0.5489** | `3b69a470ed5d0398` |
+| m20_focal | focal loss γ = 2, seed 42 | 10 | 0.5380 | `6d93d0963a929c0b` |
+| m21_focal_g1 | focal loss γ = 1, seed 7 | 11 | 0.5457 | `ef38b5518a5fdec5` |
+| m22_ce_augment | weighted CE + label-safe augmentation (random 80–100 % crop, ±8° rotation, colour jitter, flip), seed 42 | 11 | 0.5320 | `fa677a0f69fdbb32` |
+
+(The older M14C/M14D "fresh head" runs from the earlier project phase reached a validation mean macro-F1 of only 0.386 and are not candidates.)
+
+### Acceptance-gate results (candidate vs the deployed checkpoint, through the production inference code)
+
+| Run | Locked benchmark mean macro-F1 (deployed 0.5308) | Clean test split, n = 2,195 (deployed 0.4996) | Worst head change on the benchmark | Gate |
+|---|---:|---:|---|---|
+| m20_focal | 0.5108 (−0.020) | 0.4944 (−0.005) | neckline −0.121 | **FAIL** |
+| m21_focal_g1 | 0.4798 (−0.051) | 0.5074 (+0.008) | sleeve length −0.101 | **FAIL** |
+| m22_ce_augment | 0.4866 (−0.044) | 0.4970 (−0.003) | sleeve style −0.102, garment type −0.055 | **FAIL** |
+
+Per-head benchmark macro-F1 (garment / neckline / sleeve length / sleeve style): deployed 0.786 / 0.421 / 0.599 / 0.317; m20 0.786 / 0.301 / 0.547 / 0.409; m21 0.765 / 0.356 / 0.498 / 0.300; m22 0.732 / 0.451 / 0.548 / 0.215.
+
+### Decision
+
+**No candidate passed, so nothing was deployed and the deployed checkpoint is unchanged** (SHA-256 `3b69a470…`, verified after the runs; an identical backup exists in `backend/app/ai/models/archive_m13_checkpoint/`). None of the changes improved the model in a way that survives both evaluations; m21 gained 0.008 on the clean test split but lost 0.051 on the locked benchmark. The benchmark has only 23–54 labelled items per head, so these differences are noisy — which is why the rule requires both evaluations to agree. The most likely limit is the data (16 sleeveless and 16 "none" sleeve-style training examples; no regular-sleeve validation examples), not the loss function. Collecting and human-labelling more sleeveless / regular-sleeve / neckline examples is the productive next step, and would need a new locked benchmark that contains those classes.
+
+Run outputs (`train_stdout.log`, `logs/training_history.json` with per-epoch, per-head, per-class metrics and confusion matrices, `gate_result.json`) are in `ai_training/data/training_runs/<run>/` (local, not in Git).
 
 ## 5. Reproduce
 

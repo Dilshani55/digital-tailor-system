@@ -8,7 +8,7 @@ Counts below are from the runs recorded in the final evidence report (see the la
 | Frontend | `frontend`: `npm test` | 95 | vitest + Testing Library, mocked API. |
 | Production build | `frontend`: `npm run build` | – | must finish without errors. |
 | AI pipeline | repo root: `$env:PYTHONPATH="."; backend\venv\Scripts\python -m unittest discover -s ai_training/tests` | 104 | manifests, labels, leakage helpers, taxonomy parity, gate logic; the checkpoint test skips if the `.pt` file is absent. |
-| End-to-end | `frontend`: `npm run e2e` | 2 | Real Chrome → Vite → Flask → MongoDB → classifier → PDF. See below. |
+| End-to-end | `frontend`: `npm run e2e` | 3 | Real Chrome → Vite → Flask → MongoDB → classifier → PDF (full workflow; out-of-scope refusal; every page and sidebar link renders with no console/API errors). See below. |
 
 ## What the backend tests cover
 
