@@ -8,7 +8,7 @@ import { imagesAPI, measurementsAPI, patternsAPI, exportAPI, researchAPI } from 
 import { friendlyError, imageProblem } from '../utils/friendlyError';
 
 vi.mock('../services/api', () => ({
-  imagesAPI: { upload: vi.fn(), analyse: vi.fn(), confirmAttributes: vi.fn() },
+  imagesAPI: { upload: vi.fn(), analyse: vi.fn(), confirmAttributes: vi.fn(), modelStatus: vi.fn() },
   measurementsAPI: { save: vi.fn(), getAll: vi.fn(), update: vi.fn() },
   patternsAPI: { generate: vi.fn() },
   exportAPI: { yardage: vi.fn(), pdf: vi.fn(), download: vi.fn() },
@@ -45,6 +45,7 @@ function stubAll() {
   vi.clearAllMocks();
   measurementsAPI.getAll.mockResolvedValue({ data: { measurements: [] } });
   imagesAPI.upload.mockResolvedValue({ data: { image_id: 'i1' } });
+  imagesAPI.modelStatus.mockResolvedValue({ data: { available: true } });
   imagesAPI.analyse.mockResolvedValue({ data: { garment_attributes: null, confirmed_attributes: {} } });
   imagesAPI.confirmAttributes.mockResolvedValue({ data: { confirmed_attributes: CONFIRMED } });
   measurementsAPI.save.mockResolvedValue({ data: { measurement_id: 'm1' } });
@@ -148,6 +149,27 @@ describe('creation wizard — full workflow', () => {
     const alert = await screen.findByRole('alert');
     expect(alert.textContent).not.toMatch(/Traceback|C:\\/);
     expect(alert.textContent).toMatch(/could not analyse|problem/i);
+  });
+
+  it('says honestly when the AI model is unavailable and keeps the manual path open', async () => {
+    imagesAPI.modelStatus.mockResolvedValue({ data: { available: false } });
+    render(<MemoryRouter><Upload /></MemoryRouter>);
+    await screen.findByTestId('model-unavailable');
+    fireEvent.change(screen.getByTestId('image-input'), { target: { files: [new File(['x'], 'a.jpg', { type: 'image/jpeg' })] } });
+    expect(screen.getByText('Upload and analyse').disabled).toBe(true);
+    fireEvent.click(screen.getByText('No photo — choose the design manually'));
+    await screen.findByText('Review the AI suggestion');
+    expect(screen.getByTestId('fallback-notice')).toBeTruthy();
+    expect(imagesAPI.analyse).not.toHaveBeenCalled();
+  });
+
+  it('turns a 503 from the analyse call into the model-unavailable message', async () => {
+    imagesAPI.analyse.mockRejectedValue({ response: { status: 503, data: { error_code: 'MODEL_UNAVAILABLE', error: 'x' } } });
+    render(<MemoryRouter><Upload /></MemoryRouter>);
+    fireEvent.change(screen.getByTestId('image-input'), { target: { files: [new File(['x'], 'a.jpg', { type: 'image/jpeg' })] } });
+    fireEvent.click(screen.getByText('Upload and analyse'));
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toMatch(/not available right now.*choose the design manually/);
   });
 
   it('sends the user back to the design step when the server rejects the design', async () => {

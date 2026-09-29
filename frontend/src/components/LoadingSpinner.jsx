@@ -8,16 +8,16 @@ export default function LoadingSpinner({ message = "Processing AI calculations..
         <div className="w-16 h-16 rounded-full bg-brand-500/20 animate-ping absolute"></div>
         
         {/* Rotating Gradient Spinner */}
-        <div className="w-14 h-14 rounded-full border-4 border-slate-800 border-t-brand-500 border-r-emerald-400 animate-spin"></div>
+        <div className="w-14 h-14 rounded-full border-4 border-slate-200 border-t-brand-500 border-r-emerald-400 animate-spin"></div>
         
         {/* Center Icon */}
         <div className="absolute text-brand-400"><Scissors size={20} /></div>
       </div>
-      <p className="mt-6 text-sm font-semibold text-slate-200 tracking-wide animate-pulse">
+      <p role="status" className="mt-6 text-sm font-semibold tracking-wide" style={{ color: 'var(--text-primary)' }}>
         {message}
       </p>
-      <p className="text-xs text-slate-500 mt-1 font-mono">
-        Parametric Pattern Engine
+      <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
+        TailorAI
       </p>
     </div>
   );

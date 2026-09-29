@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Download } from 'lucide-react';
 import PatternPreview from '../components/PatternPreview';
+import FabricComparison from '../components/FabricComparison';
 import LoadingSpinner from '../components/LoadingSpinner';
 import { patternsAPI, exportAPI } from '../services/api';
 import { friendlyError } from '../utils/friendlyError';
@@ -75,6 +76,9 @@ export default function PatternDetail() {
                 </button>
               ))}
           </section>
+          {data.validation_passed !== false && (
+            <FabricComparison patternId={patternId} defaultWidth={Number(n.fabric_width_cm)} />
+          )}
         </>
       )}
     </div>

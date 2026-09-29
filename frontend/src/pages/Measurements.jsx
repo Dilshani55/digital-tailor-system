@@ -2,611 +2,284 @@ import { useState, useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { measurementsAPI } from '../services/api';
 import LoadingSpinner from '../components/LoadingSpinner';
-import { validateMeasurements, parseFieldErrors, buildPayload, CORE_FIELDS } from '../utils/measurementSchema';
+import {
+  MEASUREMENT_FIELDS, FIELD_KEYS, CORE_FIELDS, validateMeasurements, convertDisplayValues,
+  parseFieldErrors, buildPayload, rangeText,
+} from '../utils/measurementSchema';
+import { friendlyError } from '../utils/friendlyError';
 
-// The form's armhole field is keyed armhole_cm; the API field is armhole_depth_cm.
-const toApiValues = (form) => ({ ...form, armhole_depth_cm: form.armhole_cm });
+// How to take each measurement. Wording matches what the drafting engine expects
+// (e.g. shoulder = shoulder LENGTH from the neck point to the shoulder tip, not tip-to-tip).
+const GUIDES = {
+  bust_cm: 'Around the fullest part of the bust, tape horizontal and parallel to the floor.',
+  waist_cm: 'Around the natural waist, the narrowest part of the torso.',
+  hip_cm: 'Around the fullest part of the hips and seat, feet together.',
+  height_cm: 'Standing height from the top of the head to the floor, without shoes (used for plausibility checks).',
+  neck_cm: 'Around the base of the neck, where a round neckline would sit.',
+  shoulder_cm: 'Shoulder length: from the side of the neck (neck point) to the shoulder tip — one shoulder only.',
+  across_back_cm: 'Across the back between the two armhole creases, about 10 cm below the neck bone.',
+  back_waist_length_cm: 'Down the centre back from the neck bone to the natural waist.',
+  armhole_depth_cm: 'From the shoulder tip straight down to the level of the underarm.',
+  garment_length_cm: 'Wanted finished length: from the neck point at the shoulder down to where the hem should be.',
+  bicep_cm: 'Around the fullest part of the upper arm.',
+  sleeve_cm: 'Full arm length: from the shoulder tip over a slightly bent elbow to the wrist bone.',
+  wrist_cm: 'Around the wrist bone.',
+};
+
+// Positions on the body diagram (only for the measurements it can show).
+const DIAGRAM = {
+  bust_cm: { n: 1, line: [28, 56, 72, 56], dot: [28, 56] },
+  waist_cm: { n: 2, line: [34, 78, 66, 78], dot: [34, 78] },
+  hip_cm: { n: 3, line: [30, 98, 70, 98], dot: [30, 98] },
+  shoulder_cm: { n: 4, line: [54, 25, 63, 28], dot: [63, 28] },
+  neck_cm: { n: 5, ellipse: [50, 25, 5, 2.5], dot: [50, 23] },
+  armhole_depth_cm: { n: 6, line: [36, 28, 36, 56], dot: [36, 42] },
+  sleeve_cm: { n: 7, path: 'M 63 28 C 65 35, 68 45, 68 55 C 68 62, 67 66, 65 72', dot: [68, 55] },
+  garment_length_cm: { n: 8, line: [45, 28, 45, 92], dot: [45, 92] },
+};
+
+const EMPTY = { client_name: '', fabric_type: 'woven', ...Object.fromEntries(FIELD_KEYS.map((k) => [k, ''])) };
+
+const fromProfile = (p) => ({
+  client_name: p.client_name || '',
+  fabric_type: p.fabric_type || 'woven',
+  ...Object.fromEntries(FIELD_KEYS.map((k) => [k, p[k] ?? (k === 'armhole_depth_cm' ? p.armhole_cm : null) ?? ''])),
+});
 
 export default function Measurements() {
   const location = useLocation();
   const [profiles, setProfiles] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [selectedProfileId, setSelectedProfileId] = useState('');
-  const [unit, setUnit] = useState('cm'); // cm / in
+  const [unit, setUnit] = useState('cm');
   const [activeField, setActiveField] = useState('bust_cm');
+  const [formData, setFormData] = useState(EMPTY);
+  const [fieldErrors, setFieldErrors] = useState({});
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const inputs = useRef({});
 
-  // 8 Measurement Input Fields state
-  // No prefilled example numbers: an empty field means "not measured", never a default.
-  const [formData, setFormData] = useState({
-    client_name: '',
-    bust_cm: '',
-    waist_cm: '',
-    hip_cm: '',
-    height_cm: '',
-    shoulder_cm: '',
-    neck_cm: '',
-    armhole_cm: '',
-    sleeve_cm: '',
-    garment_length_cm: '',
-    fabric_type: 'woven'
-  });
-
-  const refs = {
-    bust_cm: useRef(null),
-    waist_cm: useRef(null),
-    hip_cm: useRef(null),
-    shoulder_cm: useRef(null),
-    neck_cm: useRef(null),
-    armhole_cm: useRef(null),
-    sleeve_cm: useRef(null),
-    garment_length_cm: useRef(null)
-  };
-
-  const fetchCustomers = async () => {
-    setLoading(true);
-    try {
-      const res = await measurementsAPI.getAll();
-      const list = res.data.measurements || [];
-      setProfiles(list);
-
-      // Check if location state passed a profile to edit
-      if (location.state?.profile) {
-        const p = location.state.profile;
-        setSelectedProfileId(p.measurement_id);
-        loadProfileData(p);
-      } else if (list.length > 0) {
-        setSelectedProfileId(list[0].measurement_id);
-        loadProfileData(list[0]);
-      }
-    } catch (err) {
-      setError('Failed to fetch customers directory.');
-    } finally {
-      setLoading(false);
-    }
+  const loadProfile = (p) => {
+    setFormData(p ? fromProfile(p) : EMPTY);
+    setUnit('cm');                 // stored profile values are canonical centimetres
+    setFieldErrors({});
+    setError('');
   };
 
   useEffect(() => {
-    fetchCustomers();
+    measurementsAPI.getAll()
+      .then((res) => {
+        const list = res.data.measurements || [];
+        setProfiles(list);
+        const wanted = location.state?.profile;
+        const first = wanted || list[0];
+        if (first) {
+          setSelectedProfileId(first.measurement_id);
+          loadProfile(first);
+        }
+      })
+      .catch(() => setLoadError('The saved measurement profiles could not be loaded. Please refresh and try again.'))
+      .finally(() => setLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const loadProfileData = (profile) => {
-    setFormData({
-      client_name: profile.client_name || 'Customer Profile',
-      bust_cm: profile.bust_cm ?? '',
-      waist_cm: profile.waist_cm ?? '',
-      hip_cm: profile.hip_cm ?? '',
-      height_cm: profile.height_cm ?? '',
-      shoulder_cm: profile.shoulder_cm ?? '',
-      neck_cm: profile.neck_cm ?? '',
-      armhole_cm: profile.armhole_depth_cm ?? profile.armhole_cm ?? '',
-      sleeve_cm: profile.sleeve_cm ?? '',
-      garment_length_cm: profile.garment_length_cm ?? '',
-      fabric_type: profile.fabric_type || 'woven'
-    });
-    setUnit('cm');   // stored profile values are canonical cm
-  };
-
-  const handleCustomerChange = (e) => {
-    const id = e.target.value;
+  const selectProfile = (id) => {
     setSelectedProfileId(id);
-    const found = profiles.find(p => p.measurement_id === id);
-    if (found) {
-      loadProfileData(found);
-    }
+    loadProfile(profiles.find((p) => p.measurement_id === id));
   };
 
-  const handleInputChange = (field, val) => {
-    setFormData(prev => ({
-      ...prev,
-      [field]: val === '' ? '' : parseFloat(val) || val
-    }));
-  };
-
-  const handleUnitToggle = (newUnit) => {
-    if (newUnit === unit) return;
-    const factor = newUnit === 'in' ? 1 / 2.54 : 2.54;
-    
-    // Convert current numerical inputs
-    const fieldsToConvert = [
-      'bust_cm', 'waist_cm', 'hip_cm', 'height_cm', 
-      'shoulder_cm', 'neck_cm', 'armhole_cm', 'sleeve_cm', 'garment_length_cm'
-    ];
-    
-    const updated = { ...formData };
-    fieldsToConvert.forEach(f => {
-      if (updated[f]) {
-        updated[f] = parseFloat((updated[f] * factor).toFixed(2));
-      }
+  const setField = (key, value) => {
+    setFormData((prev) => ({ ...prev, [key]: value }));
+    setFieldErrors((prev) => {
+      if (!prev[key]) return prev;
+      const { [key]: _removed, ...rest } = prev;
+      return rest;
     });
-    
-    setFormData(updated);
-    setUnit(newUnit);
+    setError('');
+  };
+
+  const toggleUnit = (next) => {
+    if (next === unit) return;
+    setFormData((prev) => ({ ...prev, ...convertDisplayValues(prev, unit, next) }));
+    setUnit(next);
+    setFieldErrors({});
   };
 
   const handleSave = async (e) => {
     e.preventDefault();
     setError('');
     setSuccess('');
-
-    // Validate what was typed (in the selected unit). Only the core four are required for a
-    // profile; the server converts inches to canonical cm and re-validates everything.
-    const localErrors = validateMeasurements(toApiValues(formData), unit, CORE_FIELDS);
-    if (Object.keys(localErrors).length > 0) {
-      setError(Object.values(localErrors).join(' '));
+    if (!formData.client_name.trim()) {
+      setError('Please enter the customer name.');
       return;
     }
-    const payload = {
-      client_name: formData.client_name,
-      ...buildPayload(toApiValues(formData), unit),   // entered values only, in the selected unit
-      fabric_type: formData.fabric_type,
-    };
-
+    // A profile needs the four core measurements; the rest can be completed later
+    // (the wizard asks for all of them before drafting). The server re-validates everything.
+    const localErrors = validateMeasurements(formData, unit, CORE_FIELDS);
+    if (Object.keys(localErrors).length) {
+      setFieldErrors(localErrors);
+      setError('Please correct the highlighted measurements.');
+      return;
+    }
+    const payload = { client_name: formData.client_name.trim(), ...buildPayload(formData, unit), fabric_type: formData.fabric_type };
     try {
       if (selectedProfileId) {
         await measurementsAPI.update(selectedProfileId, payload);
-        setSuccess('Measurements updated successfully!');
+        setSuccess('Measurements updated.');
       } else {
         const res = await measurementsAPI.save(payload);
-        setSuccess('New profile measurements saved successfully!');
-        if (res.data?.measurement_id) {
-          setSelectedProfileId(res.data.measurement_id);
-        }
+        if (res.data?.measurement_id) setSelectedProfileId(res.data.measurement_id);
+        setSuccess('New measurement profile saved.');
       }
+      const updated = await measurementsAPI.getAll();
+      setProfiles(updated.data.measurements || []);
       setTimeout(() => setSuccess(''), 3000);
-      const updatedList = await measurementsAPI.getAll();
-      setProfiles(updatedList.data.measurements || []);
     } catch (err) {
       const parsed = parseFieldErrors(err);
-      setError(Object.values(parsed).join(' '));
+      if (parsed._form) {
+        setError(friendlyError(err, parsed._form));
+      } else {
+        setFieldErrors(parsed);
+        setError('Please correct the highlighted measurements.');
+      }
     }
   };
 
-  const handleReset = () => {
-    if (selectedProfileId) {
-      const found = profiles.find(p => p.measurement_id === selectedProfileId);
-      if (found) loadProfileData(found);
-    } else {
-      setFormData({
-        client_name: '',
-        bust_cm: '',
-        waist_cm: '',
-        hip_cm: '',
-        height_cm: '',
-        shoulder_cm: '',
-        neck_cm: '',
-        armhole_cm: '',
-        sleeve_cm: '',
-        garment_length_cm: '',
-        fabric_type: 'woven'
-      });
-    }
+  const reset = () => (selectedProfileId ? selectProfile(selectedProfileId) : loadProfile(null));
+
+  const focusField = (key) => {
+    setActiveField(key);
+    inputs.current[key]?.focus();
   };
 
-  const focusInput = (field) => {
-    setActiveField(field);
-    refs[field]?.current?.focus();
-  };
+  if (loading) return <LoadingSpinner message="Loading measurement profiles..." />;
 
-  // Human body guides for instructions
-  const guides = {
-    bust_cm: { title: 'Bust Circumference', desc: 'Measure around the fullest part of the chest horizontally, keeping the tape parallel to the floor.', number: 1 },
-    waist_cm: { title: 'Waist Circumference', desc: 'Measure around the natural waist circumference line, narrowest area above your belly button.', number: 2 },
-    hip_cm: { title: 'Hip Circumference', desc: 'Measure around the maximum projection points of the hips and seat with feet close together.', number: 3 },
-    shoulder_cm: { title: 'Shoulder width', desc: 'Measure back shoulder tip to tip across the curvature of the neck base.', number: 4 },
-    neck_cm: { title: 'Neck Circumference', desc: 'Measure around the neck collar seam point at the base of the throat.', number: 5 },
-    armhole_cm: { title: 'Armhole Depth', desc: 'Measure vertically from top shoulder point down to the underarm pit line.', number: 6 },
-    sleeve_cm: { title: 'Sleeve Length', desc: 'Measure shoulder tip down the side of the arm over the elbow crease to wrist.', number: 7 },
-    garment_length_cm: { title: 'Garment Length', desc: 'Draft length from shoulder neck junction down to hemline boundary.', number: 8 }
-  };
-
-  if (loading) return <LoadingSpinner message="Loading measurements workspace..." />;
+  const activeDef = MEASUREMENT_FIELDS.find((f) => f.key === activeField);
+  const missing = MEASUREMENT_FIELDS.filter((f) => formData[f.key] === '' || formData[f.key] === null).length;
 
   return (
     <div style={{ padding: '24px', maxWidth: '1400px', margin: '0 auto' }}>
-      
-      {/* Header Info */}
       <div style={{ marginBottom: '24px' }}>
-        <h1 style={{ fontSize: '22px', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '4px' }}>
-          Body measurements
-        </h1>
+        <h1 style={{ fontSize: '22px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '4px' }}>Body measurements</h1>
         <p style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
-          Enter or update customer body measurements.
+          Create or update a customer's measurement profile. All {MEASUREMENT_FIELDS.length} measurements are needed to draft a pattern;
+          a profile can be saved once bust, waist, hip and height are entered.
         </p>
       </div>
 
-      {/* Select Customer / Unit Selector controls */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--surface-1)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px', marginBottom: '24px', gap: '16px', flexWrap: 'wrap' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1, maxWidth: '400px' }}>
-          <label style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>Select customer</label>
-          <select 
-            className="form-input" 
-            style={{ margin: 0, height: '38px', padding: '0 12px' }}
-            value={selectedProfileId}
-            onChange={handleCustomerChange}
-          >
-            <option value="">-- Create custom walk-in --</option>
-            {profiles.map(p => (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1, maxWidth: '460px' }}>
+          <label htmlFor="profile-select" style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>Profile</label>
+          <select id="profile-select" className="form-select" value={selectedProfileId} onChange={(e) => selectProfile(e.target.value)}>
+            <option value="">+ New customer profile</option>
+            {profiles.map((p) => (
               <option key={p.measurement_id} value={p.measurement_id}>
-                {p.client_name} ({p.email || 'No email'})
+                {p.client_name}{p.complete === false ? ' (incomplete)' : ''}
               </option>
             ))}
           </select>
         </div>
-
-        {/* Toggle units */}
-        <div style={{ display: 'flex', background: 'var(--surface-2)', borderRadius: '8px', padding: '4px', border: '1px solid var(--border)' }}>
-          <button 
-            type="button"
-            onClick={() => handleUnitToggle('cm')}
-            style={{ 
-              border: 'none', background: unit === 'cm' ? 'var(--text-accent)' : 'transparent', 
-              color: unit === 'cm' ? '#FFFFFF' : 'var(--text-secondary)',
-              padding: '6px 16px', borderRadius: '6px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer'
-            }}
-          >
-            cm
-          </button>
-          <button 
-            type="button"
-            onClick={() => handleUnitToggle('in')}
-            style={{ 
-              border: 'none', background: unit === 'in' ? 'var(--text-accent)' : 'transparent', 
-              color: unit === 'in' ? '#FFFFFF' : 'var(--text-secondary)',
-              padding: '6px 16px', borderRadius: '6px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer'
-            }}
-          >
-            in
-          </button>
+        <div role="group" aria-label="Measurement unit" style={{ display: 'flex', gap: '6px' }}>
+          {['cm', 'in'].map((u) => (
+            <button key={u} type="button" aria-pressed={unit === u} data-testid={`page-unit-${u}`}
+                    className={unit === u ? 'btn btn-primary' : 'btn btn-outline'} onClick={() => toggleUnit(u)}>{u}</button>
+          ))}
         </div>
       </div>
 
+      {loadError && <div role="alert" className="dashboard-error" style={{ marginBottom: '20px', color: 'var(--danger)' }}>{loadError}</div>}
       {error && (
-        <div style={{ padding: '12px 16px', background: '#7F1D1D', border: '1px solid #991B1B', borderRadius: '8px', color: '#FECACA', fontSize: '13px', marginBottom: '20px' }}>
-          {error}
-        </div>
+        <div role="alert" style={{ padding: '12px 16px', background: '#FEF2F2', border: '1px solid #FCA5A5', borderRadius: '8px', color: '#991B1B', fontSize: '13px', marginBottom: '20px' }}>{error}</div>
       )}
       {success && (
-        <div style={{ padding: '12px 16px', background: 'rgba(21, 128, 61, 0.2)', border: '1px solid var(--text-accent)', borderRadius: '8px', color: 'var(--text-accent)', fontSize: '13px', marginBottom: '20px' }}>
-          {success}
-        </div>
+        <div role="status" style={{ padding: '12px 16px', background: 'rgba(21, 128, 61, 0.1)', border: '1px solid var(--text-accent)', borderRadius: '8px', color: 'var(--text-accent)', fontSize: '13px', marginBottom: '20px' }}>{success}</div>
       )}
 
-      {/* Grid container */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '24px', alignItems: 'start' }}>
-        
-        {/* Left Card: Input fields form */}
-        <div className="ui-card" style={{ padding: '24px' }}>
-          <h2 style={{ fontSize: '14px', fontWeight: '600', color: 'var(--text-primary)', marginBottom: '18px', borderBottom: '1px solid var(--border)', paddingBottom: '12px' }}>
-            Measurement details
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '24px', alignItems: 'start' }}>
+        <form className="ui-card" style={{ padding: '24px' }} onSubmit={handleSave} noValidate>
+          <h2 style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '18px', borderBottom: '1px solid var(--border)', paddingBottom: '12px' }}>
+            Measurement details {missing > 0 && <small style={{ fontWeight: 400, color: 'var(--text-muted)' }}>· {missing} not measured yet</small>}
           </h2>
 
-          <form onSubmit={handleSave} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px 20px' }}>
-            
-            {/* Walk-in Client Name (Editable only if no customer selected) */}
-            <div style={{ gridColumn: 'span 2', marginBottom: '8px' }}>
-              <label className="form-label" style={{ fontSize: '12px' }}>Customer Name</label>
-              <input 
-                type="text" 
-                className="form-input" 
-                value={formData.client_name}
-                onChange={(e) => handleInputChange('client_name', e.target.value)}
-                placeholder="e.g. Walk-in Customer"
-                disabled={!!selectedProfileId}
-              />
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px 18px' }}>
+            <div className="form-field" style={{ gridColumn: '1 / -1' }}>
+              <label className="form-label" htmlFor="profile-name">Customer name</label>
+              <input id="profile-name" type="text" className="form-input" value={formData.client_name}
+                     onChange={(e) => setField('client_name', e.target.value)} placeholder="e.g. Amara Silva" />
             </div>
 
-            {/* Field 1: Bust */}
-            <div 
-              style={{ borderLeft: activeField === 'bust_cm' ? '3px solid var(--text-accent)' : '3px solid transparent', paddingLeft: '8px' }}
-              onMouseEnter={() => setActiveField('bust_cm')}
-            >
-              <label className="form-label" style={{ display: 'flex', gap: '6px', fontSize: '12px', fontWeight: 'bold' }}>
-                <span style={{ background: 'var(--text-accent)', color: '#FFF', width: '16px', height: '16px', borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px' }}>1</span>
-                Bust
-              </label>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <input 
-                  ref={refs.bust_cm}
-                  type="number" step="0.1" 
-                  className="form-input" style={{ margin: 0 }}
-                  value={formData.bust_cm}
-                  onChange={(e) => handleInputChange('bust_cm', e.target.value)}
-                  onFocus={() => setActiveField('bust_cm')}
-                  required
-                />
-                <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{unit}</span>
-              </div>
+            {MEASUREMENT_FIELDS.map((field) => {
+              const key = field.key;
+              const message = fieldErrors[key];
+              return (
+                <div key={key} className="form-field" onMouseEnter={() => setActiveField(key)}
+                     style={{ borderLeft: `3px solid ${activeField === key ? 'var(--text-accent)' : 'transparent'}`, paddingLeft: '8px' }}>
+                  <label className="form-label" htmlFor={`profile-${key}`}>
+                    {DIAGRAM[key] ? `${DIAGRAM[key].n}. ` : ''}{field.label} ({unit}){CORE_FIELDS.includes(key) ? ' *' : ''}
+                  </label>
+                  <input
+                    id={`profile-${key}`} ref={(el) => { inputs.current[key] = el; }}
+                    type="number" step="any" inputMode="decimal" className="form-input"
+                    value={formData[key]} aria-invalid={message ? 'true' : 'false'} aria-describedby={`profile-hint-${key}`}
+                    style={message ? { borderColor: '#B23B3B' } : undefined}
+                    onFocus={() => setActiveField(key)} onChange={(e) => setField(key, e.target.value)}
+                  />
+                  <small id={`profile-hint-${key}`} style={{ color: 'var(--text-muted)', fontSize: '11px' }}>{rangeText(field)}</small>
+                  {message && <div role="alert" data-testid={`profile-error-${key}`} style={{ color: '#9B2C2C', fontSize: '12px' }}>{message}</div>}
+                </div>
+              );
+            })}
+
+            <div className="form-field">
+              <label className="form-label" htmlFor="profile-fabric">Usual fabric construction</label>
+              <select id="profile-fabric" className="form-select" value={formData.fabric_type} onChange={(e) => setField('fabric_type', e.target.value)}>
+                <option value="woven">Woven (no stretch)</option>
+                <option value="knit">Knit (moderate stretch)</option>
+              </select>
             </div>
+          </div>
 
-            {/* Field 2: Waist */}
-            <div 
-              style={{ borderLeft: activeField === 'waist_cm' ? '3px solid var(--text-accent)' : '3px solid transparent', paddingLeft: '8px' }}
-              onMouseEnter={() => setActiveField('waist_cm')}
-            >
-              <label className="form-label" style={{ display: 'flex', gap: '6px', fontSize: '12px', fontWeight: 'bold' }}>
-                <span style={{ background: 'var(--text-accent)', color: '#FFF', width: '16px', height: '16px', borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px' }}>2</span>
-                Waist
-              </label>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <input 
-                  ref={refs.waist_cm}
-                  type="number" step="0.1" 
-                  className="form-input" style={{ margin: 0 }}
-                  value={formData.waist_cm}
-                  onChange={(e) => handleInputChange('waist_cm', e.target.value)}
-                  onFocus={() => setActiveField('waist_cm')}
-                  required
-                />
-                <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{unit}</span>
-              </div>
-            </div>
+          <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '14px' }}>* required to save a profile. Inches are converted exactly (1 in = 2.54 cm).</p>
+          <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '16px', borderTop: '1px solid var(--border)', paddingTop: '16px' }}>
+            <button type="button" className="btn btn-outline" onClick={reset}>Reset</button>
+            <button type="submit" className="btn btn-primary">Save measurements</button>
+          </div>
+        </form>
 
-            {/* Field 3: Hip */}
-            <div 
-              style={{ borderLeft: activeField === 'hip_cm' ? '3px solid var(--text-accent)' : '3px solid transparent', paddingLeft: '8px' }}
-              onMouseEnter={() => setActiveField('hip_cm')}
-            >
-              <label className="form-label" style={{ display: 'flex', gap: '6px', fontSize: '12px', fontWeight: 'bold' }}>
-                <span style={{ background: 'var(--text-accent)', color: '#FFF', width: '16px', height: '16px', borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px' }}>3</span>
-                Hip
-              </label>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <input 
-                  ref={refs.hip_cm}
-                  type="number" step="0.1" 
-                  className="form-input" style={{ margin: 0 }}
-                  value={formData.hip_cm}
-                  onChange={(e) => handleInputChange('hip_cm', e.target.value)}
-                  onFocus={() => setActiveField('hip_cm')}
-                  required
-                />
-                <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{unit}</span>
-              </div>
-            </div>
-
-            {/* Field 4: Shoulder Width */}
-            <div 
-              style={{ borderLeft: activeField === 'shoulder_cm' ? '3px solid var(--text-accent)' : '3px solid transparent', paddingLeft: '8px' }}
-              onMouseEnter={() => setActiveField('shoulder_cm')}
-            >
-              <label className="form-label" style={{ display: 'flex', gap: '6px', fontSize: '12px', fontWeight: 'bold' }}>
-                <span style={{ background: 'var(--text-accent)', color: '#FFF', width: '16px', height: '16px', borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px' }}>4</span>
-                Shoulder width
-              </label>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <input 
-                  ref={refs.shoulder_cm}
-                  type="number" step="0.1" 
-                  className="form-input" style={{ margin: 0 }}
-                  value={formData.shoulder_cm}
-                  onChange={(e) => handleInputChange('shoulder_cm', e.target.value)}
-                  onFocus={() => setActiveField('shoulder_cm')}
-                  required
-                />
-                <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{unit}</span>
-              </div>
-            </div>
-
-            {/* Field 5: Neck circumference */}
-            <div 
-              style={{ borderLeft: activeField === 'neck_cm' ? '3px solid var(--text-accent)' : '3px solid transparent', paddingLeft: '8px' }}
-              onMouseEnter={() => setActiveField('neck_cm')}
-            >
-              <label className="form-label" style={{ display: 'flex', gap: '6px', fontSize: '12px', fontWeight: 'bold' }}>
-                <span style={{ background: 'var(--text-accent)', color: '#FFF', width: '16px', height: '16px', borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px' }}>5</span>
-                Neck circumference
-              </label>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <input 
-                  ref={refs.neck_cm}
-                  type="number" step="0.1" 
-                  className="form-input" style={{ margin: 0 }}
-                  value={formData.neck_cm}
-                  onChange={(e) => handleInputChange('neck_cm', e.target.value)}
-                  onFocus={() => setActiveField('neck_cm')}
-                  required
-                />
-                <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{unit}</span>
-              </div>
-            </div>
-
-            {/* Field 6: Armhole depth */}
-            <div 
-              style={{ borderLeft: activeField === 'armhole_cm' ? '3px solid var(--text-accent)' : '3px solid transparent', paddingLeft: '8px' }}
-              onMouseEnter={() => setActiveField('armhole_cm')}
-            >
-              <label className="form-label" style={{ display: 'flex', gap: '6px', fontSize: '12px', fontWeight: 'bold' }}>
-                <span style={{ background: 'var(--text-accent)', color: '#FFF', width: '16px', height: '16px', borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px' }}>6</span>
-                Armhole depth
-              </label>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <input 
-                  ref={refs.armhole_cm}
-                  type="number" step="0.1" 
-                  className="form-input" style={{ margin: 0 }}
-                  value={formData.armhole_cm}
-                  onChange={(e) => handleInputChange('armhole_cm', e.target.value)}
-                  onFocus={() => setActiveField('armhole_cm')}
-                  required
-                />
-                <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{unit}</span>
-              </div>
-            </div>
-
-            {/* Field 7: Sleeve length */}
-            <div 
-              style={{ borderLeft: activeField === 'sleeve_cm' ? '3px solid var(--text-accent)' : '3px solid transparent', paddingLeft: '8px' }}
-              onMouseEnter={() => setActiveField('sleeve_cm')}
-            >
-              <label className="form-label" style={{ display: 'flex', gap: '6px', fontSize: '12px', fontWeight: 'bold' }}>
-                <span style={{ background: 'var(--text-accent)', color: '#FFF', width: '16px', height: '16px', borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px' }}>7</span>
-                Sleeve length
-              </label>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <input 
-                  ref={refs.sleeve_cm}
-                  type="number" step="0.1" 
-                  className="form-input" style={{ margin: 0 }}
-                  value={formData.sleeve_cm}
-                  onChange={(e) => handleInputChange('sleeve_cm', e.target.value)}
-                  onFocus={() => setActiveField('sleeve_cm')}
-                  required
-                />
-                <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{unit}</span>
-              </div>
-            </div>
-
-            {/* Field 8: Garment length */}
-            <div 
-              style={{ borderLeft: activeField === 'garment_length_cm' ? '3px solid var(--text-accent)' : '3px solid transparent', paddingLeft: '8px' }}
-              onMouseEnter={() => setActiveField('garment_length_cm')}
-            >
-              <label className="form-label" style={{ display: 'flex', gap: '6px', fontSize: '12px', fontWeight: 'bold' }}>
-                <span style={{ background: 'var(--text-accent)', color: '#FFF', width: '16px', height: '16px', borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px' }}>8</span>
-                Garment length
-              </label>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <input 
-                  ref={refs.garment_length_cm}
-                  type="number" step="0.1" 
-                  className="form-input" style={{ margin: 0 }}
-                  value={formData.garment_length_cm}
-                  onChange={(e) => handleInputChange('garment_length_cm', e.target.value)}
-                  onFocus={() => setActiveField('garment_length_cm')}
-                  required
-                />
-                <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{unit}</span>
-              </div>
-            </div>
-
-            {/* Height (validation only; not used by the drafting equations) */}
-            <div style={{ gridColumn: 'span 2', marginTop: '8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--surface-2)', padding: '10px 14px', borderRadius: '8px', border: '1px solid var(--border)' }}>
-              <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Baseline Proportional Height:</span>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <input 
-                  type="number" step="0.1" 
-                  className="form-input" style={{ width: '80px', height: '28px', padding: '0 8px', margin: 0 }}
-                  value={formData.height_cm}
-                  onChange={(e) => handleInputChange('height_cm', e.target.value)}
-                />
-                <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{unit}</span>
-              </div>
-            </div>
-
-            {/* Actions */}
-            <div style={{ gridColumn: 'span 2', display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '16px', borderTop: '1px solid var(--border)', paddingTop: '16px' }}>
-              <button type="button" className="btn btn-outline animate-all" onClick={handleReset} style={{ height: '40px' }}>
-                Reset
-              </button>
-              <button type="submit" className="btn btn-primary animate-all" style={{ height: '40px', background: 'var(--text-accent)' }}>
-                Save measurements
-              </button>
-            </div>
-
-          </form>
-        </div>
-
-        {/* Right Card: Interactive Measurement Guide Vector */}
-        <div className="ui-card" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
-          <h2 style={{ fontSize: '14px', fontWeight: '600', color: 'var(--text-primary)', margin: 0, borderBottom: '1px solid var(--border)', paddingBottom: '12px' }}>
-            Measurement guide
+        <div className="ui-card" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px', position: 'sticky', top: 0 }}>
+          <h2 style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)', margin: 0, borderBottom: '1px solid var(--border)', paddingBottom: '12px' }}>
+            How to measure
           </h2>
-
-          {/* High-fidelity Vector Model Box */}
-          <div style={{ position: 'relative', width: '100%', height: '360px', background: 'radial-gradient(circle at center, #1C2E24 0%, #111111 100%)', borderRadius: '12px', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-            
-            {/* Outline Body Vector Drawing */}
-            <svg viewBox="0 0 100 200" style={{ width: '100%', height: '90%', filter: 'drop-shadow(0 4px 8px rgba(0,0,0,0.5))' }}>
-              {/* Human contour (Simplified schematic) */}
-              <path 
-                d="M 50 15 C 53 15, 54 22, 54 24 C 54 24, 62 26, 64 28 C 66 30, 68 44, 68 55 C 68 62, 65 65, 63 68 C 61 70, 58 74, 58 84 C 58 94, 61 104, 62 110 C 63 116, 61 125, 59 135 L 59 190 L 52 190 L 51 145 L 49 145 L 48 190 L 41 190 L 41 135 C 39 125, 37 116, 38 110 C 39 104, 42 94, 42 84 C 42 74, 39 70, 37 68 C 35 65, 32 62, 32 55 C 32 44, 34 30, 36 28 C 38 26, 46 24, 46 24 C 46 22, 47 15, 50 15 Z" 
-                fill="none" 
-                stroke="#6B7280" 
-                strokeWidth="1.2" 
-              />
-              {/* Head outline */}
+          <div style={{ width: '100%', height: '340px', background: 'radial-gradient(circle at center, #1C2E24 0%, #111111 100%)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+            <svg viewBox="0 0 100 200" style={{ width: '100%', height: '92%' }} role="img" aria-label="Body diagram with numbered measurement positions">
+              <path d="M 50 15 C 53 15, 54 22, 54 24 C 54 24, 62 26, 64 28 C 66 30, 68 44, 68 55 C 68 62, 65 65, 63 68 C 61 70, 58 74, 58 84 C 58 94, 61 104, 62 110 C 63 116, 61 125, 59 135 L 59 190 L 52 190 L 51 145 L 49 145 L 48 190 L 41 190 L 41 135 C 39 125, 37 116, 38 110 C 39 104, 42 94, 42 84 C 42 74, 39 70, 37 68 C 35 65, 32 62, 32 55 C 32 44, 34 30, 36 28 C 38 26, 46 24, 46 24 C 46 22, 47 15, 50 15 Z"
+                    fill="none" stroke="#6B7280" strokeWidth="1.2" />
               <circle cx="50" cy="18" r="4.5" fill="none" stroke="#6B7280" strokeWidth="1.2" />
-
-              {/* Numbered Dots overlaying coordinates */}
-              {/* Dot 1: Bust line */}
-              <g style={{ cursor: 'pointer' }} onClick={() => focusInput('bust_cm')}>
-                <line x1="28" y1="56" x2="72" y2="56" stroke={activeField === 'bust_cm' ? 'var(--text-accent)' : '#4B5563'} strokeWidth={activeField === 'bust_cm' ? '2' : '1'} />
-                <circle cx="28" cy="56" r={activeField === 'bust_cm' ? '5' : '4'} fill={activeField === 'bust_cm' ? 'var(--text-accent)' : '#374151'} stroke="var(--border)" strokeWidth="1" />
-                <text x="28" y="59" fill="#FFF" fontSize="8" textAnchor="middle" fontWeight="bold">1</text>
-              </g>
-
-              {/* Dot 2: Waist line */}
-              <g style={{ cursor: 'pointer' }} onClick={() => focusInput('waist_cm')}>
-                <line x1="34" y1="78" x2="66" y2="78" stroke={activeField === 'waist_cm' ? 'var(--text-accent)' : '#4B5563'} strokeWidth={activeField === 'waist_cm' ? '2' : '1'} />
-                <circle cx="34" cy="78" r={activeField === 'waist_cm' ? '5' : '4'} fill={activeField === 'waist_cm' ? 'var(--text-accent)' : '#374151'} stroke="var(--border)" strokeWidth="1" />
-                <text x="34" y="81" fill="#FFF" fontSize="8" textAnchor="middle" fontWeight="bold">2</text>
-              </g>
-
-              {/* Dot 3: Hip line */}
-              <g style={{ cursor: 'pointer' }} onClick={() => focusInput('hip_cm')}>
-                <line x1="30" y1="98" x2="70" y2="98" stroke={activeField === 'hip_cm' ? 'var(--text-accent)' : '#4B5563'} strokeWidth={activeField === 'hip_cm' ? '2' : '1'} />
-                <circle cx="30" cy="98" r={activeField === 'hip_cm' ? '5' : '4'} fill={activeField === 'hip_cm' ? 'var(--text-accent)' : '#374151'} stroke="var(--border)" strokeWidth="1" />
-                <text x="30" y="101" fill="#FFF" fontSize="8" textAnchor="middle" fontWeight="bold">3</text>
-              </g>
-
-              {/* Dot 4: Shoulder width */}
-              <g style={{ cursor: 'pointer' }} onClick={() => focusInput('shoulder_cm')}>
-                <line x1="37" y1="28" x2="63" y2="28" stroke={activeField === 'shoulder_cm' ? 'var(--text-accent)' : '#4B5563'} strokeWidth={activeField === 'shoulder_cm' ? '2' : '1'} />
-                <circle cx="63" cy="28" r={activeField === 'shoulder_cm' ? '5' : '4'} fill={activeField === 'shoulder_cm' ? 'var(--text-accent)' : '#374151'} stroke="var(--border)" strokeWidth="1" />
-                <text x="63" y="31" fill="#FFF" fontSize="8" textAnchor="middle" fontWeight="bold">4</text>
-              </g>
-
-              {/* Dot 5: Neck circum */}
-              <g style={{ cursor: 'pointer' }} onClick={() => focusInput('neck_cm')}>
-                <ellipse cx="50" cy="25" rx="5" ry="2.5" fill="none" stroke={activeField === 'neck_cm' ? 'var(--text-accent)' : '#4B5563'} strokeWidth={activeField === 'neck_cm' ? '2' : '1'} />
-                <circle cx="50" cy="23" r={activeField === 'neck_cm' ? '5' : '4'} fill={activeField === 'neck_cm' ? 'var(--text-accent)' : '#374151'} stroke="var(--border)" strokeWidth="1" />
-                <text x="50" y="26" fill="#FFF" fontSize="8" textAnchor="middle" fontWeight="bold">5</text>
-              </g>
-
-              {/* Dot 6: Armhole depth */}
-              <g style={{ cursor: 'pointer' }} onClick={() => focusInput('armhole_cm')}>
-                <line x1="36" y1="28" x2="36" y2="56" stroke={activeField === 'armhole_cm' ? 'var(--text-accent)' : '#4B5563'} strokeWidth={activeField === 'armhole_cm' ? '2' : '1'} />
-                <circle cx="36" cy="42" r={activeField === 'armhole_cm' ? '5' : '4'} fill={activeField === 'armhole_cm' ? 'var(--text-accent)' : '#374151'} stroke="var(--border)" strokeWidth="1" />
-                <text x="36" y="45" fill="#FFF" fontSize="8" textAnchor="middle" fontWeight="bold">6</text>
-              </g>
-
-              {/* Dot 7: Sleeve length */}
-              <g style={{ cursor: 'pointer' }} onClick={() => focusInput('sleeve_cm')}>
-                <path d="M 63 28 C 65 35, 68 45, 68 55 C 68 62, 67 66, 65 72" fill="none" stroke={activeField === 'sleeve_cm' ? 'var(--text-accent)' : '#4B5563'} strokeWidth={activeField === 'sleeve_cm' ? '2' : '1'} />
-                <circle cx="68" cy="55" r={activeField === 'sleeve_cm' ? '5' : '4'} fill={activeField === 'sleeve_cm' ? 'var(--text-accent)' : '#374151'} stroke="var(--border)" strokeWidth="1" />
-                <text x="68" y="58" fill="#FFF" fontSize="8" textAnchor="middle" fontWeight="bold">7</text>
-              </g>
-
-              {/* Dot 8: Garment length */}
-              <g style={{ cursor: 'pointer' }} onClick={() => focusInput('garment_length_cm')}>
-                <line x1="45" y1="28" x2="45" y2="92" stroke={activeField === 'garment_length_cm' ? 'var(--text-accent)' : '#4B5563'} strokeWidth={activeField === 'garment_length_cm' ? '2' : '1'} />
-                <circle cx="45" cy="92" r={activeField === 'garment_length_cm' ? '5' : '4'} fill={activeField === 'garment_length_cm' ? 'var(--text-accent)' : '#374151'} stroke="var(--border)" strokeWidth="1" />
-                <text x="45" y="95" fill="#FFF" fontSize="8" textAnchor="middle" fontWeight="bold">8</text>
-              </g>
+              {Object.entries(DIAGRAM).map(([key, d]) => {
+                const on = activeField === key;
+                const stroke = on ? '#7fd1a8' : '#4B5563';
+                return (
+                  <g key={key} style={{ cursor: 'pointer' }} onClick={() => focusField(key)}>
+                    {d.line && <line x1={d.line[0]} y1={d.line[1]} x2={d.line[2]} y2={d.line[3]} stroke={stroke} strokeWidth={on ? 2 : 1} />}
+                    {d.ellipse && <ellipse cx={d.ellipse[0]} cy={d.ellipse[1]} rx={d.ellipse[2]} ry={d.ellipse[3]} fill="none" stroke={stroke} strokeWidth={on ? 2 : 1} />}
+                    {d.path && <path d={d.path} fill="none" stroke={stroke} strokeWidth={on ? 2 : 1} />}
+                    <circle cx={d.dot[0]} cy={d.dot[1]} r={on ? 5 : 4} fill={on ? '#2d7a55' : '#374151'} />
+                    <text x={d.dot[0]} y={d.dot[1] + 3} fill="#FFF" fontSize="8" textAnchor="middle" fontWeight="bold">{d.n}</text>
+                  </g>
+                );
+              })}
             </svg>
-
-            {/* Label inside vector */}
-            <div style={{ position: 'absolute', bottom: '10px', right: '10px', fontSize: '9px', color: 'var(--text-muted)', fontFamily: 'monospace' }}>
-              INTERACTIVE 2D SEGMENT HIGHLIGHT
-            </div>
           </div>
-
-          {/* Description Tip Box */}
-          <div style={{ background: 'var(--surface-2)', padding: '14px 16px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+          <div style={{ background: 'var(--surface-2)', padding: '14px 16px', borderRadius: '8px', border: '1px solid var(--border)' }} data-testid="measure-guide">
             <span style={{ fontSize: '11px', fontWeight: 'bold', color: 'var(--text-accent)', display: 'block', textTransform: 'uppercase', marginBottom: '4px' }}>
-              {guides[activeField]?.number}. {guides[activeField]?.title} guide
+              {DIAGRAM[activeField] ? `${DIAGRAM[activeField].n}. ` : ''}{activeDef?.label}
             </span>
-            <p style={{ margin: 0, fontSize: '12px', color: 'var(--text-secondary)', lineHeight: '1.4' }}>
-              {guides[activeField]?.desc}
-            </p>
+            <p style={{ margin: 0, fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.45 }}>{GUIDES[activeField]}</p>
+            <p style={{ margin: '6px 0 0', fontSize: '11px', color: 'var(--text-muted)' }}>Accepted range: {activeDef && rangeText(activeDef)}</p>
           </div>
-
         </div>
-
       </div>
-
     </div>
   );
 }

@@ -13,6 +13,7 @@ import {
 } from '../utils/measurementSchema';
 import { formatResult, CALCULATION_FAILED, NOT_CALCULATED as NOT_CALCULATED_LABEL } from '../utils/results';
 import { friendlyError, imageProblem } from '../utils/friendlyError';
+import { getPreferences } from '../utils/preferences';
 import {
   imagesAPI, measurementsAPI, patternsAPI, exportAPI, researchAPI,
 } from '../services/api';
@@ -71,12 +72,14 @@ export default function Upload() {
   const [confirmLoading, setConfirmLoading] = useState(false);
   const [confirmError, setConfirmError] = useState('');
   const [features, setFeatures] = useState({ garment_type: '', neckline: '', sleeves: '', darts: '', seams: '' });
+  // null = unknown (status request failed), true/false = what the server reported
+  const [modelAvailable, setModelAvailable] = useState(null);
 
   // step 3 — measurements
   const [savedProfiles, setSavedProfiles] = useState([]);
   const [measurementId, setMeasurementId] = useState(null);
   const [meas, setMeas] = useState({ ...emptyMeas });
-  const [unit, setUnit] = useState('cm');
+  const [unit, setUnit] = useState(() => getPreferences().unit);
   const [fieldErrors, setFieldErrors] = useState({});
   const [activeField, setActiveField] = useState('bust_cm');
 
@@ -90,7 +93,7 @@ export default function Upload() {
   const [patternData, setPatternData] = useState(null);
 
   // step 6 — estimate
-  const [fabricWidth, setFabricWidth] = useState(114);
+  const [fabricWidth, setFabricWidth] = useState(() => getPreferences().fabricWidth);
   const [cuttingMode, setCuttingMode] = useState('auto');
   const [yardageData, setYardageData] = useState(null);
   const [yardageError, setYardageError] = useState(false);
@@ -109,6 +112,12 @@ export default function Upload() {
     setStep(n);
     setMaxStep((m) => Math.max(m, n));
   };
+
+  useEffect(() => {
+    Promise.resolve(imagesAPI.modelStatus?.())
+      .then((res) => { if (res?.data) setModelAvailable(Boolean(res.data.available)); })
+      .catch(() => setModelAvailable(null));
+  }, []);
 
   useEffect(() => {
     measurementsAPI.getAll().then((res) => setSavedProfiles(res.data.measurements || [])).catch(() => {});
@@ -442,6 +451,12 @@ export default function Upload() {
         {!loading && step === 1 && (
           <div className="wizard-body" id="wp1">
             {heading('Upload a garment photo', 'Use a clear front-view photo of a blouse, T-shirt or crop-top (JPG, PNG or WEBP, up to 16 MB). The AI suggests the design; you stay in control and confirm it.')}
+            {modelAvailable === false && (
+              <div role="status" data-testid="model-unavailable" style={{ marginBottom: '14px', padding: '10px 14px', background: '#FEF3C7', border: '1px solid #F59E0B', borderRadius: 'var(--radius)', fontSize: '12px', color: '#92400E' }}>
+                The AI garment model is not available on this server, so photos cannot be analysed right now.
+                Please choose the design manually — the pattern is drafted the same way.
+              </div>
+            )}
             <label className="upload-zone" style={{ display: 'block' }}>
               <span className="sr-only">Choose garment photo</span>
               <input type="file" accept="image/jpeg,image/png,image/webp" onChange={handleImageSelect} className="hidden" data-testid="image-input" />
@@ -460,7 +475,7 @@ export default function Upload() {
             </label>
             {navRow(<>
               <button type="button" className="btn btn-outline" onClick={chooseManually}>No photo — choose the design manually</button>
-              <button type="button" className="btn btn-primary" onClick={handleUploadAndAnalyse} disabled={!imageFile}>Upload and analyse</button>
+              <button type="button" className="btn btn-primary" onClick={handleUploadAndAnalyse} disabled={!imageFile || modelAvailable === false}>Upload and analyse</button>
             </>)}
           </div>
         )}

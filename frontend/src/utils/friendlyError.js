@@ -12,6 +12,9 @@ const BY_CODE = {
   SLEEVE_TOO_WIDE_FOR_ARMHOLE: 'The sleeve is too wide for the armhole. Please check the bicep, armhole depth and bust measurements.',
   PIECE_DOES_NOT_FIT: 'A pattern piece is wider than the fabric. Choose a wider fabric or lay the fabric out open.',
   INVALID_FABRIC_WIDTH: 'Please choose a valid fabric width.',
+  MODEL_UNAVAILABLE: 'The AI garment model is not available right now, so the photo cannot be analysed. You can still choose the design manually.',
+  IMAGE_NOT_ANALYSABLE: 'This photo could not be analysed. Try another photo or choose the design manually.',
+  PATTERN_NOT_VALID: 'This pattern failed its automatic checks, so it has no fabric estimate to compare.',
   FINAL_PATTERN_INVALID: 'The generated pattern did not pass the automatic geometry checks, so it was not created.',
 };
 

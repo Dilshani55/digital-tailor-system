@@ -32,26 +32,27 @@ export default function ResearcherDashboard() {
     fetchMetrics();
   }, []);
 
-  const handleExportCSV = () => {
+  const downloadCsv = (csvUrl, filename) => {
     const token = localStorage.getItem('token');
-    // Fetch directly using token authorization header
-    fetch(researchAPI.getCSVUrl(), {
-      headers: {
-        'Authorization': `Bearer ${token}`
-      }
-    })
-    .then(res => res.blob())
-    .then(blob => {
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'research_metrics_export.csv';
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-    })
-    .catch((e) => alert(e.response?.status === 403 ? 'Only researcher accounts can export study data.' : 'Failed to download CSV export.'));
+    fetch(csvUrl, { headers: { Authorization: `Bearer ${token}` } })
+      .then((res) => {
+        // fetch does not reject on HTTP errors: never save an error body as the "CSV"
+        if (!res.ok) throw Object.assign(new Error('http'), { status: res.status });
+        return res.blob();
+      })
+      .then((blob) => {
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(url);
+      })
+      .catch((e) => alert(e.status === 403 ? 'Only researcher accounts can export study data.' : 'Failed to download the CSV export.'));
   };
+  const handleExportCSV = () => downloadCsv(researchAPI.getCSVUrl(), 'research_metrics_export.csv');
 
   if (loading) return <LoadingSpinner message="Querying study datasets..." />;
 
@@ -65,7 +66,7 @@ export default function ResearcherDashboard() {
             Researcher & Admin Dashboard
           </h1>
           <p style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
-            Track AI precision scores, dataset correction rates, average fabric waste reductions, and usability ratings.
+            Classifier test metrics, AI correction rates, measured processing times, traditional-vs-system fabric comparisons and usability ratings — only values that were actually measured.
           </p>
         </div>
         
@@ -81,13 +82,13 @@ export default function ResearcherDashboard() {
       </div>
 
       {error && (
-        <div style={{ padding: '12px 16px', background: '#7F1D1D', border: '1px solid #991B1B', borderRadius: '8px', color: '#FECACA', fontSize: '13px', marginBottom: '20px' }}>
+        <div role="alert" style={{ padding: '12px 16px', background: '#FEF2F2', border: '1px solid #FCA5A5', borderRadius: '8px', color: '#991B1B', fontSize: '13px', marginBottom: '20px' }}>
           {error}
         </div>
       )}
 
       {/* Fallback Display if no data available */}
-      {(!metrics || !metrics.available) ? (
+      {error ? null : (!metrics || !metrics.available) ? (
         <div style={{ 
           background: 'var(--surface-1)', border: '1px dashed var(--border-strong)', 
           borderRadius: '12px', padding: '60px 40px', textAlign: 'center', 
@@ -185,6 +186,46 @@ export default function ResearcherDashboard() {
                   <strong style={{ color: 'var(--text-primary)' }}>{fmtNum(metrics.avg_processing_time, 2, ' s')}</strong>
                 </div>
               </div>
+            </div>
+
+            {/* Traditional vs system fabric estimate (entered comparisons only) */}
+            <div className="ui-card" style={{ padding: '24px', gridColumn: '1 / -1' }} data-testid="fabric-comparison-summary">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '12px' }}>
+                <h2 style={{ fontSize: '14px', fontWeight: '600', color: 'var(--text-primary)', margin: 0 }}>
+                  Traditional vs system fabric estimate
+                </h2>
+                {metrics.fabric_comparison && (
+                  <button type="button" className="btn btn-outline" onClick={() => downloadCsv(researchAPI.getComparisonCSVUrl(), 'fabric_comparisons.csv')}>
+                    <Download size={15}/> Comparison data (CSV)
+                  </button>
+                )}
+              </div>
+              {!metrics.fabric_comparison ? (
+                <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: 0 }}>
+                  {NOT_MEASURED} — no traditional estimate has been recorded yet. Estimates are entered on a saved pattern’s page.
+                </p>
+              ) : (
+                <>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px', textAlign: 'center' }}>
+                    {[
+                      ['Comparisons (patterns)', `${metrics.fabric_comparison.n} (${metrics.fabric_comparison.patterns})`],
+                      ['Mean difference', fmtNum(metrics.fabric_comparison.mean_difference_m, 3, ' m')],
+                      ['Median difference', fmtNum(metrics.fabric_comparison.median_difference_m, 3, ' m')],
+                      ['SD of difference', fmtNum(metrics.fabric_comparison.sd_difference_m, 3, ' m')],
+                      ['Mean relative difference', fmtNum(metrics.fabric_comparison.mean_relative_difference_percent, 1, '%')],
+                      ['System lower / higher / equal', `${metrics.fabric_comparison.system_lower_count} / ${metrics.fabric_comparison.system_higher_count} / ${metrics.fabric_comparison.equal_count}`],
+                    ].map(([label, value]) => (
+                      <div key={label} style={{ background: 'var(--surface-2)', padding: '12px', borderRadius: '8px' }}>
+                        <span style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block' }}>{label}</span>
+                        <strong style={{ fontSize: '16px', color: 'var(--text-primary)' }}>{value}</strong>
+                      </div>
+                    ))}
+                  </div>
+                  <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '10px', lineHeight: 1.5 }}>
+                    {metrics.fabric_comparison.definition}. {metrics.fabric_comparison.note}
+                  </p>
+                </>
+              )}
             </div>
 
             {/* Participant Usability Feedback card */}

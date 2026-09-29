@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, Plus, Filter, Edit2, Play, Trash2 } from 'lucide-react';
-import { measurementsAPI } from '../services/api';
-import { validateMeasurements, parseFieldErrors, buildPayload, CORE_FIELDS } from '../utils/measurementSchema';
+import { measurementsAPI, patternsAPI } from '../services/api';
+import { validateMeasurements, parseFieldErrors, buildPayload, CORE_FIELDS, MEASUREMENT_FIELDS } from '../utils/measurementSchema';
+
+const FIELD_LABEL = Object.fromEntries(MEASUREMENT_FIELDS.map((f) => [f.key, f.label]));
 import LoadingSpinner from '../components/LoadingSpinner';
 
 export default function Customers() {
@@ -12,6 +14,9 @@ export default function Customers() {
   const [error, setError] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedProfile, setSelectedProfile] = useState(null);
+  // real number of saved patterns per measurement profile (null = could not be loaded)
+  const [patternCounts, setPatternCounts] = useState(null);
+  const [formError, setFormError] = useState('');
 
   // Modal State for adding customer
   const [showAddModal, setShowAddModal] = useState(false);
@@ -28,10 +33,23 @@ export default function Customers() {
 
   const fetchProfiles = async () => {
     setLoading(true);
+    setError('');
     try {
-      const res = await measurementsAPI.getAll();
+      const [res, pats] = await Promise.all([
+        measurementsAPI.getAll(),
+        patternsAPI.getAll().catch(() => null),
+      ]);
       const list = res.data.measurements || [];
       setProfiles(list);
+      if (pats) {
+        const counts = {};
+        (pats.data.patterns || []).forEach((p) => {
+          if (p.measurement_id) counts[p.measurement_id] = (counts[p.measurement_id] || 0) + 1;
+        });
+        setPatternCounts(counts);
+      } else {
+        setPatternCounts(null);
+      }
       if (list.length > 0 && !selectedProfile) {
         setSelectedProfile(list[0]);
       }
@@ -48,18 +66,22 @@ export default function Customers() {
 
   const handleAddSubmit = async (e) => {
     e.preventDefault();
-    if (!newClient.client_name) return;
+    setFormError('');
+    if (!newClient.client_name.trim()) {
+      setFormError('Please enter the customer name.');
+      return;
+    }
     const localErrors = validateMeasurements(newClient, 'cm', CORE_FIELDS);
     if (Object.keys(localErrors).length > 0) {
-      setError(Object.values(localErrors).join(' '));
+      setFormError(CORE_FIELDS.filter((k) => localErrors[k]).map((k) => `${FIELD_LABEL[k]}: ${localErrors[k]}`).join(' '));
       return;
     }
 
     try {
       await measurementsAPI.save({
-        client_name: newClient.client_name,
-        email: newClient.email || `${newClient.client_name.toLowerCase().replace(/\s+/g, '.')}@email.com`,
-        notes: newClient.notes || 'No notes added.',
+        client_name: newClient.client_name.trim(),
+        ...(newClient.email.trim() ? { email: newClient.email.trim() } : {}),
+        ...(newClient.notes.trim() ? { notes: newClient.notes.trim() } : {}),
         ...buildPayload(newClient, 'cm'),   // entered core measurements only (cm)
         fabric_type: newClient.fabric_type
       });
@@ -72,7 +94,7 @@ export default function Customers() {
       fetchProfiles();
     } catch (err) {
       const parsed = parseFieldErrors(err);
-      setError(Object.values(parsed).join(' ') || 'Failed to save customer profile.');
+      setFormError(Object.values(parsed).join(' ') || 'Failed to save customer profile.');
     }
   };
 
@@ -135,6 +157,10 @@ export default function Customers() {
             <div style={{ padding: '60px', textAlign: 'center' }}>
               <LoadingSpinner message="Loading customer directory..." />
             </div>
+          ) : error ? (
+            <div role="alert" style={{ padding: '40px', textAlign: 'center', color: 'var(--danger)' }}>
+              {error} Please refresh and try again.
+            </div>
           ) : filteredProfiles.length === 0 ? (
             <div style={{ padding: '60px', textAlign: 'center', color: 'var(--text-secondary)' }}>
               No customer profiles found. Click "Add customer" to create one.
@@ -177,7 +203,7 @@ export default function Customers() {
                             </span>
                             <div>
                               <strong>{p.client_name}</strong>
-                              <small>{p.email || `${p.client_name.toLowerCase().replace(/\s+/g, '')}@email.com`}</small>
+                              <small>{p.email || 'No e-mail recorded'}</small>
                             </div>
                           </div>
                         </td>
@@ -187,10 +213,10 @@ export default function Customers() {
                           </span>
                         </td>
                         <td>
-                          <small>{p.created_at ? new Date(p.created_at).toLocaleDateString() : 'Recent'}</small>
+                          <small>{p.created_at ? new Date(p.created_at).toLocaleDateString('en-GB') : '—'}</small>
                         </td>
                         <td>
-                          <strong>{p.patterns_count || '2'}</strong>
+                          <strong data-testid={`pattern-count-${p.measurement_id}`}>{patternCounts ? (patternCounts[p.measurement_id] || 0) : '—'}</strong>
                         </td>
                         <td style={{ textAlign: 'right' }} onClick={(e) => e.stopPropagation()}>
                           <div className="row-actions" style={{ justifyContent: 'flex-end' }}>
@@ -229,7 +255,7 @@ export default function Customers() {
         <div>
           {selectedProfile ? (
             <div className="ui-card" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
-              <div style={{ display: 'flex', justify: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)', paddingBottom: '16px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)', paddingBottom: '16px' }}>
                 <span className="section-kicker">Profile overview</span>
                 <button 
                   onClick={() => navigate('/measurements', { state: { profile: selectedProfile } })}
@@ -253,7 +279,7 @@ export default function Customers() {
                 <div>
                   <h3 style={{ fontSize: '16px', fontWeight: '600', margin: '0' }}>{selectedProfile.client_name}</h3>
                   <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                    {selectedProfile.email || `${selectedProfile.client_name.toLowerCase().replace(/\s+/g, '')}@email.com`}
+                    {selectedProfile.email || 'No e-mail recorded'}
                   </span>
                 </div>
               </div>
@@ -269,19 +295,19 @@ export default function Customers() {
                 <div>
                   <span style={{ color: 'var(--text-muted)' }}>Total patterns:</span>
                   <div style={{ fontWeight: '600', color: 'var(--text-primary)', marginTop: '2px' }}>
-                    {selectedProfile.patterns_count || '2'}
+                    {patternCounts ? (patternCounts[selectedProfile.measurement_id] || 0) : '—'}
                   </div>
                 </div>
                 <div>
                   <span style={{ color: 'var(--text-muted)' }}>Height:</span>
                   <div style={{ fontWeight: '600', color: 'var(--text-primary)', marginTop: '2px' }}>
-                    {selectedProfile.height_cm} cm
+                    {selectedProfile.height_cm != null ? `${selectedProfile.height_cm} cm` : 'Not measured'}
                   </div>
                 </div>
                 <div>
                   <span style={{ color: 'var(--text-muted)' }}>Bust:</span>
                   <div style={{ fontWeight: '600', color: 'var(--text-primary)', marginTop: '2px' }}>
-                    {selectedProfile.bust_cm} cm
+                    {selectedProfile.bust_cm != null ? `${selectedProfile.bust_cm} cm` : 'Not measured'}
                   </div>
                 </div>
               </div>
@@ -290,7 +316,7 @@ export default function Customers() {
               <div style={{ background: 'var(--surface-2)', padding: '12px 14px', borderRadius: '8px', fontSize: '12px' }}>
                 <strong style={{ display: 'block', marginBottom: '4px', color: 'var(--text-primary)' }}>Notes</strong>
                 <p style={{ margin: 0, color: 'var(--text-secondary)', lineHeight: '1.5' }}>
-                  {selectedProfile.notes || 'No design notes or fit alerts recorded. Tap Edit to add constraints.'}
+                  {selectedProfile.notes && selectedProfile.notes !== 'No notes.' ? selectedProfile.notes : 'No notes recorded.'}
                 </p>
               </div>
 
@@ -316,38 +342,53 @@ export default function Customers() {
       {/* Add Customer Modal */}
       {showAddModal && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(17, 26, 19, 0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-          <div style={{ background: '#FFFFFF', borderRadius: '12px', width: '100%', maxWidth: '480px', padding: '24px', boxShadow: 'var(--shadow)' }}>
-            <h2 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '16px' }}>Add Customer Profile</h2>
-            <form onSubmit={handleAddSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              {error && (
+          <div role="dialog" aria-modal="true" aria-labelledby="add-customer-h" style={{ background: '#FFFFFF', borderRadius: '12px', width: '100%', maxWidth: '480px', maxHeight: '92vh', overflowY: 'auto', padding: '24px', boxShadow: 'var(--shadow)' }}>
+            <h2 id="add-customer-h" style={{ fontSize: '16px', fontWeight: '600', marginBottom: '16px' }}>Add Customer Profile</h2>
+            <form onSubmit={handleAddSubmit} noValidate style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {formError && (
                 <div role="alert" data-testid="customer-form-error" style={{ background: '#FEE2E2', border: '1px solid #EF4444', color: '#991B1B', borderRadius: '6px', padding: '8px 10px', fontSize: '12px' }}>
-                  {error}
+                  {formError}
                 </div>
               )}
               <div>
-                <label className="form-label">Full Name</label>
-                <input 
-                  type="text" 
+                <label className="form-label" htmlFor="new-client-name">Full Name</label>
+                <input
+                  id="new-client-name"
+                  type="text"
                   className="form-input" 
-                  placeholder="e.g. William Parker"
+                  placeholder="e.g. Amara Silva"
                   value={newClient.client_name}
                   onChange={(e) => setNewClient({ ...newClient, client_name: e.target.value })}
                   required
                 />
               </div>
               <div>
-                <label className="form-label">Email Address</label>
-                <input 
-                  type="email" 
-                  className="form-input" 
-                  placeholder="e.g. william@email.com"
+                <label className="form-label" htmlFor="new-client-email">Email Address (optional)</label>
+                <input
+                  id="new-client-email"
+                  type="email"
+                  className="form-input"
+                  placeholder="e.g. amara@example.com"
                   value={newClient.email}
                   onChange={(e) => setNewClient({ ...newClient, email: e.target.value })}
                 />
               </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                {CORE_FIELDS.map((key) => (
+                  <div key={key}>
+                    <label className="form-label" htmlFor={`new-client-${key}`}>{FIELD_LABEL[key]} (cm)</label>
+                    <input id={`new-client-${key}`} type="number" step="any" inputMode="decimal" className="form-input"
+                           value={newClient[key]} onChange={(e) => setNewClient({ ...newClient, [key]: e.target.value })} />
+                  </div>
+                ))}
+              </div>
+              <p style={{ fontSize: '11px', color: 'var(--text-muted)', margin: 0 }}>
+                The other drafting measurements are added later in the pattern wizard or on the Measurements page.
+              </p>
               <div>
-                <label className="form-label">Notes & Fit Preferences</label>
-                <textarea 
+                <label className="form-label" htmlFor="new-client-notes">Notes & Fit Preferences (optional)</label>
+                <textarea
+                  id="new-client-notes"
                   className="form-input"
                   style={{ height: '70px', padding: '8px 12px' }}
                   placeholder="e.g. Sensitive to tight collars."
@@ -356,7 +397,7 @@ export default function Customers() {
                 />
               </div>
               <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '10px' }}>
-                <button type="button" className="btn btn-outline" onClick={() => setShowAddModal(false)}>Cancel</button>
+                <button type="button" className="btn btn-outline" onClick={() => { setShowAddModal(false); setFormError(''); }}>Cancel</button>
                 <button type="submit" className="btn btn-primary" style={{ background: 'var(--text-accent)' }}>Save Customer</button>
               </div>
             </form>

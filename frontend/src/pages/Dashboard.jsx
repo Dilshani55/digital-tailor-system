@@ -20,7 +20,7 @@ export default function Dashboard() {
   }, []);
   const nestingPatterns = patterns.filter((p) => Number.isFinite(Number(p.nesting_summary?.waste_cm2)));
   const reusableAreaM2 = nestingPatterns.reduce((sum, p) => sum + Number(p.nesting_summary.waste_cm2), 0) / 10000;
-  const name = user?.full_name?.split(' ')[0] || 'Dilshani';
+  const name = user?.full_name?.split(' ')[0] || 'there';
   if (loading) return <LoadingSpinner message="Preparing your workspace..." />;
 
   const metrics = [
