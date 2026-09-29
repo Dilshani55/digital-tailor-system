@@ -42,8 +42,18 @@ def parse_args():
     parser.add_argument("--val-manifest", default="ai_training/data/final_multitask/val.jsonl", help="Path to val.jsonl")
     parser.add_argument("--output-dir", default="ai_training/data/training_runs/m12_full", help="Directory to store full training outputs")
     parser.add_argument("--smoke-test", action="store_true", default=False, help="Perform 1-epoch smoke run")
+    parser.add_argument("--focal-gamma", type=float, default=0.0, help="Focal-loss gamma (0 = class-weighted cross-entropy)")
     parser.add_argument("--resume", action="store_true", default=False, help="Resume training from last.pt checkpoint")
     return parser.parse_args()
+
+
+def _sha256(path):
+    import hashlib
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
 
 
 def set_seed(seed):
@@ -257,7 +267,7 @@ def run_training():
         freeze_backbone=True,
     ).to(device)
 
-    criterion = MaskedMultiTaskLoss(class_weights=class_weights_dict)
+    criterion = MaskedMultiTaskLoss(class_weights=class_weights_dict, focal_gamma=args.focal_gamma)
     metrics_tracker = MultiTaskMetricsTracker(class_to_idx, idx_to_class)
 
     history = []
@@ -474,6 +484,11 @@ def run_training():
         "pretrained_backbone": pretrained_path,
         "pretrained_backbone_identifier": config.get("pretrained_backbone_identifier", "yolov8n-cls"),
         "random_seed": seed,
+        "loss": "focal" if args.focal_gamma > 0 else "class_weighted_cross_entropy",
+        "focal_gamma": args.focal_gamma,
+        "config_path": args.config,
+        "train_manifest_sha256": _sha256(args.train_manifest),
+        "val_manifest_sha256": _sha256(args.val_manifest),
         "device": str(device),
         "total_duration_seconds": round(elapsed, 2),
         "stage_a_epochs_completed": min(stage_a_epochs, len([r for r in history if r["stage"] == "Stage_A"])),

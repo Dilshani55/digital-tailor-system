@@ -60,9 +60,10 @@ def compute_capped_class_weights(
 
 
 class MaskedMultiTaskLoss(nn.Module):
-    def __init__(self, class_weights: dict = None):
+    def __init__(self, class_weights: dict = None, focal_gamma: float = 0.0):
         super().__init__()
         self.class_weights = class_weights or {}
+        self.focal_gamma = float(focal_gamma)      # 0.0 == plain (class-weighted) cross-entropy
 
     def forward(
         self,
@@ -94,6 +95,10 @@ class MaskedMultiTaskLoss(nn.Module):
 
             # Unweighted per-sample CrossEntropy
             ce = F.cross_entropy(logits, targets, weight=c_w, reduction="none")  # [B]
+            if self.focal_gamma > 0:
+                # focal modulation (1 - p_t)^gamma, p_t from the UNWEIGHTED probability of the true class
+                p_t = torch.exp(-F.cross_entropy(logits, targets, reduction="none")).detach()
+                ce = ce * (1.0 - p_t).clamp(min=0.0) ** self.focal_gamma
 
             # Masked weighted loss
             active_weights = masks * weights

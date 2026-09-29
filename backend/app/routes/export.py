@@ -7,7 +7,7 @@ from app.models.design_image import DesignImage
 from app.models.session import Session
 from app.models.pdf_export import PdfExport
 from app.models.user import User
-from app.logic.nesting_algorithm import NestingAlgorithm, NestingError
+from app.logic.nesting_algorithm import estimate_fabric, NestingError
 from app.logic.pdf_generator import PDFGenerator
 from app.logic.parametric_engine import ParametricEngine
 from app.logic.ease_rules import apply_ease
@@ -50,6 +50,17 @@ def _stored_summary(pattern):
     }
 
 
+_SUMMARY_KEYS = (
+    "fabric_width_cm", "usable_width_cm", "cutting_mode", "fabric_length_cm", "exact_yardage_metres",
+    "yardage_metres", "total_pattern_piece_area_cm2", "usable_area_cm2", "waste_cm2", "waste_percent",
+    "utilisation_percent", "total_pieces", "purchasing_recommended_m", "handling_allowance_m",
+)
+
+
+def _summary_of(nesting):
+    return {key: nesting[key] for key in _SUMMARY_KEYS}
+
+
 # ── CALCULATE YARDAGE ─────────────────────────────────────────────────────────
 @export_bp.route("/yardage/<pattern_id>", methods=["POST"])
 @jwt_required()
@@ -80,38 +91,18 @@ def calculate_yardage(pattern_id):
 
     data         = request.get_json() or {}
     fabric_width = data.get("fabric_width_cm", 114)
-    cutting_mode = data.get("cutting_mode", "folded")
+    cutting_mode = data.get("cutting_mode", "auto")
+    fabric_type  = (getattr(pattern, "measurements_snapshot", None) or {}).get("fabric_type", "woven")
 
-    # Run nesting algorithm (fails explicitly if any piece cannot be placed)
+    # Geometry-aware nesting (fails explicitly if any piece cannot be placed)
     try:
-        nester  = NestingAlgorithm(
-            pattern_pieces  = pattern.pattern_coordinates,
-            fabric_width_cm = fabric_width,
-            cutting_mode    = cutting_mode
-        )
-        nesting = nester.run()
+        nesting = estimate_fabric(pattern.pattern_coordinates, fabric_width, cutting_mode, fabric_type)
     except NestingError as err:
         return _nesting_failure_response(err)
 
     # Update pattern with calculated yardage
     pattern.yardage_metres = nesting["yardage_metres"]
-    pattern.nesting_summary = {
-        key: nesting[key]
-        for key in (
-            "fabric_width_cm",
-            "usable_width_cm",
-            "cutting_mode",
-            "fabric_length_cm",
-            "exact_yardage_metres",
-            "yardage_metres",
-            "total_pattern_piece_area_cm2",
-            "usable_area_cm2",
-            "waste_cm2",
-            "waste_percent",
-            "utilisation_percent",
-            "total_pieces",
-        )
-    }
+    pattern.nesting_summary = _summary_of(nesting)
     pattern.save()
 
     return jsonify({
@@ -141,6 +132,9 @@ def calculate_yardage(pattern_id):
         "total_pieces":               nesting["total_pieces"],
         "placed_pieces":              nesting["placed_pieces"],
         "validation_checks":          nesting["validation_checks"],
+        "method":                     nesting["method"],
+        "assumptions":                nesting["assumptions"],
+        "mode_comparison":            nesting["mode_comparison"],
         "next_step": f"Call /api/export/pdf/{pattern_id} to generate PDF"
     }), 200
 
@@ -173,69 +167,58 @@ def generate_pdf(pattern_id):
             "errors": report.get("errors", []),
         }), 422
 
-    # Check yardage has been calculated
-    if pattern.yardage_metres == 0.0:
-        # Run nesting algorithm automatically if yardage hasn't been saved yet
-        try:
-            nester  = NestingAlgorithm(
-                pattern_pieces  = pattern.pattern_coordinates,
-                fabric_width_cm = 114
-            )
-            nesting = nester.run()
-        except NestingError as err:
-            return _nesting_failure_response(err)
+    snapshot = getattr(pattern, "measurements_snapshot", None) or {}
+    fabric_type = snapshot.get("fabric_type", "woven")
+
+    # Fabric layout: reuse the width / mode the user estimated with; otherwise estimate now (114 cm, auto).
+    summary = getattr(pattern, "nesting_summary", None) or {}
+    width = summary.get("fabric_width_cm") or 114
+    mode = summary.get("cutting_mode") or "auto"
+    try:
+        nesting = estimate_fabric(pattern.pattern_coordinates, width, mode, fabric_type)
+    except NestingError as err:
+        return _nesting_failure_response(err)
+    if not summary:
         pattern.yardage_metres = nesting["yardage_metres"]
+        pattern.nesting_summary = _summary_of(nesting)
         pattern.save()
 
     try:
-        # Get session data
         session    = pattern.session_id
-        meas_obj   = session.measurement_id
         image_obj  = session.image_id
-
+        features = {}
         if image_obj:
             image_obj.reload()
             features = image_obj.detected_features or {}
+
+        # The measurements the pattern was GENERATED from (not the profile as it is edited today).
+        if snapshot.get("canonical_cm"):
+            measurements = dict(snapshot["canonical_cm"], fabric_type=fabric_type,
+                                fit_preference=snapshot.get("fit_preference", "standard"))
         else:
-            features = {}
+            measurements, m_code, m_errors = ms.engine_measurements(session.measurement_id)
+            if m_errors:
+                return jsonify(ms.error_response_body(m_errors, code=m_code)), 422
 
-        # Same validated engine input as pattern generation (no partial/defaulted measurements).
-        measurements, m_code, m_errors = ms.engine_measurements(meas_obj)
-        if m_errors:
-            return jsonify(ms.error_response_body(m_errors, code=m_code)), 422
-
-
-        # Regenerate nesting data for PDF layout
-        try:
-            nester  = NestingAlgorithm(
-                pattern_pieces  = pattern.pattern_coordinates,
-                fabric_width_cm = 114
-            )
-            nesting = nester.run()
-        except NestingError as err:
-            return _nesting_failure_response(err)
-
-        # Rebuild pattern data for PDF (includes construction notes)
         engine       = ParametricEngine(measurements, features, design_spec=(pattern.design_spec or None))
         pattern_data = engine.generate()
 
-        # Set up output path
         output_dir = current_app.config["OUTPUT_FOLDER"]
         os.makedirs(output_dir, exist_ok=True)
         filename   = f"pattern_{pattern_id}.pdf"
         out_path   = os.path.join(output_dir, filename)
 
-        # Generate PDF
         generator = PDFGenerator(
             pattern_data = pattern_data,
             nesting_data = nesting,
             measurements = measurements,
             features     = features,
-            output_path  = out_path
+            output_path  = out_path,
+            fabric_name  = pattern.selected_fabric_name,
+            garment_title = f"{(pattern.garment_type or 'garment').title()} sewing pattern",
         )
         generator.generate()
 
-        # Save export record to MongoDB
         pdf_export = PdfExport(
             pattern_id = pattern,
             file_path  = filename
@@ -247,6 +230,8 @@ def generate_pdf(pattern_id):
             "export_id":  str(pdf_export.id),
             "pattern_id": pattern_id,
             "filename":   filename,
+            "pages":      generator.info["pages"],
+            "print_scale": "1:1 (print at 100% / Actual size)",
             "download_url": f"/api/export/download/{str(pdf_export.id)}"
         }), 201
 
