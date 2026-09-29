@@ -2,6 +2,10 @@ import { useState, useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { measurementsAPI } from '../services/api';
 import LoadingSpinner from '../components/LoadingSpinner';
+import { validateMeasurements, parseFieldErrors, buildPayload, CORE_FIELDS } from '../utils/measurementSchema';
+
+// The form's armhole field is keyed armhole_cm; the API field is armhole_depth_cm.
+const toApiValues = (form) => ({ ...form, armhole_depth_cm: form.armhole_cm });
 
 export default function Measurements() {
   const location = useLocation();
@@ -14,17 +18,18 @@ export default function Measurements() {
   const [success, setSuccess] = useState('');
 
   // 8 Measurement Input Fields state
+  // No prefilled example numbers: an empty field means "not measured", never a default.
   const [formData, setFormData] = useState({
-    client_name: 'Walk-in Customer',
-    bust_cm: 88,
-    waist_cm: 70,
-    hip_cm: 94,
-    height_cm: 162,
-    shoulder_cm: 12.0,
-    neck_cm: 36.0,
-    armhole_cm: 20.0,
-    sleeve_cm: 55.0,
-    garment_length_cm: 65.0,
+    client_name: '',
+    bust_cm: '',
+    waist_cm: '',
+    hip_cm: '',
+    height_cm: '',
+    shoulder_cm: '',
+    neck_cm: '',
+    armhole_cm: '',
+    sleeve_cm: '',
+    garment_length_cm: '',
     fabric_type: 'woven'
   });
 
@@ -69,18 +74,18 @@ export default function Measurements() {
   const loadProfileData = (profile) => {
     setFormData({
       client_name: profile.client_name || 'Customer Profile',
-      bust_cm: profile.bust_cm || 88,
-      waist_cm: profile.waist_cm || 70,
-      hip_cm: profile.hip_cm || 94,
-      height_cm: profile.height_cm || 162,
-      shoulder_cm: profile.shoulder_cm || 12.0,
-      neck_cm: profile.neck_cm || 36.0,
-      armhole_cm: profile.armhole_cm || 20.0,
-      sleeve_cm: profile.sleeve_cm || 55.0,
-      garment_length_cm: profile.garment_length_cm || 65.0,
+      bust_cm: profile.bust_cm ?? '',
+      waist_cm: profile.waist_cm ?? '',
+      hip_cm: profile.hip_cm ?? '',
+      height_cm: profile.height_cm ?? '',
+      shoulder_cm: profile.shoulder_cm ?? '',
+      neck_cm: profile.neck_cm ?? '',
+      armhole_cm: profile.armhole_depth_cm ?? profile.armhole_cm ?? '',
+      sleeve_cm: profile.sleeve_cm ?? '',
+      garment_length_cm: profile.garment_length_cm ?? '',
       fabric_type: profile.fabric_type || 'woven'
     });
-    if (profile.unit) setUnit(profile.unit);
+    setUnit('cm');   // stored profile values are canonical cm
   };
 
   const handleCustomerChange = (e) => {
@@ -112,7 +117,7 @@ export default function Measurements() {
     const updated = { ...formData };
     fieldsToConvert.forEach(f => {
       if (updated[f]) {
-        updated[f] = parseFloat((updated[f] * factor).toFixed(1));
+        updated[f] = parseFloat((updated[f] * factor).toFixed(2));
       }
     });
     
@@ -125,21 +130,17 @@ export default function Measurements() {
     setError('');
     setSuccess('');
 
-    // Convert values back to cm before sending to database if currently in inches
-    const factor = unit === 'in' ? 2.54 : 1.0;
+    // Validate what was typed (in the selected unit). Only the core four are required for a
+    // profile; the server converts inches to canonical cm and re-validates everything.
+    const localErrors = validateMeasurements(toApiValues(formData), unit, CORE_FIELDS);
+    if (Object.keys(localErrors).length > 0) {
+      setError(Object.values(localErrors).join(' '));
+      return;
+    }
     const payload = {
       client_name: formData.client_name,
-      bust_cm: parseFloat((formData.bust_cm * factor).toFixed(1)),
-      waist_cm: parseFloat((formData.waist_cm * factor).toFixed(1)),
-      hip_cm: parseFloat((formData.hip_cm * factor).toFixed(1)),
-      height_cm: parseFloat((formData.height_cm * factor).toFixed(1)),
-      shoulder_cm: parseFloat((formData.shoulder_cm * factor).toFixed(1)),
-      neck_cm: parseFloat((formData.neck_cm * factor).toFixed(1)),
-      armhole_cm: parseFloat((formData.armhole_cm * factor).toFixed(1)),
-      sleeve_cm: parseFloat((formData.sleeve_cm * factor).toFixed(1)),
-      garment_length_cm: parseFloat((formData.garment_length_cm * factor).toFixed(1)),
+      ...buildPayload(toApiValues(formData), unit),   // entered values only, in the selected unit
       fabric_type: formData.fabric_type,
-      unit: unit
     };
 
     try {
@@ -157,7 +158,8 @@ export default function Measurements() {
       const updatedList = await measurementsAPI.getAll();
       setProfiles(updatedList.data.measurements || []);
     } catch (err) {
-      setError(err.response?.data?.error || 'Failed to save measurements.');
+      const parsed = parseFieldErrors(err);
+      setError(Object.values(parsed).join(' '));
     }
   };
 
@@ -167,16 +169,16 @@ export default function Measurements() {
       if (found) loadProfileData(found);
     } else {
       setFormData({
-        client_name: 'Walk-in Customer',
-        bust_cm: 88,
-        waist_cm: 70,
-        hip_cm: 94,
-        height_cm: 162,
-        shoulder_cm: 12.0,
-        neck_cm: 36.0,
-        armhole_cm: 20.0,
-        sleeve_cm: 55.0,
-        garment_length_cm: 65.0,
+        client_name: '',
+        bust_cm: '',
+        waist_cm: '',
+        hip_cm: '',
+        height_cm: '',
+        shoulder_cm: '',
+        neck_cm: '',
+        armhole_cm: '',
+        sleeve_cm: '',
+        garment_length_cm: '',
         fabric_type: 'woven'
       });
     }

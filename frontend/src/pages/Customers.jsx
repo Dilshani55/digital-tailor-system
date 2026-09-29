@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, Plus, Filter, Edit2, Play, Trash2 } from 'lucide-react';
 import { measurementsAPI } from '../services/api';
+import { validateMeasurements, parseFieldErrors, buildPayload, CORE_FIELDS } from '../utils/measurementSchema';
 import LoadingSpinner from '../components/LoadingSpinner';
 
 export default function Customers() {
@@ -18,10 +19,10 @@ export default function Customers() {
     client_name: '',
     email: '',
     notes: '',
-    bust_cm: '88',
-    waist_cm: '70',
-    hip_cm: '94',
-    height_cm: '162',
+    bust_cm: '',
+    waist_cm: '',
+    hip_cm: '',
+    height_cm: '',
     fabric_type: 'woven'
   });
 
@@ -48,27 +49,30 @@ export default function Customers() {
   const handleAddSubmit = async (e) => {
     e.preventDefault();
     if (!newClient.client_name) return;
+    const localErrors = validateMeasurements(newClient, 'cm', CORE_FIELDS);
+    if (Object.keys(localErrors).length > 0) {
+      setError(Object.values(localErrors).join(' '));
+      return;
+    }
 
     try {
       await measurementsAPI.save({
         client_name: newClient.client_name,
         email: newClient.email || `${newClient.client_name.toLowerCase().replace(/\s+/g, '.')}@email.com`,
         notes: newClient.notes || 'No notes added.',
-        bust_cm: parseFloat(newClient.bust_cm),
-        waist_cm: parseFloat(newClient.waist_cm),
-        hip_cm: parseFloat(newClient.hip_cm),
-        height_cm: parseFloat(newClient.height_cm),
+        ...buildPayload(newClient, 'cm'),   // entered core measurements only (cm)
         fabric_type: newClient.fabric_type
       });
       setShowAddModal(false);
       setNewClient({
         client_name: '', email: '', notes: '',
-        bust_cm: '88', waist_cm: '70', hip_cm: '94', height_cm: '162',
+        bust_cm: '', waist_cm: '', hip_cm: '', height_cm: '',
         fabric_type: 'woven'
       });
       fetchProfiles();
     } catch (err) {
-      setError('Failed to save customer profile.');
+      const parsed = parseFieldErrors(err);
+      setError(Object.values(parsed).join(' ') || 'Failed to save customer profile.');
     }
   };
 
@@ -315,6 +319,11 @@ export default function Customers() {
           <div style={{ background: '#FFFFFF', borderRadius: '12px', width: '100%', maxWidth: '480px', padding: '24px', boxShadow: 'var(--shadow)' }}>
             <h2 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '16px' }}>Add Customer Profile</h2>
             <form onSubmit={handleAddSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {error && (
+                <div role="alert" data-testid="customer-form-error" style={{ background: '#FEE2E2', border: '1px solid #EF4444', color: '#991B1B', borderRadius: '6px', padding: '8px 10px', fontSize: '12px' }}>
+                  {error}
+                </div>
+              )}
               <div>
                 <label className="form-label">Full Name</label>
                 <input 

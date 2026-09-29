@@ -8,6 +8,9 @@ import FabricRecommendation from '../components/FabricRecommendation';
 import PredictionReview from '../components/PredictionReview';
 import PatternPreview from '../components/PatternPreview';
 import { supportReport } from '../utils/designSchema';
+import {
+  MEASUREMENT_FIELDS, validateMeasurements, convertDisplayValues, parseFieldErrors, buildPayload, rangeText,
+} from '../utils/measurementSchema';
 import { formatResult, CALCULATION_FAILED, NOT_CALCULATED as NOT_CALCULATED_LABEL } from '../utils/results';
 import {
   imagesAPI, measurementsAPI, patternsAPI, exportAPI, researchAPI
@@ -63,6 +66,9 @@ export default function Upload() {
   const [savedProfiles, setSavedProfiles] = useState([]);
   const [measurementId, setMeasurementId] = useState(null);
   const [meas, setMeas] = useState({ ...emptyMeas });
+  // Measurement input unit. Values typed are interpreted in this unit and converted to canonical cm by the server.
+  const [unit, setUnit] = useState('cm');
+  const [fieldErrors, setFieldErrors] = useState({});
 
   // Step 3 — Pattern & 2D Viewer state
   const [patternId,   setPatternId]   = useState(null);
@@ -116,6 +122,8 @@ export default function Upload() {
     if (location.state?.selectedProfile) {
       const p = location.state.selectedProfile;
       setMeas(profileToMeas(p));
+      setUnit('cm');            // stored profile values are canonical cm
+      setFieldErrors({});
       setMeasurementId(p.measurement_id);
     }
   }, [location.state]);
@@ -144,14 +152,24 @@ export default function Upload() {
   const handleSelectSavedClient = (profileId) => {
     if (!profileId) {
       setMeas({ ...emptyMeas });
+      setFieldErrors({});
       setMeasurementId(null);
       return;
     }
     const found = savedProfiles.find(p => p.measurement_id === profileId);
     if (found) {
       setMeas(profileToMeas(found));
+      setUnit('cm');            // stored profile values are canonical cm
+      setFieldErrors({});
       setMeasurementId(found.measurement_id);
     }
+  };
+
+  const handleUnitToggle = (newUnit) => {
+    if (newUnit === unit) return;
+    setMeas((prev) => ({ ...prev, ...convertDisplayValues(prev, unit, newUnit) }));
+    setUnit(newUnit);
+    setFieldErrors({});
   };
 
   // ── STEP 1: Upload + Analyse ───────────────────────────────────────────────
@@ -253,17 +271,13 @@ export default function Upload() {
       );
       return;
     }
-    const required = [
-      'bust_cm', 'waist_cm', 'hip_cm', 'height_cm',
-      'neck_cm', 'shoulder_cm', 'across_back_cm', 'back_waist_length_cm',
-      'armhole_depth_cm', 'garment_length_cm',
-      'bicep_cm', 'sleeve_cm', 'wrist_cm',
-    ];
-    for (const f of required) {
-      if (!meas[f] || String(meas[f]).trim() === '') {
-        setError(`Please enter your ${f.replace(/_cm$/, '').replace(/_/g, ' ')} measurement.`);
-        return;
-      }
+    // Instant client-side checks (required, numeric, positive, plausible range). The server
+    // re-validates everything, including cross-field relationships.
+    const localErrors = validateMeasurements(meas, unit);
+    if (Object.keys(localErrors).length > 0) {
+      setFieldErrors(localErrors);
+      setError('Please correct the highlighted measurements.');
+      return;
     }
     if (!features.garment_type && !confirmedAttributes?.garment_type) {
       setError('Please select a Garment Type for your pattern design.');
@@ -278,27 +292,21 @@ export default function Upload() {
     try {
       const res = await measurementsAPI.save({
         client_name: meas.client_name.trim() !== '' ? meas.client_name : 'Customer Profile',
-        bust_cm:   parseFloat(meas.bust_cm),
-        waist_cm:  parseFloat(meas.waist_cm),
-        hip_cm:    parseFloat(meas.hip_cm),
-        height_cm: parseFloat(meas.height_cm),
-        neck_cm: parseFloat(meas.neck_cm),
-        shoulder_cm: parseFloat(meas.shoulder_cm),
-        across_back_cm: parseFloat(meas.across_back_cm),
-        back_waist_length_cm: parseFloat(meas.back_waist_length_cm),
-        armhole_depth_cm: parseFloat(meas.armhole_depth_cm),
-        armhole_cm: parseFloat(meas.armhole_depth_cm),
-        garment_length_cm: parseFloat(meas.garment_length_cm),
-        bicep_cm: parseFloat(meas.bicep_cm),
-        sleeve_cm: parseFloat(meas.sleeve_cm),
-        wrist_cm: parseFloat(meas.wrist_cm),
+        ...buildPayload(meas, unit),     // only what was entered, in the selected unit
         fabric_type: meas.fabric_type,
         fit_preference: meas.fit_preference || 'standard',
       });
+      setFieldErrors({});
       setMeasurementId(res.data.measurement_id);
       setStep(3);
     } catch (err) {
-      setError(err.response?.data?.error || 'Failed to save measurements. Please try again.');
+      const parsed = parseFieldErrors(err);
+      if (parsed._form) {
+        setError(parsed._form);
+      } else {
+        setFieldErrors(parsed);
+        setError('Please correct the highlighted measurements.');
+      }
     } finally {
       setLoading(false);
     }
@@ -523,36 +531,62 @@ export default function Upload() {
                 />
               </div>
 
-              {[
-                ['bust_cm', 'Bust (cm)'],
-                ['waist_cm', 'Waist (cm)'],
-                ['hip_cm', 'Hip (cm)'],
-                ['height_cm', 'Height (cm)'],
-                ['neck_cm', 'Neck (cm)'],
-                ['shoulder_cm', 'Shoulder length (cm)'],
-                ['across_back_cm', 'Across-back width (cm)'],
-                ['back_waist_length_cm', 'Back waist length (cm)'],
-                ['armhole_depth_cm', 'Armhole depth (cm)'],
-                ['garment_length_cm', 'Garment length (cm)'],
-                ['bicep_cm', 'Bicep (cm)'],
-                ['sleeve_cm', 'Sleeve length (cm)'],
-                ['wrist_cm', 'Wrist (cm)'],
-              ].map(([key, label]) => (
-                <div className="form-field" key={key}>
-                  <label className="form-label">{label}</label>
-                  <input
-                    className="form-input"
-                    type="number"
-                    value={meas[key]}
-                    onFocus={() => setActiveField(key)}
-                    onChange={(e) => {
-                      setError('');
-                      setMeas({ ...meas, [key]: e.target.value });
-                    }}
-                    placeholder={`Enter ${label.toLowerCase()}`}
-                  />
+              <div className="form-field" style={{ gridColumn: '1/-1' }} data-testid="unit-toggle">
+                <label className="form-label">Measurement unit</label>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  {['cm', 'in'].map((u) => (
+                    <button
+                      key={u}
+                      type="button"
+                      className={unit === u ? 'btn btn-primary' : 'btn btn-outline'}
+                      style={{ height: '32px', fontSize: '12px' }}
+                      onClick={() => handleUnitToggle(u)}
+                      data-testid={`unit-${u}`}
+                    >
+                      {u === 'cm' ? 'Centimetres (cm)' : 'Inches (in)'}
+                    </button>
+                  ))}
+                  <small style={{ alignSelf: 'center', color: 'var(--text-secondary)' }}>
+                    Stored and calculated in cm; inches are converted (1 in = 2.54 cm).
+                  </small>
                 </div>
-              ))}
+              </div>
+
+              {MEASUREMENT_FIELDS.map((field) => {
+                const key = field.key;
+                const message = fieldErrors[key] || (key === 'armhole_depth_cm' ? fieldErrors.armhole_cm : undefined);
+                return (
+                  <div className="form-field" key={key}>
+                    <label className="form-label" htmlFor={`meas-${key}`}>{field.label} ({unit})</label>
+                    <input
+                      id={`meas-${key}`}
+                      className="form-input"
+                      type="number"
+                      step="any"
+                      value={meas[key]}
+                      aria-invalid={message ? 'true' : 'false'}
+                      style={message ? { borderColor: '#EF4444' } : undefined}
+                      onFocus={() => setActiveField(key)}
+                      onChange={(e) => {
+                        setError('');
+                        setFieldErrors((prev) => {
+                          if (!prev[key]) return prev;
+                          const { [key]: _removed, ...rest } = prev;
+                          return rest;
+                        });
+                        setMeas({ ...meas, [key]: e.target.value });
+                      }}
+                      placeholder={`Enter ${field.label.toLowerCase()}`}
+                    />
+                    <small style={{ color: 'var(--text-muted)', fontSize: '10px' }}>Plausible: {rangeText(field)}</small>
+                    {message && (
+                      <div role="alert" data-testid={`error-${key}`} style={{ color: '#B91C1C', fontSize: '11px', marginTop: '2px' }}>
+                        {message}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
 
               <div className="form-field">
                 <label className="form-label">Required fit</label>

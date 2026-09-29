@@ -11,6 +11,7 @@ from app.logic.nesting_algorithm import NestingAlgorithm, NestingError
 from app.logic.pdf_generator import PDFGenerator
 from app.logic.parametric_engine import ParametricEngine
 from app.logic.ease_rules import apply_ease
+from app.logic import measurement_schema as ms
 
 export_bp = Blueprint("export", __name__)
 
@@ -198,13 +199,10 @@ def generate_pdf(pattern_id):
         else:
             features = {}
 
-        measurements = {
-            "bust_cm":    meas_obj.bust_cm,
-            "waist_cm":   meas_obj.waist_cm,
-            "hip_cm":     meas_obj.hip_cm,
-            "height_cm":  meas_obj.height_cm,
-            "fabric_type": meas_obj.fabric_type
-        }
+        # Same validated engine input as pattern generation (no partial/defaulted measurements).
+        measurements, m_code, m_errors = ms.engine_measurements(meas_obj)
+        if m_errors:
+            return jsonify(ms.error_response_body(m_errors, code=m_code)), 422
 
 
         # Regenerate nesting data for PDF layout

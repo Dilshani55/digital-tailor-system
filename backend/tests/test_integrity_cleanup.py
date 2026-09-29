@@ -89,6 +89,20 @@ class TestDetectorHasNoFakeConfidence(unittest.TestCase):
             _, conf = yolo_detector.detect_features(self.img)
         self.assertIsNone(conf)
 
+    def test_features_are_native_types_so_mongodb_can_store_them(self):
+        """Regression: real photos produced np.bool_ which made /analyse fail with bson InvalidDocument."""
+        import numpy as np
+        import bson
+        from app.ai import yolo_detector
+        numpy_heavy = {"neckline": "round neck", "is_crop_top": np.bool_(True),
+                       "aspect": np.float32(0.8), "nested": {"flag": np.bool_(False)}, "n": np.int64(3)}
+        with patch.object(yolo_detector, "_heuristic_features", return_value=numpy_heavy),              patch.object(yolo_detector, "get_model", return_value=None):
+            features, conf = yolo_detector.detect_features(self.img)
+        bson.encode(features)                       # would raise InvalidDocument for numpy types
+        self.assertIs(type(features["is_crop_top"]), bool)
+        self.assertIs(type(features["nested"]["flag"]), bool)
+        self.assertIsNone(conf)
+
     def test_no_invented_constants_in_source(self):
         src = open(os.path.join(os.path.dirname(__file__), "..", "app", "ai", "yolo_detector.py"),
                    encoding="utf-8").read()

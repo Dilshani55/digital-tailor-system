@@ -1,4 +1,4 @@
-from mongoengine import Document, ReferenceField, FloatField, StringField, DateTimeField
+from mongoengine import Document, ReferenceField, FloatField, StringField, DateTimeField, DictField, IntField
 from datetime import datetime, timezone
 from app.models.user import User
 
@@ -10,27 +10,33 @@ class MeasurementProfile(Document):
     email = StringField()
     notes = StringField(default="No notes.")
 
-    # Core circumference / stature (engine still uses hip + height)
+    # ALL *_cm fields hold CANONICAL centimetres (see app/logic/measurement_schema.py).
+    # Core circumference / stature — required to create a profile.
     bust_cm = FloatField(required=True)
     waist_cm = FloatField(required=True)
     hip_cm = FloatField(required=True)
     height_cm = FloatField(required=True)
 
-    # Locked drafting measurements (workflow step 4)
-    neck_cm = FloatField(default=36.0)
-    shoulder_cm = FloatField(default=12.0)           # shoulder length
-    across_back_cm = FloatField(default=34.0)
-    back_waist_length_cm = FloatField(default=40.0)
-    armhole_cm = FloatField(default=20.0)            # legacy alias
-    armhole_depth_cm = FloatField(default=20.0)
-    garment_length_cm = FloatField(default=65.0)
-    bicep_cm = FloatField(default=28.0)
-    sleeve_cm = FloatField(default=55.0)             # sleeve length
-    wrist_cm = FloatField(default=16.0)
+    # Drafting measurements. None == not measured. There are NO defaults on purpose:
+    # a missing measurement must never be silently replaced by an invented value.
+    neck_cm = FloatField()
+    shoulder_cm = FloatField()           # shoulder length
+    across_back_cm = FloatField()
+    back_waist_length_cm = FloatField()
+    armhole_cm = FloatField()            # legacy alias, kept equal to armhole_depth_cm
+    armhole_depth_cm = FloatField()
+    garment_length_cm = FloatField()
+    bicep_cm = FloatField()
+    sleeve_cm = FloatField()             # sleeve length
+    wrist_cm = FloatField()
 
     # Fabric type/stretch + required fit
     fabric_type = StringField(default="woven")       # woven | knit | stretch-knit
     fit_preference = StringField(default="standard") # close | standard | loose
 
+    # What the user actually entered, per field: {field: {"value": number, "unit": "cm"|"in"}}
+    original_values = DictField(default=dict)
+    # Unit of the most recent submission (informational; per-field units are in original_values)
     unit = StringField(default="cm")
+    measurement_schema_version = IntField(default=1)
     created_at = DateTimeField(default=lambda: datetime.now(timezone.utc))

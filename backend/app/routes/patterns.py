@@ -10,34 +10,12 @@ from app.logic.fabric_recommendation import validate_fabric_id, get_fabric_by_id
 from app.logic.taxonomy_map import confirmed_to_cad_features
 from app.logic.pattern_validator import validate_pattern
 from app.logic import feature_schema
+from app.logic import measurement_schema as ms
 from datetime import datetime, timezone
 
 patterns_bp = Blueprint("patterns", __name__)
 
 MANUAL_IMAGE_IDS = {"manual", "manual-selection", "none"}
-
-
-def _profile_measurements(measurement):
-    """Build the measurement dict passed to ParametricEngine (locked + legacy fields)."""
-    return {
-        "bust_cm": measurement.bust_cm,
-        "waist_cm": measurement.waist_cm,
-        "hip_cm": measurement.hip_cm,
-        "height_cm": measurement.height_cm,
-        "neck_cm": getattr(measurement, "neck_cm", 36.0),
-        "shoulder_cm": getattr(measurement, "shoulder_cm", 12.0),
-        "across_back_cm": getattr(measurement, "across_back_cm", 34.0),
-        "back_waist_length_cm": getattr(measurement, "back_waist_length_cm", 40.0),
-        "armhole_depth_cm": getattr(measurement, "armhole_depth_cm", None)
-            or getattr(measurement, "armhole_cm", 20.0),
-        "armhole_cm": getattr(measurement, "armhole_cm", 20.0),
-        "garment_length_cm": getattr(measurement, "garment_length_cm", 65.0),
-        "bicep_cm": getattr(measurement, "bicep_cm", 28.0),
-        "sleeve_cm": getattr(measurement, "sleeve_cm", 55.0),
-        "wrist_cm": getattr(measurement, "wrist_cm", 16.0),
-        "fabric_type": measurement.fabric_type,
-        "fit_preference": getattr(measurement, "fit_preference", "standard"),
-    }
 
 
 # ── GENERATE PATTERN ──────────────────────────────────────────────────────────
@@ -183,6 +161,20 @@ def generate_pattern():
     design_image.design_spec = design_spec
     design_image.save()
 
+    # 3b. Body measurements: only validated, canonical-cm values may reach the engine.
+    #     Nothing is defaulted — missing/implausible values are field-level errors.
+    measurements_dict, m_code, m_errors = ms.engine_measurements(measurement)
+    if m_errors:
+        return jsonify(ms.error_response_body(m_errors, code=m_code)), 422
+    measurements_snapshot = {
+        "schema_version": ms.SCHEMA_VERSION,
+        "canonical_unit": ms.CANONICAL_UNIT,
+        "canonical_cm": {k: measurements_dict[k] for k in ms.FIELD_KEYS},
+        "original_values": getattr(measurement, "original_values", None) or {},
+        "fabric_type": measurements_dict["fabric_type"],
+        "fit_preference": measurements_dict["fit_preference"],
+    }
+
     # 4. Create session to track this generation
     session = Session(
         user_id        = user,
@@ -193,9 +185,7 @@ def generate_pattern():
     session.save()
 
     try:
-        # 5. Build measurement dict for engine (locked measurement set + legacy)
-        measurements_dict = _profile_measurements(measurement)
-
+        # 5. Engine input = the validated measurements from step 3b (never defaults).
         # 6–7. Run parametric engine with confirmed CAD features
         engine  = ParametricEngine(measurements_dict, features_dict)
         pattern = engine.generate()
@@ -220,6 +210,7 @@ def generate_pattern():
             selected_fabric_name= selected_fabric_name,
             validation_report   = validation,
             design_spec         = design_spec,
+            measurements_snapshot = measurements_snapshot,
             validation_passed   = bool(validation.get("passed")),
         )
         pattern_result.save()
@@ -265,6 +256,7 @@ def generate_pattern():
             ],
             "pattern_pieces":      pattern["pattern_pieces"],
             "measurements_used":   pattern["measurements_used"],
+            "measurements_snapshot": measurements_snapshot,
             "construction_notes":  pattern["construction_notes"],
             "next_step": (
                 "Call /api/export/yardage/{id} to calculate fabric needed"

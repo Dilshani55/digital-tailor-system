@@ -127,7 +127,7 @@ GARMENT_TYPES = {
 }
 
 
-def detect_features(image_path):
+def _detect_features_raw(image_path):
     """
     Legacy provisional feature extraction (NOT the deployed multi-task classifier).
 
@@ -244,6 +244,23 @@ def detect_features(image_path):
         features = _heuristic_features(image_path)
         features.setdefault("source", "cv_heuristic")
         return features, None
+
+
+def _to_native(obj):
+    """NumPy scalars -> plain Python types so the result is JSON/BSON-serialisable (MongoDB rejects np.bool_)."""
+    if isinstance(obj, dict):
+        return {str(k): _to_native(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_to_native(v) for v in obj]
+    if isinstance(obj, np.generic):
+        return obj.item()
+    return obj
+
+
+def detect_features(image_path):
+    """See _detect_features_raw. Output is always made of native Python types."""
+    features, confidence = _detect_features_raw(image_path)
+    return _to_native(features), _to_native(confidence)
 
 
 def _heuristic_features(image_path):

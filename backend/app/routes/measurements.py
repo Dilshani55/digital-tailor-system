@@ -2,51 +2,70 @@ from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from app.models.user import User
 from app.models.measurement import MeasurementProfile
+from app.logic import measurement_schema as ms
 
 measurements_bp = Blueprint("measurements", __name__)
 
-LOCKED_FLOAT_FIELDS = [
-    "bust_cm", "waist_cm", "hip_cm", "height_cm",
-    "neck_cm", "shoulder_cm", "across_back_cm", "back_waist_length_cm",
-    "armhole_cm", "armhole_depth_cm", "garment_length_cm",
-    "bicep_cm", "sleeve_cm", "wrist_cm",
-]
 
-FIT_OPTIONS = {"close", "standard", "loose"}
-FABRIC_OPTIONS = {"woven", "knit", "stretch-knit"}
+def _canonical_of(profile):
+    """Canonical-cm values currently stored on a profile (None where not measured)."""
+    out = {}
+    for key in ms.FIELD_KEYS:
+        value = getattr(profile, key, None)
+        if key == "armhole_depth_cm" and value is None:
+            value = getattr(profile, "armhole_cm", None)
+        out[key] = value
+    return out
 
 
 def _profile_dict(profile):
-    return {
+    canonical = _canonical_of(profile)
+    missing = ms.missing_fields(canonical)
+    payload = {
         "client_name": profile.client_name,
         "email": profile.email,
         "notes": profile.notes,
-        "bust_cm": profile.bust_cm,
-        "waist_cm": profile.waist_cm,
-        "hip_cm": profile.hip_cm,
-        "height_cm": profile.height_cm,
-        "neck_cm": getattr(profile, "neck_cm", None),
-        "shoulder_cm": getattr(profile, "shoulder_cm", None),
-        "across_back_cm": getattr(profile, "across_back_cm", None),
-        "back_waist_length_cm": getattr(profile, "back_waist_length_cm", None),
-        "armhole_cm": getattr(profile, "armhole_cm", None),
-        "armhole_depth_cm": getattr(profile, "armhole_depth_cm", None)
-            or getattr(profile, "armhole_cm", None),
-        "garment_length_cm": getattr(profile, "garment_length_cm", None),
-        "bicep_cm": getattr(profile, "bicep_cm", None),
-        "sleeve_cm": getattr(profile, "sleeve_cm", None),
-        "wrist_cm": getattr(profile, "wrist_cm", None),
         "fabric_type": profile.fabric_type,
         "fit_preference": getattr(profile, "fit_preference", "standard"),
         "unit": profile.unit,
+        "canonical_unit": ms.CANONICAL_UNIT,
+        "original_values": getattr(profile, "original_values", None) or {},
+        "complete": not missing,
+        "missing_fields": missing,
+        "measurement_schema_version": getattr(profile, "measurement_schema_version", 1),
     }
+    payload.update(canonical)
+    payload["armhole_cm"] = canonical["armhole_depth_cm"]   # legacy alias for older clients
+    return payload
 
 
-def _float_or_default(data, key, default):
-    val = data.get(key, default)
-    if val is None or val == "":
-        return float(default)
-    return float(val)
+def _merge(errors, extra):
+    for key, items in extra.items():
+        errors.setdefault(key, []).extend(items)
+
+
+def _bad_request(errors):
+    return jsonify(ms.error_response_body(errors)), 400
+
+
+def _choice_errors(data, errors, existing=None):
+    """Validate fabric_type / fit_preference when provided (or defaulting on create)."""
+    fabric = data.get("fabric_type", None if existing else "woven")
+    fit = data.get("fit_preference", None if existing else "standard")
+    if fabric is not None and fabric not in ms.FABRIC_TYPES:
+        errors["fabric_type"] = [{"code": "INVALID_CHOICE",
+                                 "message": f"fabric_type must be one of {', '.join(ms.FABRIC_TYPES)}."}]
+    if fit is not None and fit not in ms.FIT_PREFERENCES:
+        errors["fit_preference"] = [{"code": "INVALID_CHOICE",
+                                    "message": f"fit_preference must be one of {', '.join(ms.FIT_PREFERENCES)}."}]
+    return fabric, fit
+
+
+# ── SCHEMA (fields, canonical unit, ranges) ───────────────────────────────────
+@measurements_bp.route("/schema", methods=["GET"])
+@jwt_required()
+def measurement_schema():
+    return jsonify(ms.schema_payload()), 200
 
 
 # ── SAVE MEASUREMENT PROFILE ──────────────────────────────────────────────────
@@ -59,51 +78,44 @@ def save_measurements():
     if not user:
         return jsonify({"error": "User not found"}), 404
 
-    data = request.get_json() or {}
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "Request body must be a JSON object.",
+                        "error_code": "INVALID_BODY"}), 400
 
-    required = [
-        "bust_cm", "waist_cm", "hip_cm", "height_cm",
-        "neck_cm", "shoulder_cm", "across_back_cm", "back_waist_length_cm",
-        "armhole_depth_cm", "garment_length_cm",
-        "bicep_cm", "sleeve_cm", "wrist_cm",
-    ]
-    for field in required:
-        if field not in data or data[field] is None or str(data[field]).strip() == "":
-            return jsonify({"error": f"{field} is required"}), 400
+    errors = {}
+    unit, unit_err = ms.normalize_unit(data.get("unit"))
+    if unit_err:
+        errors["unit"] = [unit_err]
+        return _bad_request(errors)
 
-    fabric_type = data.get("fabric_type", "woven")
-    if fabric_type not in FABRIC_OPTIONS:
-        return jsonify({"error": f"fabric_type must be one of {sorted(FABRIC_OPTIONS)}"}), 400
+    canonical, original, parse_errors = ms.convert_input(data, unit)
+    _merge(errors, parse_errors)
+    fabric_type, fit_preference = _choice_errors(data, errors)
 
-    fit_preference = data.get("fit_preference", "standard")
-    if fit_preference not in FIT_OPTIONS:
-        return jsonify({"error": f"fit_preference must be one of {sorted(FIT_OPTIONS)}"}), 400
+    # A profile needs the core four; the remaining nine are needed to generate a pattern.
+    for key in ms.CORE_FIELDS:
+        if key not in canonical and key not in errors:
+            errors[key] = [{"code": "REQUIRED", "message": f"{ms.LABELS[key]} is required."}]
 
-    armhole_depth = float(data["armhole_depth_cm"])
+    _merge(errors, ms.validate_canonical(canonical))
+    if errors:
+        return _bad_request(errors)
 
     profile = MeasurementProfile(
         user_id     = user,
-        client_name = data.get("client_name", "Customer Profile"),
+        client_name = data.get("client_name") or "Customer Profile",
         email       = data.get("email"),
         notes       = data.get("notes", "No notes."),
-        bust_cm     = float(data["bust_cm"]),
-        waist_cm    = float(data["waist_cm"]),
-        hip_cm      = float(data["hip_cm"]),
-        height_cm   = float(data["height_cm"]),
-        neck_cm     = float(data["neck_cm"]),
-        shoulder_cm = float(data["shoulder_cm"]),
-        across_back_cm = float(data["across_back_cm"]),
-        back_waist_length_cm = float(data["back_waist_length_cm"]),
-        armhole_cm  = float(data.get("armhole_cm", armhole_depth)),
-        armhole_depth_cm = armhole_depth,
-        garment_length_cm = float(data["garment_length_cm"]),
-        bicep_cm    = float(data["bicep_cm"]),
-        sleeve_cm   = float(data["sleeve_cm"]),
-        wrist_cm    = float(data["wrist_cm"]),
         fabric_type = fabric_type,
         fit_preference = fit_preference,
-        unit        = data.get("unit", "cm")
+        original_values = original,
+        unit        = unit,
+        measurement_schema_version = ms.SCHEMA_VERSION,
+        **canonical,
     )
+    if "armhole_depth_cm" in canonical:
+        profile.armhole_cm = canonical["armhole_depth_cm"]
     profile.save()
 
     return jsonify({
@@ -202,7 +214,36 @@ def update_measurement(measurement_id):
     if str(profile.user_id.id) != current_user_id:
         return jsonify({"error": "Unauthorized"}), 403
 
-    data = request.get_json() or {}
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "Request body must be a JSON object.",
+                        "error_code": "INVALID_BODY"}), 400
+
+    errors = {}
+    unit, unit_err = ms.normalize_unit(data.get("unit"))
+    if unit_err:
+        return _bad_request({"unit": [unit_err]})
+
+    canonical_new, original_new, parse_errors = ms.convert_input(data, unit)
+    _merge(errors, parse_errors)
+    fabric_type, fit_preference = _choice_errors(data, errors, existing=profile)
+
+    # Validate the MERGED profile, but only report problems that involve edited fields.
+    merged = {k: v for k, v in _canonical_of(profile).items() if v is not None}
+    merged.update(canonical_new)
+    _merge(errors, ms.validate_canonical(merged, only=set(canonical_new)))
+    if errors:
+        return _bad_request(errors)
+
+    for key, value in canonical_new.items():
+        setattr(profile, key, value)
+    if "armhole_depth_cm" in canonical_new:
+        profile.armhole_cm = canonical_new["armhole_depth_cm"]
+    if original_new:
+        stored = dict(getattr(profile, "original_values", None) or {})
+        stored.update(original_new)
+        profile.original_values = stored
+        profile.unit = unit
 
     if "client_name" in data:
         profile.client_name = data["client_name"]
@@ -210,27 +251,10 @@ def update_measurement(measurement_id):
         profile.email = data["email"]
     if "notes" in data:
         profile.notes = data["notes"]
-
-    for field in LOCKED_FLOAT_FIELDS:
-        if field in data and data[field] is not None and str(data[field]).strip() != "":
-            setattr(profile, field, float(data[field]))
-
-    # Keep armhole_cm in sync when only armhole_depth_cm is sent
-    if "armhole_depth_cm" in data and "armhole_cm" not in data:
-        profile.armhole_cm = float(data["armhole_depth_cm"])
-
-    if "fabric_type" in data:
-        if data["fabric_type"] not in FABRIC_OPTIONS:
-            return jsonify({"error": f"fabric_type must be one of {sorted(FABRIC_OPTIONS)}"}), 400
-        profile.fabric_type = data["fabric_type"]
-
-    if "fit_preference" in data:
-        if data["fit_preference"] not in FIT_OPTIONS:
-            return jsonify({"error": f"fit_preference must be one of {sorted(FIT_OPTIONS)}"}), 400
-        profile.fit_preference = data["fit_preference"]
-
-    if "unit" in data:
-        profile.unit = data["unit"]
+    if fabric_type is not None:
+        profile.fabric_type = fabric_type
+    if fit_preference is not None:
+        profile.fit_preference = fit_preference
 
     profile.save()
     return jsonify({
