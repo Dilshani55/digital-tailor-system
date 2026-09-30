@@ -63,4 +63,25 @@ Not validated (limits of the method): how the garment fits a real body, drape, s
 
 ## Printable PDF (`logic/pdf_generator.py`)
 
-Cover with printing instructions (100 % / Actual size) and a **5 cm calibration square**; measurements, fabric estimate and piece table; cutting layout (fit to page, marked not-to-scale); then the pattern at **true 1:1** on A4 tiles (printable area 19.0 × 27.7 cm, 1 cm overlap, corner crop marks, tile labels A1, A2 …, neighbour hints, page numbers; blank tiles omitted). Verified in tests by reading the PDF's vector geometry (a 10 × 15 cm piece is drawn 283.46 × 425.20 pt; the calibration square is 141.73 pt).
+Built **only from stored data** — the validated pieces saved with the pattern (the ones the user saw and that were
+nested), the measurement snapshot, and the drafting metadata saved at generation time; the pattern is never
+re-drafted for the PDF.
+
+1. **Project summary** – customer name and contact/reference, design/project name, pattern ID, generation date,
+   the customer's uploaded design image, the confirmed garment type / neckline / sleeve length / sleeve style with
+   the AI prediction and confidence and whether the user confirmed or corrected it, fabric, fit and ease, and the
+   36"/45"/60" fabric summary.
+2. **Printing instructions** (100 % / Actual size, never fit to page) and a **5 cm calibration square**.
+3. **Measurements** – every value used (cm), the value exactly as entered (with its unit), and the drafting values,
+   each marked **DERIVED** (from the measurements) or **ASSUMPTION** (project constant, e.g. ease, bust point).
+4. **Pieces** – cut quantity, fold, per-edge seam allowances, cut size; sewing notes.
+5. **Fabric requirement** for 36", 45" and 60": base length, allowance, recommended purchase, utilisation, waste,
+   the selected width, and the layout diagram of each width (not to scale).
+6. **The pattern at true 1:1** on A4 tiles (printable area 19.0 × 27.7 cm, 1 cm overlap, corner crop marks, tile
+   labels A1, A2 …, neighbour hints). Each piece: cutting line, dashed seam line, grainline arrow, fold line, darts,
+   notches, name, cut quantity, seam allowance, cut size, pattern ID and key points (NP, SP, UA, W, CROWN, and
+   BP marked "derived"). The calibration square is also placed on the pattern sheet.
+
+Footer on every page: page x of N, pattern ID, customer, units/scale (cm, 1:1), creation timestamp. Scale is
+verified in tests by reading the PDF vector geometry (a 10 × 15 cm piece is drawn 283.46 × 425.20 pt; the
+calibration square is 141.73 pt).

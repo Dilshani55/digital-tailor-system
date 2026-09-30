@@ -70,3 +70,16 @@ Each milestone records what changed, the commit and the tests that were actually
   comparison table and the selected layout.
 * Real-stack E2E (blouse, medium): 36" 1.6 m, 45" 1.1 m, 60" 0.9 m.
 * Tests: backend 371 passed · frontend 120 passed · E2E 6 passed.
+
+## Milestone 6 — complete printable customer PDF
+
+* The PDF is built from stored data only; the re-draft at PDF time was removed. Drafting metadata (block, ease,
+  construction notes) and an optional project name are saved with the pattern at generation.
+* New pages: project summary (customer, contact, project, pattern ID, dates, embedded design image, confirmed
+  features with AI prediction/confidence and corrections, fabric, fit/ease, width summary), printing page with the
+  5 cm square, measurement page (used cm + as entered + DERIVED/ASSUMPTION drafting values), pieces + notes,
+  36"/45"/60" requirement with three layouts; piece labels add cut size, pattern ID and key points; footer carries
+  page, pattern ID, customer, units/scale, timestamp.
+* Real-stack E2E: the downloaded PDF (19 pages) contains the customer, the real M13 provenance, the embedded upload
+  and the three widths.
+* Tests: backend 371 passed (PDF: never re-drafted, complete content incl. embedded image, entered values, footer).

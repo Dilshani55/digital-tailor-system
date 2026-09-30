@@ -12,7 +12,6 @@ from app.logic.nesting_algorithm import estimate_fabric, NestingError, STANDARD_
 VALIDATION_FAILED_MESSAGE = ("Pattern validation failed. Fabric estimation and PDF export are unavailable "
                              "until the pattern is corrected.")
 from app.logic.pdf_generator import PDFGenerator
-from app.logic.parametric_engine import ParametricEngine
 from app.logic import measurement_schema as ms
 
 export_bp = Blueprint("export", __name__)
@@ -63,26 +62,6 @@ def _summary_of(nesting):
     return {key: nesting[key] for key in _SUMMARY_KEYS}
 
 
-def _geometry_differs(regenerated, stored, tol_cm=0.01):
-    """True if the pieces differ in name, count or cut size (used to detect drafting-code drift)."""
-    def sig(pieces):
-        out = []
-        for p in pieces:
-            box = p.get("cut_bounding_box") or p.get("bounding_box") or {}
-            out.append((p.get("name"), p.get("cut_count"), box.get("width_cm"), box.get("height_cm")))
-        return out
-    a, b = sig(regenerated), sig(stored)
-    if len(a) != len(b):
-        return True
-    for (na, ca, wa, ha), (nb, cb, wb, hb) in zip(a, b):
-        if na != nb or ca != cb:
-            return True
-        for x, y in ((wa, wb), (ha, hb)):
-            if x is None or y is None or abs(float(x) - float(y)) > tol_cm:
-                return True
-    return False
-
-
 def width_estimate(pieces, width_cm, width_in, cutting_mode, fabric_type):
     """
     One row of the standard-width comparison, computed from the stored pattern pieces by the real nesting.
@@ -116,6 +95,10 @@ def width_estimate(pieces, width_cm, width_in, cutting_mode, fabric_type):
         warnings=warnings,
     )
     return row, n
+
+
+def _text_or_none(value):
+    return value if isinstance(value, str) and value.strip() else None
 
 
 def _row(result):
@@ -292,8 +275,13 @@ def generate_pdf(pattern_id):
 
     # Fabric layout: reuse the width / mode the user estimated with; otherwise estimate now (114 cm, auto).
     summary = getattr(pattern, "nesting_summary", None) or {}
-    width = summary.get("fabric_width_cm") or 114
+    width = summary.get("fabric_width_cm") or 114.3
     mode = summary.get("cutting_mode") or "auto"
+    stored_rows = getattr(pattern, "width_estimates", None)
+    stored_rows = stored_rows if isinstance(stored_rows, list) else []
+    requested_mode = (stored_rows[0].get("requested_cutting_mode") if stored_rows else None) or "auto"
+    if requested_mode not in ("auto", "folded", "open"):
+        requested_mode = "auto"
     try:
         nesting = estimate_fabric(pattern.pattern_coordinates, width, mode, fabric_type)
     except NestingError as err:
@@ -320,15 +308,47 @@ def generate_pdf(pattern_id):
             if m_errors:
                 return jsonify(ms.error_response_body(m_errors, code=m_code)), 422
 
-        engine       = ParametricEngine(measurements, features, design_spec=(pattern.design_spec or None))
-        pattern_data = engine.generate()
-        # Print EXACTLY the stored pieces - the ones the user saw, that passed validation and that the
-        # fabric estimate was nested with. Regeneration only supplies the ease profile and sewing notes.
-        # If the drafting code has changed since the pattern was saved, say so in the server log.
-        if _geometry_differs(pattern_data.get("pattern_pieces") or [], pattern.pattern_coordinates or []):
-            current_app.logger.warning(f"Pattern {pattern_id}: regenerated geometry differs from the stored "
-                                       f"pattern; the PDF uses the stored pieces.")
-        pattern_data = dict(pattern_data, pattern_pieces=pattern.pattern_coordinates)
+        # Everything below is STORED data: the validated pieces the user saw (and that were nested), plus the
+        # drafting metadata saved at generation time. The pattern is NOT re-drafted for the PDF.
+        info = getattr(pattern, "drafting_info", None) or {}
+        base_block = getattr(pattern, "base_block", None) or {}
+        pattern_data = {
+            "pattern_pieces": pattern.pattern_coordinates,
+            "design_attributes": (pattern.design_spec or {}).get("attributes") or info.get("design_attributes") or {},
+            "drafting_block": info.get("drafting_block") or base_block.get("block") or {},
+            "measurements_used": info.get("measurements_used") or {"ease_profile": base_block.get("ease") or {}},
+            "construction_notes": info.get("construction_notes") or [],
+        }
+
+        # all three standard widths, laid out from the same stored pieces (layout only - pieces unchanged)
+        rows, layouts = [], {}
+        for w, w_in in zip(STANDARD_FABRIC_WIDTHS, STANDARD_WIDTHS_IN):
+            res = width_estimate(pattern.pattern_coordinates, w, w_in, requested_mode, fabric_type)
+            row = _row(res)
+            row["selected"] = abs(w - float(width)) < 1e-6
+            rows.append({k: v for k, v in row.items() if k not in ("placed_pieces", "validation_checks")})
+            if isinstance(res, tuple):
+                layouts[w] = res[1]
+
+        profile = getattr(session, "measurement_id", None)
+        image_path = None
+        if image_obj and getattr(image_obj, "file_path", None) and image_obj.file_path != "manual_selection.png":
+            candidate = os.path.join(current_app.config["UPLOAD_FOLDER"], os.path.basename(image_obj.file_path))
+            image_path = candidate if os.path.exists(candidate) else None
+        generated = getattr(pattern, "generated_at", None)
+        context = {
+            "pattern_id": str(pattern.id),
+            "customer_name": _text_or_none(getattr(profile, "client_name", None)) if profile else None,
+            "customer_contact": _text_or_none(getattr(profile, "email", None)) if profile else None,
+            "project_name": _text_or_none(getattr(pattern, "project_name", None)),
+            "generated_at": generated.strftime("%Y-%m-%d %H:%M UTC") if generated else None,
+            "image_path": image_path,
+            "design_spec": pattern.design_spec or {},
+            "original_values": snapshot.get("original_values") or {},
+            "drafting_values": base_block.get("drafting_values") or [],
+            "width_estimates": rows,
+            "width_layouts": layouts,
+        }
 
         output_dir = current_app.config["OUTPUT_FOLDER"]
         os.makedirs(output_dir, exist_ok=True)
@@ -343,6 +363,7 @@ def generate_pdf(pattern_id):
             output_path  = out_path,
             fabric_name  = pattern.selected_fabric_name,
             garment_title = f"{(pattern.garment_type or 'garment').title()} sewing pattern",
+            context      = context,
         )
         generator.generate()
 

@@ -1,12 +1,18 @@
 """
 Printable sewing-pattern PDF (ReportLab).
 
-Pages
-    1        Cover: design, status, PRINTING INSTRUCTIONS (100 % / Actual Size) and a 5 cm calibration square
-    2        Measurements, design summary, fabric estimate, piece list, seam allowances
-    3        Fabric cutting layout (from the geometry-aware nesting; drawn to fit the page, NOT to scale)
-    4..N     The pattern at TRUE 1:1 SCALE, tiled onto A4 sheets with an overlap, corner crop marks,
+Pages (everything is drawn from STORED data: the validated pieces, the measurement snapshot and the saved
+estimates - the pattern is never re-drafted here)
+    1        Project summary: customer, design/project name, pattern ID, dates, the customer's design image,
+             confirmed features with the AI prediction/confidence and any user correction, fabric, fit/ease,
+             fabric requirement summary
+    2        PRINTING INSTRUCTIONS (100 % / Actual Size) and a 5 cm calibration square
+    3        Measurements (used cm values and what was entered) + derived values / assumptions, each marked
+    4        Piece list with seam allowances and cut sizes; sewing notes
+    5        Fabric requirement for 36", 45" and 60" with the layout for each (drawn to fit, NOT to scale)
+    6..N     The pattern at TRUE 1:1 SCALE, tiled onto A4 sheets with an overlap, corner crop marks,
              tile labels (e.g. "A1"), neighbour hints and page numbers. Blank tiles are omitted.
+Footer on every page: page x of N, pattern ID, customer, units/scale, creation timestamp.
 
 Every piece shows: cutting line (solid), seam line (dashed), grainline, fold line, darts, notches,
 name, cut quantity, "cut on fold" and the seam allowance. All coordinates are centimetres and are
@@ -48,6 +54,10 @@ INSTRUCTIONS = [
     "Cut-on-fold pieces are printed as half pieces: place the FOLD edge on the fold of the cloth.",
     "Keep the grainline arrow parallel to the selvedge of the fabric.",
 ]
+
+
+KEY_POINTS = {"NECK_POINT": "NP", "SHOULDER_POINT": "SP", "UNDERARM": "UA", "WAIST_SIDE": "W",
+              "BUST_POINT": "BP (derived)", "CROWN": "CROWN", "UNDERARM_LEFT": "UA", "UNDERARM_RIGHT": "UA"}
 
 
 def _fmt(v, nd=1):
@@ -116,12 +126,16 @@ def tile_label(col, row):
 
 class PDFGenerator:
     def __init__(self, pattern_data, nesting_data, measurements, features, output_path,
-                 design_spec=None, fabric_name=None, garment_title=None):
+                 design_spec=None, fabric_name=None, garment_title=None, context=None):
         self.pattern = pattern_data
         self.nesting = nesting_data or {}
         self.meas = measurements or {}
         self.features = features or {}
         self.design_spec = design_spec or {}
+        # customer / project / provenance / width comparison (all optional; missing values print as "-")
+        self.ctx = dict(context or {})
+        self.ctx.setdefault("design_spec", self.design_spec)
+        self.created_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
         self.fabric_name = fabric_name
         self.out = output_path
         self.pieces = pattern_data["pattern_pieces"]
@@ -134,7 +148,8 @@ class PDFGenerator:
         self.placements, self.sheet_w, self.sheet_h = layout_sheet(self.pieces)
         self.cols, self.rows = tile_grid(self.sheet_w, self.sheet_h)
         self.tiles = [(cx, ry) for ry in range(self.rows) for cx in range(self.cols) if self._tile_has_content(cx, ry)]
-        self.total_pages = 3 + len(self.tiles)
+        self.front_pages = 5
+        self.total_pages = self.front_pages + len(self.tiles)
         self.page_no = 0
         self.info = {}
 
@@ -144,8 +159,10 @@ class PDFGenerator:
         self.page_no += 1
         c.setFont("Helvetica", 7.5)
         c.setFillColor(GRAY)
-        c.drawCentredString(PAGE_W / 2, 0.45 * CM, f"Page {self.page_no} of {self.total_pages}   |   "
-                            "Print at 100% - Actual Size   |   Prototype pattern - check fit with a muslin before cutting")
+        parts = [f"Page {self.page_no} of {self.total_pages}", f"Pattern {self.ctx.get('pattern_id') or '-'}",
+                 f"Customer {self.ctx.get('customer_name') or '-'}", "Units cm - scale 1:1 - print at 100% Actual size",
+                 f"Created {self.created_at}"]
+        c.drawCentredString(PAGE_W / 2, 0.45 * CM, "   |   ".join(parts))
 
     def _title(self, text, sub=None):
         c = self.c
@@ -182,156 +199,282 @@ class PDFGenerator:
         c.setFont("Helvetica", 6.5)
         c.drawCentredString(x + CALIBRATION_CM * CM / 2, y + CALIBRATION_CM * CM / 2 - 7, "must measure exactly")
 
-    # ── page 1 ──────────────────────────────────────────────────────────────
-    def _page_cover(self):
-        c = self.c
-        self._title(self.title, "Printable sewing pattern - 1:1 scale, tiled A4")
-        attrs = self.pattern.get("design_attributes", {})
-        y = PAGE_H - 4.2 * CM
-        for label, value in (("Garment", attrs.get("garment_type")), ("Neckline", attrs.get("neckline_type")),
-                             ("Sleeve length", attrs.get("sleeve_length")), ("Sleeve style", attrs.get("sleeve_style")),
-                             ("Construction block", self.pattern.get("drafting_block", {}).get("block_label")),
-                             ("Fabric", self.fabric_name), ("Generated", datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"))):
-            self._text(2 * CM, y, f"{label}:", 9, True)
-            self._text(6 * CM, y, str(value if value is not None else "-").replace("-", " ").title()
-                       if label in ("Garment", "Neckline", "Sleeve length", "Sleeve style") else str(value or "-"), 9)
-            y -= 0.55 * CM
-
-        # printing instructions
-        c.setFillColor(LIGHT)
-        c.setStrokeColor(RED)
-        c.setLineWidth(1.5)
-        box_top = y - 0.3 * CM
-        c.rect(2 * CM, box_top - 7.6 * CM, PAGE_W - 4 * CM, 7.6 * CM, fill=1, stroke=1)
-        self._text(2.4 * CM, box_top - 0.7 * CM, "PRINTING INSTRUCTIONS  -  PRINT AT 100 % (ACTUAL SIZE)", 11, True, RED)
-        yy = box_top - 1.4 * CM
-        for i, line in enumerate(INSTRUCTIONS, 1):
-            words, cur, lines = line.split(), "", []
-            for w in words:
-                if c.stringWidth(cur + " " + w, "Helvetica", 8.5) > PAGE_W - 5.4 * CM:
-                    lines.append(cur)
-                    cur = w
-                else:
-                    cur = (cur + " " + w).strip()
+    # ── shared page furniture ───────────────────────────────────────────────
+    def _wrap(self, text, width_pt, size=8.5, font="Helvetica"):
+        words, cur, lines = str(text).split(), "", []
+        for w in words:
+            if self.c.stringWidth((cur + " " + w).strip(), font, size) > width_pt:
+                lines.append(cur)
+                cur = w
+            else:
+                cur = (cur + " " + w).strip()
+        if cur:
             lines.append(cur)
-            for j, ln in enumerate(lines):
-                self._text(2.4 * CM if j == 0 else 3.0 * CM, yy, (f"{i}. " if j == 0 else "") + ln, 8.5)
-                yy -= 0.42 * CM
-            yy -= 0.05 * CM
-        self._calibration_square(2.4 * CM, 3.2 * CM)
-        self._text(8.6 * CM, 6.0 * CM, f"Pattern sheet: {self.sheet_w:.0f} x {self.sheet_h:.0f} cm", 9, True)
-        self._text(8.6 * CM, 5.4 * CM, f"Printed on {len(self.tiles)} A4 page(s), tiles {self.cols} x {self.rows} grid", 9)
-        self._text(8.6 * CM, 4.8 * CM, "Status: mathematically generated, geometry-validated PROTOTYPE.", 8.5, False, RED)
-        self._text(8.6 * CM, 4.3 * CM, "Not fit-tested. Make a muslin (toile) before cutting good fabric.", 8.5, False, RED)
+        return lines or [""]
+
+    def _para(self, x, y, text, width_pt, size=8.5, bold=False, color=colors.black, leading=0.42):
+        for ln in self._wrap(text, width_pt, size, "Helvetica-Bold" if bold else "Helvetica"):
+            self._text(x, y, ln, size, bold, color)
+            y -= leading * CM
+        return y
+
+    def _kv(self, x, y, label, value, lw=4.2, width_cm=6.2):
+        self._text(x, y, f"{label}:", 8.5, True)
+        lines = self._wrap(str(value if value not in (None, "") else "-"), width_cm * CM)
+        for k, ln in enumerate(lines):
+            self._text(x + lw * CM, y - k * 0.4 * CM, ln, 8.5)
+        return y - (0.5 + 0.4 * (len(lines) - 1)) * CM
+
+    # ── page 1: project summary ─────────────────────────────────────────────
+    def _page_cover(self):
+        c, ctx = self.c, self.ctx
+        attrs = self.pattern.get("design_attributes", {})
+        self._title(self.title, "Printable sewing pattern - 1:1 scale, tiled A4")
+        y = PAGE_H - 4.0 * CM
+        y = self._kv(2 * CM, y, "Customer", ctx.get("customer_name"))
+        y = self._kv(2 * CM, y, "Contact / reference", ctx.get("customer_contact"))
+        y = self._kv(2 * CM, y, "Design / project", ctx.get("project_name"))
+        y = self._kv(2 * CM, y, "Pattern ID", ctx.get("pattern_id"))
+        y = self._kv(2 * CM, y, "Pattern generated", ctx.get("generated_at"))
+        y = self._kv(2 * CM, y, "Fabric", self.fabric_name)
+        ease = (self.pattern.get("measurements_used") or {}).get("ease_profile") or {}
+        fit = ease.get("fit_preference") or self.meas.get("fit_preference")
+        y = self._kv(2 * CM, y, "Fit / ease", f"{fit or '-'} fit; bust +{ease.get('bust_cm', '-')}, waist "
+                                                 f"+{ease.get('waist_cm', '-')}, hip +{ease.get('hip_cm', '-')} cm" if ease else fit)
+        y = self._kv(2 * CM, y, "Drafting block", (self.pattern.get("drafting_block") or {}).get("block_label"))
+
+        # uploaded design image (right column)
+        img_path = ctx.get("image_path")
+        box_x, box_y, box_w, box_h = 12.6 * CM, PAGE_H - 10.2 * CM, 6.4 * CM, 6.2 * CM
+        c.setStrokeColor(colors.HexColor("#BBBBBB"))
+        c.setLineWidth(0.5)
+        c.rect(box_x, box_y, box_w, box_h, fill=0)
+        drawn = False
+        if img_path:
+            try:
+                from reportlab.lib.utils import ImageReader
+                img = ImageReader(img_path)
+                iw, ih = img.getSize()
+                s = min((box_w - 0.3 * CM) / iw, (box_h - 0.3 * CM) / ih)
+                c.drawImage(img, box_x + (box_w - iw * s) / 2, box_y + (box_h - ih * s) / 2, iw * s, ih * s)
+                drawn = True
+            except Exception:                           # noqa: BLE001 - a missing/corrupt photo must not stop the PDF
+                drawn = False
+        if not drawn:
+            self._text(box_x + 0.4 * CM, box_y + box_h / 2, "No design photo (design chosen manually)"
+                       if not img_path else "Design photo could not be read", 8, False, GRAY)
+        self._text(box_x, box_y - 0.4 * CM, "Customer's garment design image", 7.5, False, GRAY)
+
+        # confirmed design, AI confidence and user corrections
+        y = min(y, box_y) - 0.9 * CM
+        self._text(2 * CM, y, "Confirmed design", 11, True, BLUE)
+        y -= 0.6 * CM
+        heads = [("garment_type", "Garment type"), ("neckline_type", "Neckline"),
+                 ("sleeve_length", "Sleeve length"), ("sleeve_style", "Sleeve style")]
+        cols = [2.0, 6.2, 10.4, 14.2]
+        for h, xcm in zip(("Feature", "Confirmed", "AI prediction (confidence)", "Source"), cols):
+            self._text(xcm * CM, y, h, 8, True)
+        y -= 0.45 * CM
+        prov = (ctx.get("design_spec") or {}).get("provenance") or {}
+        pretty = lambda v: str(v).replace("-", " ").title() if v else "-"    # noqa: E731
+        for key, label in heads:
+            p = prov.get(key) or {}
+            conf = p.get("predicted_confidence")
+            ai = f"{pretty(p.get('predicted_label'))} ({conf * 100:.1f} %)" if p.get("predicted_label") and conf is not None else "-"
+            source = {"ml_prediction_confirmed": "AI prediction confirmed", "user_corrected": "Corrected by user",
+                      "manual_selection": "Chosen manually"}.get(p.get("source"), "-")
+            for txt, xcm in zip((label, pretty(attrs.get(key)), ai, source), cols):
+                self._text(xcm * CM, y, txt, 8)
+            y -= 0.42 * CM
+        model = (ctx.get("design_spec") or {}).get("model") or {}
+        if model.get("checkpoint_sha256"):
+            y -= 0.15 * CM
+            self._text(2 * CM, y, f"Classifier: {model.get('model_type') or 'image classifier'}; checkpoint SHA-256 "
+                                  f"{str(model['checkpoint_sha256'])[:16]}...  AI output is a suggestion; the design above was confirmed by the user.",
+                       6.8, False, GRAY)
+            y -= 0.4 * CM
+
+        # fabric requirement summary
+        rows = ctx.get("width_estimates") or []
+        if rows:
+            y -= 0.5 * CM
+            self._text(2 * CM, y, "Fabric requirement", 11, True, BLUE)
+            y -= 0.55 * CM
+            for r in rows:
+                txt = (f"{r['fabric_width_in']}\" ({r['fabric_width_cm']} cm): buy {r['recommended_purchase_m']} m"
+                       f"  (layout {r['base_layout_length_cm']} cm, utilisation {r['utilisation_percent']} %)"
+                       if r.get("fits") else f"{r['fabric_width_in']}\" ({r['fabric_width_cm']} cm): does not fit - {r.get('error', '')}")
+                self._text(2.2 * CM, y, ("> " if r.get("selected") else "  ") + txt, 8.5, bool(r.get("selected")))
+                y -= 0.45 * CM
+        self._text(2 * CM, 2.0 * CM, "Status: mathematically generated, geometry-validated PROTOTYPE - not fit-tested. "
+                                     "Make a muslin (toile) before cutting good fabric.", 8, False, RED)
         self._footer()
         c.showPage()
 
-    # ── page 2 ──────────────────────────────────────────────────────────────
-    def _page_summary(self):
+    # ── page 2: printing ────────────────────────────────────────────────────
+    def _page_print(self):
         c = self.c
-        self._title("Measurements, fabric and pieces")
+        self._title("Printing instructions", "Read before printing the pattern pages")
+        box_top = PAGE_H - 3.8 * CM
+        c.setFillColor(LIGHT)
+        c.setStrokeColor(RED)
+        c.setLineWidth(1.5)
+        c.rect(2 * CM, box_top - 8.2 * CM, PAGE_W - 4 * CM, 8.2 * CM, fill=1, stroke=1)
+        self._text(2.4 * CM, box_top - 0.7 * CM, "PRINTING INSTRUCTIONS  -  PRINT AT 100 % (ACTUAL SIZE)", 11, True, RED)
+        yy = box_top - 1.4 * CM
+        for i, line in enumerate(INSTRUCTIONS, 1):
+            for j, ln in enumerate(self._wrap(line, PAGE_W - 5.4 * CM)):
+                self._text(2.4 * CM if j == 0 else 3.0 * CM, yy, (f"{i}. " if j == 0 else "") + ln, 8.5)
+                yy -= 0.42 * CM
+            yy -= 0.05 * CM
+        self._calibration_square(2.4 * CM, box_top - 15.0 * CM)
+        self._text(8.6 * CM, box_top - 11.0 * CM, f"Pattern sheet: {self.sheet_w:.0f} x {self.sheet_h:.0f} cm", 9, True)
+        self._text(8.6 * CM, box_top - 11.6 * CM, f"Printed on {len(self.tiles)} A4 page(s), tiles {self.cols} x {self.rows} grid", 9)
+        self._text(8.6 * CM, box_top - 12.2 * CM, f"Overlap {OVERLAP_CM:g} cm; crop marks at every tile corner.", 9)
+        self._footer()
+        c.showPage()
+
+    # ── page 3: measurements ────────────────────────────────────────────────
+    def _page_measurements(self):
+        self._title("Measurements", "All values in centimetres (cm); the pattern is drafted from the canonical cm values")
         y = PAGE_H - 4.0 * CM
-        self._text(2 * CM, y, "Body measurements used (cm)", 11, True, BLUE)
-        y -= 0.6 * CM
         names = [("bust_cm", "Bust"), ("waist_cm", "Waist"), ("hip_cm", "Hip"), ("height_cm", "Height"),
-                 ("neck_cm", "Neck"), ("shoulder_cm", "Shoulder"), ("across_back_cm", "Across back"),
+                 ("neck_cm", "Neck"), ("shoulder_cm", "Shoulder length"), ("across_back_cm", "Across-back width"),
                  ("back_waist_length_cm", "Back waist length"), ("armhole_depth_cm", "Armhole depth"),
                  ("garment_length_cm", "Garment length"), ("bicep_cm", "Bicep"), ("sleeve_cm", "Sleeve (full arm)"),
                  ("wrist_cm", "Wrist")]
-        for i, (k, label) in enumerate(names):
-            col, row = i % 2, i // 2
-            v = self.meas.get(k)
-            self._text(2 * CM + col * 8.5 * CM, y - row * 0.5 * CM, f"{label}: {_fmt(v)} cm" if v is not None else f"{label}: -", 9)
-        y -= (len(names) // 2 + 1) * 0.5 * CM + 0.3 * CM
-        eased = self.pattern.get("measurements_used", {}).get("ease_profile", {})
-        self._text(2 * CM, y, f"Fabric type: {self.meas.get('fabric_type', '-')}   |   Fit: {self.meas.get('fit_preference', '-')}   |   "
-                              f"Ease (bust/waist/hip): +{eased.get('bust_cm', '-')}/+{eased.get('waist_cm', '-')}/+{eased.get('hip_cm', '-')} cm", 9)
-        y -= 0.9 * CM
-
-        n = self.nesting
-        self._text(2 * CM, y, "Fabric estimate", 11, True, BLUE)
-        y -= 0.6 * CM
-        if n:
-            rows = [f"Fabric: {self.fabric_name or '-'}   |   width {n.get('fabric_width_cm', '-'):g} cm   |   cutting: {n.get('cutting_method_simple', '-')}",
-                    f"Layout length {n.get('fabric_length_cm', '-')} cm   |   recommended purchase {n.get('purchasing_recommended_m', '-')} m "
-                    f"({n.get('yardage_yards', '-')} yd)",
-                    f"Utilisation {n.get('utilisation_percent', '-')} %   |   waste {n.get('waste_percent', '-')} %",
-                    "Purchase allowance = layout + 3 % shrinkage + 10 cm cutting margin, rounded up to 10 cm."]
-        else:
-            rows = ["Fabric estimate not available."]
-        for r in rows:
-            self._text(2 * CM, y, r, 9)
-            y -= 0.5 * CM
+        entered = self.ctx.get("original_values") or {}
+        for h, xcm in zip(("Measurement", "Used (cm)", "As entered", "Source"), (2.0, 7.2, 10.2, 13.6)):
+            self._text(xcm * CM, y, h, 8.5, True)
+        y -= 0.45 * CM
+        for key, label in names:
+            v = self.meas.get(key)
+            e = entered.get(key) or {}
+            as_entered = f"{e['value']:g} {e.get('unit', '')}".strip() if isinstance(e.get("value"), (int, float)) else "-"
+            for txt, xcm in zip((label, _fmt(v), as_entered, "measured" if v is not None else "not measured"),
+                                (2.0, 7.2, 10.2, 13.6)):
+                self._text(xcm * CM, y, txt, 8.5)
+            y -= 0.42 * CM
+        y -= 0.4 * CM
+        self._text(2 * CM, y, "Derived drafting values (from the measurements) and project assumptions", 11, True, BLUE)
         y -= 0.5 * CM
+        self._text(2 * CM, y, "DERIVED = calculated from the measurements; ASSUMPTION = a documented project constant "
+                              "(e.g. ease, bust-point position) - not measured on the body.", 7.5, False, GRAY)
+        y -= 0.5 * CM
+        for row in (self.ctx.get("drafting_values") or [])[:28]:
+            status = "ASSUMPTION" if row.get("status") == "project_assumption" else "DERIVED"
+            self._text(2 * CM, y, str(row.get("name", "")).replace("_", " "), 7.8)
+            self._text(7.2 * CM, y, _fmt(row.get("value_cm"), 2) + " cm", 7.8)
+            self._text(9.6 * CM, y, str(row.get("formula", ""))[:52], 7.3)
+            self._text(17.0 * CM, y, status, 7.3, True, RED if status == "ASSUMPTION" else BLUE)
+            y -= 0.36 * CM
+            if y < 2.2 * CM:
+                break
+        self._footer()
+        self.c.showPage()
 
-        self._text(2 * CM, y, "Pattern pieces", 11, True, BLUE)
-        y -= 0.6 * CM
+    # ── page 4: pieces and sewing notes ─────────────────────────────────────
+    def _page_pieces(self):
+        self._title("Pattern pieces and sewing notes")
+        y = PAGE_H - 4.0 * CM
         heads = ["Piece", "Cut", "On fold", "Seam / neck / hem SA (cm)", "Size with SA (cm)"]
         xs = [2, 7.4, 9.0, 11.2, 16.2]
         for h, x in zip(heads, xs):
             self._text(x * CM, y, h, 8.5, True)
         y -= 0.5 * CM
         for p in self.pieces:
-            box = p["cut_bounding_box"] or p["bounding_box"]
+            box = p.get("cut_bounding_box") or p.get("bounding_box") or {}
             sa = p.get("seam_allowances") or {}
-            if sa and all(k in sa for k in ("seam", "neckline", "hem")):
+            if sa and all(k in sa for k in ("seam", "neckline", "hem")) and p.get("piece_type") not in ("neckband", "armhole_facing", "sleeve_band"):
                 sa_txt = f"{sa['seam']:g} / {sa['neckline']:g} / {sa['hem']:g}"
             else:
                 sa_txt = f"{sa.get('strip', p.get('seam_allowance_cm'))} (all edges)" if sa else f"{p.get('seam_allowance_cm')}"
             for t, x in zip([p["name"], str(p["cut_count"]), "yes" if p["cut_on_fold"] else "no", sa_txt[:34],
-                             f"{box['width_cm']:.1f} x {box['height_cm']:.1f}"], xs):
+                             f"{box.get('width_cm', 0):.1f} x {box.get('height_cm', 0):.1f}"], xs):
                 self._text(x * CM, y, t, 8)
             y -= 0.45 * CM
-        y -= 0.4 * CM
+        y -= 0.5 * CM
         self._text(2 * CM, y, "Sewing notes", 11, True, BLUE)
         y -= 0.55 * CM
-        for note in self.pattern.get("construction_notes", [])[:8]:
-            txt = note if len(note) < 118 else note[:115] + "..."
-            self._text(2 * CM, y, "- " + txt, 7.5)
-            y -= 0.4 * CM
+        notes = self.pattern.get("construction_notes") or []
+        if not notes:
+            self._text(2 * CM, y, "Sewing notes were not stored for this older pattern.", 8, False, GRAY)
+        for note in notes[:14]:
+            y = self._para(2 * CM, y, "- " + note, PAGE_W - 4 * CM, 7.8, leading=0.38)
+            if y < 2.4 * CM:
+                break
         self._footer()
-        c.showPage()
+        self.c.showPage()
 
-    # ── page 3 : cutting layout ────────────────────────────────────────────
+    # ── page 5: fabric requirement for 36" / 45" / 60" ──────────────────────
+    def _draw_layout(self, n, ox, oy, box_w, box_h, label):
+        c = self.c
+        uw, length = n["usable_width_cm"], n["fabric_length_cm"]
+        scale = min(box_w / uw, box_h / max(length, 1))
+        c.setStrokeColor(colors.black)
+        c.setLineWidth(0.8)
+        c.rect(ox, oy - length * scale, uw * scale, length * scale, fill=0)
+        if n.get("cutting_mode") == "folded":
+            c.setLineWidth(2)
+            c.line(ox, oy, ox, oy - length * scale)
+        for p in n.get("placed_pieces", []):
+            pts = [(ox + x * scale, oy - y * scale) for x, y in p["polygon_coordinates"]]
+            path = c.beginPath()
+            path.moveTo(*pts[0])
+            for q in pts[1:]:
+                path.lineTo(*q)
+            path.close()
+            c.setFillColor(colors.Color(0.85, 0.9, 0.97))
+            c.setStrokeColor(BLUE)
+            c.setLineWidth(0.5)
+            c.drawPath(path, fill=1, stroke=1)
+        self._text(ox, oy + 0.3 * CM, label, 8, True)
+        self._text(ox, oy - length * scale - 0.45 * CM,
+                   f"{'folded' if n.get('cutting_mode') == 'folded' else 'open'}; {n['fabric_length_cm']} cm long", 7)
+
     def _page_layout(self):
         c = self.c
-        self._title("Fabric cutting layout", "Drawn to fit the page - NOT to scale (see the tiled pages for 1:1)")
-        n = self.nesting
-        placed = n.get("placed_pieces", []) if n else []
-        if not placed:
-            self._text(2 * CM, PAGE_H - 4.5 * CM, "No layout available.", 10)
+        self._title("Fabric requirement - 36\", 45\" and 60\" widths",
+                    "Calculated from the pattern pieces above by the nesting algorithm; layouts drawn to fit, NOT to scale")
+        rows = self.ctx.get("width_estimates") or []
+        layouts = self.ctx.get("width_layouts") or {}
+        y = PAGE_H - 4.0 * CM
+        heads = ["Fabric width", "Base layout length", "Allowance", "Recommended purchase", "Utilisation", "Waste"]
+        xs = [2.0, 5.6, 9.2, 11.6, 15.4, 17.6]
+        for h, x in zip(heads, xs):
+            self._text(x * CM, y, h, 8, True)
+        y -= 0.45 * CM
+        for r in rows:
+            sel = bool(r.get("selected"))
+            self._text(xs[0] * CM, y, f"{r['fabric_width_in']}\" / {r['fabric_width_cm']} cm" + ("  (selected)" if sel else ""), 8, sel)
+            if r.get("fits"):
+                vals = [f"{r['base_layout_length_cm']} cm", f"{r['purchasing_allowance_cm']} cm", f"{r['recommended_purchase_m']} m",
+                        f"{r['utilisation_percent']} %", f"{r['waste_percent']} %"]
+                for t, x in zip(vals, xs[1:]):
+                    self._text(x * CM, y, t, 8, sel)
+            else:
+                self._text(xs[1] * CM, y, f"Does not fit: {r.get('error', '')}"[:90], 8, False, RED)
+            y -= 0.45 * CM
+        if not rows and self.nesting:                    # older pattern: only the saved single estimate exists
+            n = self.nesting
+            self._text(2 * CM, y, f"Fabric width {n['fabric_width_cm']:g} cm: layout {n['fabric_length_cm']} cm, purchase "
+                                  f"{n['purchasing_recommended_m']} m, utilisation {n['utilisation_percent']} %", 8)
+            y -= 0.45 * CM
+            layouts = {n["fabric_width_cm"]: n}
+        y -= 0.4 * CM
+        y = self._para(2 * CM, y, "Purchase = layout length + 3 % shrinkage + 10 cm cutting margin, rounded up to 10 cm. "
+                                  "Heuristic (Bottom-Left-Fill) layout: feasible and checked, not proven minimal.",
+                       PAGE_W - 4 * CM, 7.3, color=GRAY, leading=0.36)
+        y -= 0.9 * CM
+        items = [(w, n) for w, n in layouts.items() if n and n.get("placed_pieces")]
+        if items:
+            col_w = (PAGE_W - 4 * CM - (len(items) - 1) * 0.8 * CM) / len(items)
+            for k, (w, n) in enumerate(items):
+                inch = next((r["fabric_width_in"] for r in rows if r["fabric_width_cm"] == w), None)
+                label = f"{inch}\" ({w:g} cm)" if inch else f"{w:g} cm"
+                self._draw_layout(n, 2 * CM + k * (col_w + 0.8 * CM), y, col_w, y - 3.2 * CM, label)
         else:
-            uw, length = n["usable_width_cm"], n["fabric_length_cm"]
-            avail_w, avail_h = PAGE_W - 5 * CM, PAGE_H - 9 * CM
-            scale = min(avail_w / uw, avail_h / max(length, 1))
-            ox, oy = 2.5 * CM, PAGE_H - 4.2 * CM
-            c.setStrokeColor(colors.black)
-            c.setLineWidth(1)
-            c.rect(ox, oy - length * scale, uw * scale, length * scale, fill=0)
-            if n["cutting_mode"] == "folded":
-                c.setLineWidth(2.5)
-                c.line(ox, oy, ox, oy - length * scale)
-                self._text(ox + 0.2 * CM, oy + 0.25 * CM, "FOLD", 8, True)
-            for i, p in enumerate(placed):
-                pts = [(ox + x * scale, oy - y * scale) for x, y in p["polygon_coordinates"]]
-                path = c.beginPath()
-                path.moveTo(*pts[0])
-                for q in pts[1:]:
-                    path.lineTo(*q)
-                path.close()
-                c.setFillColor(colors.Color(0.85, 0.9, 0.97))
-                c.setStrokeColor(BLUE)
-                c.setLineWidth(0.8)
-                c.drawPath(path, fill=1, stroke=1)
-                cx = sum(q[0] for q in pts) / len(pts)
-                cy = sum(q[1] for q in pts) / len(pts)
-                c.setFillColor(colors.black)
-                c.setFont("Helvetica", 6.5)
-                c.drawCentredString(cx, cy, p["name"])
-            self._text(2 * CM, 2.8 * CM,
-                       f"Fabric width {n['fabric_width_cm']:g} cm ({n['cutting_method_simple']}); layout length {n['fabric_length_cm']} cm; "
-                       f"purchase {n['purchasing_recommended_m']} m; utilisation {n['utilisation_percent']} %", 8.5)
-            self._text(2 * CM, 2.3 * CM, "Method: " + n.get("method", ""), 7)
+            self._text(2 * CM, y, "No layout available.", 10)
         self._footer()
         c.showPage()
 
@@ -438,13 +581,29 @@ class PDFGenerator:
         # label
         gmid = self._to_page((gl["start"][0] + gl["end"][0]) / 2 + dx + 0.5, (gl["start"][1] + gl["end"][1]) / 2 + dy, col, row)
         c.setFillColor(colors.black)
+        box = p.get("cut_bounding_box") or p.get("bounding_box") or {}
         lines = [p["name"].upper(), f"CUT {p['cut_count']}" + ("  ON FOLD" if p["cut_on_fold"] else ""),
-                 f"SA {(p.get('seam_allowances') or {}).get('seam', p.get('seam_allowance_cm'))} cm"]
+                 f"SA {(p.get('seam_allowances') or {}).get('seam', p.get('seam_allowance_cm'))} cm",
+                 f"{box.get('width_cm', 0):.1f} x {box.get('height_cm', 0):.1f} cm incl. SA",
+                 f"GRAIN = selvedge   |   {self.ctx.get('pattern_id') or ''}".strip(" |")]
         if p.get("side"):
             lines.insert(1, f"{p['side'].upper()} - {p.get('units', 'cm')}")
         for k, ln in enumerate(lines):
             c.setFont("Helvetica-Bold" if k == 0 else "Helvetica", 8 if k == 0 else 7)
             c.drawString(gmid[0], gmid[1] - k * 0.38 * CM, ln)
+        # key points (small circles with a code); the bust point is an assumption and is marked as derived
+        c.setFont("Helvetica", 6)
+        for key, code in KEY_POINTS.items():
+            q = (p.get("points") or {}).get(key)
+            if not q:
+                continue
+            pp = self._to_page(q[0] + dx, q[1] + dy, col, row)
+            c.setStrokeColor(colors.HexColor("#2E7D32"))
+            c.setLineWidth(0.5)
+            c.circle(pp[0], pp[1], 0.08 * CM, stroke=1, fill=0)
+            c.setFillColor(colors.HexColor("#2E7D32"))
+            c.drawString(pp[0] + 0.15 * CM, pp[1] + 0.1 * CM, code)
+        c.setFillColor(colors.black)
 
     def _crop_marks(self, col, row):
         c = self.c
@@ -506,7 +665,9 @@ class PDFGenerator:
 
     def generate(self):
         self._page_cover()
-        self._page_summary()
+        self._page_print()
+        self._page_measurements()
+        self._page_pieces()
         self._page_layout()
         for col, row in self.tiles:
             self._page_tile(col, row)

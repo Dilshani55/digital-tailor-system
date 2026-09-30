@@ -46,13 +46,14 @@ class TestPrintablePdf(unittest.TestCase):
 
     def test_pages_and_a4(self):
         self.assertEqual(len(self.doc), self.gen.info["pages"])
-        self.assertEqual(len(self.doc), 3 + len(self.gen.tiles))
+        self.assertEqual(len(self.doc), self.gen.front_pages + len(self.gen.tiles))
+        self.assertEqual(self.gen.front_pages, 5)
         for page in self.doc:
             self.assertAlmostEqual(page.rect.width, 595.28, delta=0.5)
             self.assertAlmostEqual(page.rect.height, 841.89, delta=0.5)
 
     def test_printing_instructions_and_page_numbers(self):
-        first = self.doc[0].get_text()
+        first = self.doc[1].get_text()                      # page 2: printing instructions
         self.assertIn("ACTUAL SIZE", first)
         self.assertIn("100 %", first)
         self.assertIn("Fit to page", first)
@@ -69,28 +70,32 @@ class TestPrintablePdf(unittest.TestCase):
         return out
 
     def test_calibration_square_is_exactly_5cm(self):
-        self.assertTrue(self._squares(self.doc[0]), "cover page has no 5 cm calibration square")
-        on_tiles = sum(1 for i in range(3, len(self.doc)) if self._squares(self.doc[i]))
+        self.assertTrue(self._squares(self.doc[1]), "printing page has no 5 cm calibration square")
+        on_tiles = sum(1 for i in range(self.gen.front_pages, len(self.doc)) if self._squares(self.doc[i]))
         self.assertGreaterEqual(on_tiles, 1, "no tile carries the calibration square")
 
     def test_summary_page_contents(self):
-        text = self.doc[1].get_text()
-        for word in ("Bust", "Waist", "Cotton Poplin", "Fabric estimate", "Front Bodice", "Back Bodice", "hem SA"):
-            self.assertIn(word, text)
-        self.assertIn("Round Neck", self.doc[0].get_text())
+        cover, meas, pieces = (self.doc[i].get_text() for i in (0, 2, 3))
+        for word in ("Cotton Poplin", "Round Neck", "Confirmed design"):
+            self.assertIn(word, cover)
+        for word in ("Bust", "Waist", "Shoulder length", "DERIVED", "ASSUMPTION"):
+            self.assertIn(word, meas)
+        for word in ("Front Bodice", "Back Bodice", "hem SA", "Sewing notes"):
+            self.assertIn(word, pieces)
 
     def test_layout_page_and_estimate(self):
-        text = self.doc[2].get_text()
+        text = self.doc[4].get_text()
         self.assertIn("NOT to scale", text)
         self.assertIn(str(self.nest["fabric_length_cm"]), text)
 
     def test_tile_pages_have_labels_marks_and_pieces(self):
-        for i in range(3, len(self.doc)):
+        for i in range(self.gen.front_pages, len(self.doc)):
             text = self.doc[i].get_text()
             self.assertRegex(text, r"[A-Z]\d")
             self.assertIn("Actual size", text)
-        all_text = " ".join(self.doc[i].get_text() for i in range(3, len(self.doc)))
-        for word in ("FRONT BODICE", "BACK BODICE", "SLEEVE", "PLACE ON FOLD", "CUT 2", "SA 1.5 cm"):
+        all_text = " ".join(self.doc[i].get_text() for i in range(self.gen.front_pages, len(self.doc)))
+        for word in ("FRONT BODICE", "BACK BODICE", "SLEEVE", "PLACE ON FOLD", "CUT 2", "SA 1.5 cm", "incl. SA",
+                     "BP (derived)", "CROWN", "GRAIN"):
             self.assertIn(word, all_text)
 
     def test_every_piece_is_on_some_tile_and_tiles_overlap(self):
@@ -205,7 +210,7 @@ class TestExportRoutes(unittest.TestCase):
 
     @unittest.skipIf(pymupdf is None, "SKIPPED: pymupdf not installed")
     def test_pdf_route_writes_a_tiled_pdf_using_stored_layout(self):
-        pat = self._pattern(summary={"fabric_width_cm": 150, "cutting_mode": "open"})
+        pat = self._pattern(summary={"fabric_width_cm": 152.4, "cutting_mode": "open"})
         out = tempfile.mkdtemp()
         self.app.config["OUTPUT_FOLDER"] = out
         with patch("app.routes.export.PatternResult") as pr, patch("app.routes.export.PdfExport") as pe:
@@ -217,26 +222,75 @@ class TestExportRoutes(unittest.TestCase):
         self.assertIn("1:1", body["print_scale"])
         doc = pymupdf.open(os.path.join(out, body["filename"]))
         self.assertEqual(len(doc), body["pages"])
-        self.assertIn("150", doc[1].get_text())
+        self.assertIn('60" / 152.4 cm  (selected)', doc[4].get_text())
 
-    def test_pdf_prints_the_stored_pieces_not_a_regeneration(self):
-        """If the drafting code drifted, the PDF must still show the validated, nested stored pieces."""
+    def test_pdf_prints_the_stored_pieces_and_never_redrafts(self):
+        """The PDF must show the validated, nested stored pieces; the engine is not run again."""
         stored = copy.deepcopy(self.data["pattern_pieces"])
         stored[0]["name"] = "Front Bodice (as saved)"
         pat = self._pattern()
         pat.pattern_coordinates = stored
         self.app.config["OUTPUT_FOLDER"] = tempfile.mkdtemp()
         with patch("app.routes.export.PatternResult") as pr, patch("app.routes.export.PdfExport") as pe, \
-                patch("app.routes.export.PDFGenerator") as gen:
+                patch("app.routes.export.PDFGenerator") as gen, \
+                patch("app.logic.parametric_engine.ParametricEngine.generate", side_effect=AssertionError("re-drafted")):
             pr.objects.return_value.first.return_value = pat
             pe.return_value.id = "e1"
             gen.return_value.info = {"pages": 9}
-            with self.assertLogs(self.app.logger, level="WARNING") as logs:
-                r = self.app.test_client().post("/api/export/pdf/p1", headers=self.headers)
+            r = self.app.test_client().post("/api/export/pdf/p1", headers=self.headers)
         self.assertEqual(r.status_code, 201, r.get_json())
-        printed = gen.call_args.kwargs["pattern_data"]["pattern_pieces"]
-        self.assertIs(printed, stored)
-        self.assertTrue(any("differs from the stored" in m for m in logs.output))
+        kw = gen.call_args.kwargs
+        self.assertIs(kw["pattern_data"]["pattern_pieces"], stored)
+        ctx = kw["context"]
+        self.assertEqual([row["fabric_width_in"] for row in ctx["width_estimates"]], [36, 45, 60])
+        self.assertEqual(set(ctx["width_layouts"]), {91.44, 114.3, 152.4})
+
+    @unittest.skipIf(pymupdf is None, "SKIPPED: pymupdf not installed")
+    def test_complete_customer_pdf_content(self):
+        from PIL import Image
+        upload = tempfile.mkdtemp()
+        Image.new("RGB", (120, 160), (40, 120, 80)).save(os.path.join(upload, "design.png"))
+        self.app.config["UPLOAD_FOLDER"] = upload
+        out = tempfile.mkdtemp()
+        self.app.config["OUTPUT_FOLDER"] = out
+        pat = self._pattern(summary={"fabric_width_cm": 114.3, "cutting_mode": "folded"})
+        pat.id = "65f0c0ffee00000000000001"
+        pat.project_name = "Wedding blouse"
+        pat.session_id.measurement_id.client_name = "Amara Silva"
+        pat.session_id.measurement_id.email = "amara@example.com"
+        pat.session_id.image_id.file_path = "design.png"
+        pat.generated_at = __import__("datetime").datetime(2026, 9, 30, 10, 0)
+        pat.width_estimates = []
+        pat.drafting_info = {k: self.data[k] for k in ("drafting_block", "design_attributes", "measurements_used", "construction_notes")}
+        pat.base_block = self.data["base_block"]
+        pat.design_spec = {"attributes": design(), "provenance": {
+            "garment_type": {"source": "ml_prediction_confirmed", "predicted_label": "blouse", "predicted_confidence": 0.91},
+            "neckline_type": {"source": "user_corrected", "predicted_label": "v-neck", "predicted_confidence": 0.42},
+            "sleeve_length": {"source": "manual_selection"}, "sleeve_style": {"source": "manual_selection"}},
+            "model": {"model_type": "image classifier", "checkpoint_sha256": "3b69a470ed5d0398" + "0" * 48}}
+        pat.measurements_snapshot["original_values"] = {"bust_cm": {"value": 34.65, "unit": "in"}}
+        with patch("app.routes.export.PatternResult") as pr, patch("app.routes.export.PdfExport") as pe:
+            pr.objects.return_value.first.return_value = pat
+            pe.return_value.id = "e1"
+            r = self.app.test_client().post("/api/export/pdf/p1", headers=self.headers)
+        body = r.get_json()
+        self.assertEqual(r.status_code, 201, body)
+        doc = pymupdf.open(os.path.join(out, body["filename"]))
+        cover = doc[0].get_text()
+        for word in ("Amara Silva", "amara@example.com", "Wedding blouse", "65f0c0ffee00000000000001", "2026-09-30",
+                     "Corrected by user", "V Neck (42.0 %)", "AI prediction confirmed", "Blouse (91.0 %)", "Cotton Poplin",
+                     "Fabric requirement"):
+            self.assertIn(word, cover)
+        self.assertTrue(doc[0].get_images(), "the customer's design image is not embedded")
+        self.assertIn("34.65 in", doc[2].get_text())                       # value as entered
+        fabric = doc[4].get_text()
+        for word in ('36" / 91.44 cm', '45" / 114.3 cm', '60" / 152.4 cm', "(selected)", "Recommended purchase", "Utilisation"):
+            self.assertIn(word, fabric)
+        for page in doc:
+            t = page.get_text()
+            self.assertIn("Pattern 65f0c0ffee00000000000001", t)
+            self.assertIn("Customer Amara Silva", t)
+            self.assertIn("Units cm - scale 1:1", t)
 
     def test_pdf_failure_does_not_leak_internal_details(self):
         pat = self._pattern()
@@ -250,15 +304,6 @@ class TestExportRoutes(unittest.TestCase):
         self.assertEqual(r.status_code, 500)
         self.assertEqual(body["error_code"], "PDF_GENERATION_FAILED")
         self.assertNotIn("secret", str(body))
-
-    def test_geometry_drift_detection(self):
-        from app.routes.export import _geometry_differs
-        pieces = self.data["pattern_pieces"]
-        self.assertFalse(_geometry_differs(pieces, copy.deepcopy(pieces)))
-        wider = copy.deepcopy(pieces)
-        wider[0]["cut_bounding_box"]["width_cm"] += 0.5
-        self.assertTrue(_geometry_differs(pieces, wider))
-        self.assertTrue(_geometry_differs(pieces, pieces[:-1]))
 
 
 if __name__ == "__main__":

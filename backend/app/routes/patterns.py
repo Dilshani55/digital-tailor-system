@@ -39,6 +39,12 @@ def generate_pattern():
 
     measurement_id = str(data["measurement_id"]).strip("<>")
     image_id = str(data["image_id"]).strip("<>")
+    project_name = data.get("project_name")
+    if project_name is not None:
+        if not isinstance(project_name, str) or len(project_name.strip()) > 80:
+            return jsonify({"error": "project_name must be text of at most 80 characters.",
+                            "error_code": "INVALID_PROJECT_NAME"}), 400
+        project_name = project_name.strip() or None
 
     # Validate fabric selection. No silent substitution: a missing or unknown
     # fabric id is a client error, never replaced by another fabric.
@@ -224,6 +230,9 @@ def generate_pattern():
             measurements_snapshot = measurements_snapshot,
             validation_passed   = bool(validation.get("passed")),
             generation_time_sec = generation_time_sec,
+            project_name        = project_name,
+            drafting_info       = {k: pattern.get(k) for k in ("engine_version", "drafting_block", "design_attributes",
+                                                              "measurements_used", "construction_notes")},
         )
         pattern_result.save()
 
@@ -338,6 +347,8 @@ def get_pattern(pattern_id):
         "design_attributes": spec.get("attributes") or {},
         "validation": pattern.validation_report or {},
         "validation_passed": bool(pattern.validation_passed),
+        "project_name": getattr(pattern, "project_name", None),
+        "width_estimates": getattr(pattern, "width_estimates", None) or [],
         "measurements_snapshot": pattern.measurements_snapshot or {},
         "exports": [{"export_id": str(e.id), "filename": e.file_path, "exported_at": str(e.exported_at)} for e in exports],
         "generated_at": str(pattern.generated_at)
@@ -378,7 +389,8 @@ def get_all_patterns():
             "selected_fabric_name": p.selected_fabric_name,
             "nesting_summary": p.nesting_summary or {},
             "pieces_count":   len(p.pattern_coordinates),
-            "generated_at":   str(p.generated_at)
+            "generated_at":   str(p.generated_at),
+            "project_name":   getattr(p, "project_name", None)
         })
 
     return jsonify({
