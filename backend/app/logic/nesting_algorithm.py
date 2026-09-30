@@ -29,7 +29,9 @@ MAX_LENGTH_CM = 900.0
 SHRINKAGE_ALLOWANCE = 0.03
 END_MARGIN_CM = 10.0
 ROUND_UP_CM = 10.0
-STANDARD_FABRIC_WIDTHS = (90, 114, 150)
+# Standard bolt widths: 36", 45" and 60" (exact inch -> cm conversion, 1 in = 2.54 cm).
+STANDARD_WIDTHS_IN = (36, 45, 60)
+STANDARD_FABRIC_WIDTHS = tuple(round(w * 2.54, 2) for w in STANDARD_WIDTHS_IN)      # (91.44, 114.3, 152.4)
 
 
 def calculate_shoelace_area(points):

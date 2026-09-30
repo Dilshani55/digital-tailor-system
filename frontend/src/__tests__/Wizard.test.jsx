@@ -11,7 +11,7 @@ vi.mock('../services/api', () => ({
   imagesAPI: { upload: vi.fn(), analyse: vi.fn(), confirmAttributes: vi.fn(), modelStatus: vi.fn() },
   measurementsAPI: { save: vi.fn(), getAll: vi.fn(), update: vi.fn() },
   patternsAPI: { generate: vi.fn() },
-  exportAPI: { yardage: vi.fn(), pdf: vi.fn(), download: vi.fn() },
+  exportAPI: { yardage: vi.fn(), estimates: vi.fn(), pdf: vi.fn(), download: vi.fn() },
   researchAPI: { submitFeedback: vi.fn() },
 }));
 vi.mock('../components/MeasurementGuide', () => ({ default: () => <div data-testid="guide-stub" /> }));
@@ -34,12 +34,17 @@ const piece = {
   cut_bounding_box: { width_cm: 21.5, height_cm: 43, min_x: 0, min_y: -1 },
   notches: [{ id: 'n1', point: [20, 20] }], darts: [], grain_line: { start: [10, 5], end: [10, 35] },
 };
-const NEST = {
-  fabric_width_cm: 114, usable_width_cm: 57, cutting_mode: 'folded', cutting_method_simple: 'Fabric folded in half lengthwise',
-  fabric_length_cm: 120, purchasing_recommended_m: 1.4, yardage_yards: 1.53, utilisation_percent: 41.2, usage_status: 'Moderate',
-  assumptions: ['A test assumption'], method: 'test method',
+const ROW = (inches, cm, purchase, selected) => ({
+  fabric_width_in: inches, fabric_width_cm: cm, fits: true, selected, usable_width_cm: cm / 2, cutting_mode: 'folded',
+  cutting_method_simple: 'Fabric folded in half lengthwise', base_layout_length_cm: 120, purchasing_allowance_cm: 20,
+  recommended_purchase_m: purchase, recommended_purchase_yd: 1.53, utilisation_percent: 41.2, waste_percent: 58.8,
+  warnings: [],
   placed_pieces: [{ name: 'Front Bodice', x: 0, y: 0, width: 21.5, height: 43, polygon_coordinates: [[0, 0], [21.5, 0], [21.5, 43], [0, 43]] }],
-};
+});
+const ESTIMATES = (selectedCm = 114.3) => ({ data: {
+  selected_width_cm: selectedCm, method: 'test method', purchase_rule: 'test rule',
+  estimates: [ROW(36, 91.44, 1.8, selectedCm === 91.44), ROW(45, 114.3, 1.4, selectedCm === 114.3), ROW(60, 152.4, 1.1, selectedCm === 152.4)],
+} });
 
 function stubAll() {
   vi.clearAllMocks();
@@ -54,7 +59,7 @@ function stubAll() {
     pattern_id: 'p1', validation_passed: true, validation: { passed: true, errors: [] }, pattern_pieces: [piece],
     armhole_sleeve: null, final_pattern: { transformations: [] },
   } });
-  exportAPI.yardage.mockResolvedValue({ data: NEST });
+  exportAPI.estimates.mockImplementation((id, body) => Promise.resolve(ESTIMATES(body.selected_width_cm)));
   exportAPI.pdf.mockResolvedValue({ data: { export_id: 'e1', pages: 14 } });
   exportAPI.download.mockResolvedValue({ data: new Blob(['%PDF']) });
   researchAPI.submitFeedback.mockResolvedValue({ data: {} });
@@ -107,11 +112,14 @@ describe('creation wizard — full workflow', () => {
 
     fireEvent.click(screen.getByText('Continue to fabric estimate'));
     await screen.findByText('Fabric estimate');
-    await waitFor(() => expect(exportAPI.yardage).toHaveBeenCalledWith('p1', { fabric_width_cm: 114, cutting_mode: 'auto' }));
-    await screen.findByText('1.4 m');
+    await waitFor(() => expect(exportAPI.estimates).toHaveBeenCalledWith('p1', { selected_width_cm: 114.3, cutting_mode: 'auto' }));
+    expect((await screen.findAllByText('1.4 m')).length).toBeGreaterThan(0);
+    const table = screen.getByTestId('width-comparison');
+    ['36"', '45"', '60"', '91.44 cm', '114.3 cm', '152.4 cm', '1.8 m', '1.1 m'].forEach((t) => expect(table.textContent).toContain(t));
     expect(screen.getByTestId('nesting-layout')).toBeTruthy();
-    fireEvent.click(screen.getByTestId('width-150'));
-    await waitFor(() => expect(exportAPI.yardage).toHaveBeenLastCalledWith('p1', { fabric_width_cm: 150, cutting_mode: 'auto' }));
+    fireEvent.click(screen.getByTestId('width-60'));
+    await waitFor(() => expect(exportAPI.estimates).toHaveBeenLastCalledWith('p1', { selected_width_cm: 152.4, cutting_mode: 'auto' }));
+    await waitFor(() => expect(screen.getByTestId('width-60').textContent).toBe('Selected'));
 
     fireEvent.click(screen.getByText('Continue to PDF export'));
     await screen.findByText('Printable pattern (PDF)');
@@ -192,17 +200,24 @@ describe('creation wizard — full workflow', () => {
     await screen.findByText('Your pattern');
     expect(screen.getByText('Continue to fabric estimate').disabled).toBe(true);
     expect(screen.getAllByText(/outline self-intersects/).length).toBeGreaterThan(0);
-    expect(exportAPI.yardage).not.toHaveBeenCalled();
+    expect(exportAPI.estimates).not.toHaveBeenCalled();
   });
 
   it('shows an honest failure (not a number) when the estimate cannot be calculated', async () => {
-    exportAPI.yardage.mockRejectedValue({ response: { status: 422, data: { error_code: 'PIECE_DOES_NOT_FIT', error: 'x' } } });
+    exportAPI.estimates.mockResolvedValue({ data: { selected_width_cm: 114.3, method: 'm', purchase_rule: 'r', estimates: [
+      ROW(36, 91.44, 1.8, false),
+      { fabric_width_in: 45, fabric_width_cm: 114.3, fits: false, selected: true, error_code: 'PIECE_DOES_NOT_FIT',
+        error: 'A pattern piece is wider than the fabric.' },
+      ROW(60, 152.4, 1.1, false),
+    ] } });
     await reachStep4();
     fireEvent.click(screen.getByText('pick-poplin'));
     fireEvent.click(screen.getByText('Confirm and generate pattern'));
     await screen.findByText('Your pattern');
     fireEvent.click(screen.getByText('Continue to fabric estimate'));
-    await screen.findByText(/wider than the fabric/);
+    expect((await screen.findAllByText(/wider than the fabric/)).length).toBeGreaterThan(0);
+    expect(screen.getByTestId('estimate-row-45').textContent).toMatch(/Does not fit/);
+    expect(screen.getByTestId('width-45').disabled).toBe(true);
     expect(screen.getAllByText('Calculation failed').length).toBeGreaterThan(0);
     expect(screen.getByText('Continue to PDF export').disabled).toBe(true);
   });

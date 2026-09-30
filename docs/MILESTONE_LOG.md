@@ -57,3 +57,16 @@ Each milestone records what changed, the commit and the tests that were actually
 * Every scope combination drafts and validates for three body sizes (woven and knit where applicable).
 * Tests: backend 360 passed (+5 new, 7 adapted from "puff/bell unsupported" to still-unsupported designs) ·
   frontend 118 passed (3 adapted).
+
+## Milestone 5 — fabric recommendation and 36" / 45" / 60" requirement
+
+* `logic/fabric_selection.py`: rule-based, design-aware recommendation (compatibility by drafting block, sleeve
+  style, neckline, fit, weight, drape level, opacity; every score explained); 2–4 recommended, other compatible
+  fabrics selectable, incompatible ones listed with the reason. Generation rejects an incompatible fabric and
+  drafts with the selected fabric's construction.
+* Standard widths are now 36/45/60 inches (91.44 / 114.3 / 152.4 cm); `POST /api/export/estimates/{id}` returns all
+  three from the stored pieces (base length, allowance, purchase, utilisation, waste, layout, "does not fit" rows).
+* Wizard: fabric step shows recommended / other compatible / not suitable; estimate step shows the width
+  comparison table and the selected layout.
+* Real-stack E2E (blouse, medium): 36" 1.6 m, 45" 1.1 m, 60" 0.9 m.
+* Tests: backend 371 passed · frontend 120 passed · E2E 6 passed.

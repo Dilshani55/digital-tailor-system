@@ -25,8 +25,28 @@ def get_recommendations():
         "seams": "side seam"         # optional
     }
     """
-    data = request.get_json() or {}
-    
+    data = request.get_json(silent=True) or {}
+
+    # Design-aware mode: the user-confirmed design (+ fit) -> compatible fabrics, 2-4 recommended.
+    if isinstance(data.get("confirmed_attributes"), dict):
+        from app.logic import feature_schema as fs
+        from app.logic.fabric_selection import recommend_for_design
+        clean, errors = fs.validate_attributes(data["confirmed_attributes"])
+        if errors:
+            first = next(iter(errors.values()))
+            return jsonify({"error": first["message"], "error_code": "INVALID_DESIGN_ATTRIBUTES",
+                            "field_errors": errors}), 400
+        result = recommend_for_design(clean, data.get("fit_preference", "standard"))
+        recommended = [f for f in result["fabrics"] if f["recommended"]]
+        return jsonify({
+            "message": "Fabric recommendations generated successfully",
+            **result,
+            "recommendations": result["fabrics"],          # compatible fabrics first, recommended ones on top
+            "total_materials": len(result["fabrics"]),
+            "total_recommended": len(recommended),
+            "recommendation_method": result["method"],
+        }), 200
+
     garment_type = data.get("garment_type", "blouse")
     neckline = data.get("neckline")
     sleeves = data.get("sleeves")

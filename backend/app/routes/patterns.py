@@ -167,6 +167,17 @@ def generate_pattern():
     measurements_dict, m_code, m_errors = ms.engine_measurements(measurement)
     if m_errors:
         return jsonify(ms.error_response_body(m_errors, code=m_code)), 422
+
+    # 3c. The SELECTED fabric decides woven vs knit drafting (not a stale profile value), and it must be
+    #     compatible with the garment's block (T-shirt: knit; blouse: woven; crop-top: either).
+    from app.logic.fabric_selection import TRAITS, compatibility
+    construction = TRAITS[selected_fabric_id][0]
+    ok, why_not = compatibility(clean["garment_type"], construction)
+    if not ok:
+        return jsonify({"error": f"{selected_fabric_name} cannot be used for this design. {why_not}",
+                        "error_code": "FABRIC_NOT_COMPATIBLE"}), 422
+    if measurements_dict["fabric_type"] != "stretch-knit":     # stretch-knit (negative ease) is refused by the engine
+        measurements_dict["fabric_type"] = construction
     measurements_snapshot = {
         "schema_version": ms.SCHEMA_VERSION,
         "canonical_unit": ms.CANONICAL_UNIT,

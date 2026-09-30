@@ -182,7 +182,7 @@ class TestExportRoutes(unittest.TestCase):
         self.assertEqual(r.status_code, 422)
 
     def test_estimate_for_each_standard_width(self):
-        for width in (90, 114, 150):
+        for width in (91.44, 114.3, 152.4):
             pat = self._pattern()
             with patch("app.routes.export.PatternResult") as pr:
                 pr.objects.return_value.first.return_value = pat

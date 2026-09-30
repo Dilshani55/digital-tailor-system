@@ -2,7 +2,7 @@ import unittest
 
 from app.logic.drafting import geometry as g
 from app.logic.nesting_algorithm import (
-    NestingAlgorithm, NestingError, calculate_shoelace_area, polygons_overlap,
+    NestingAlgorithm, NestingError, calculate_shoelace_area, polygons_overlap, STANDARD_FABRIC_WIDTHS,
 )
 from app.logic.parametric_engine import ParametricEngine
 from tests.fixtures import measurements, design
@@ -32,10 +32,10 @@ class TestGeometryAwareNesting(unittest.TestCase):
     def setUpClass(cls):
         cls.pieces = _pattern()
 
-    def test_fabric_widths_90_114_150_folded_and_open(self):
+    def test_fabric_widths_36_45_60_inch_folded_and_open(self):
         for mode in ("folded", "open"):
             lengths = {}
-            for width in (90, 114, 150):
+            for width in STANDARD_FABRIC_WIDTHS:
                 res = NestingAlgorithm(self.pieces, fabric_width_cm=width, cutting_mode=mode).run()
                 with self.subTest(width=width, mode=mode):
                     self.assertEqual(res["full_bolt_width_cm"], float(width))
@@ -46,7 +46,7 @@ class TestGeometryAwareNesting(unittest.TestCase):
                     self.assertTrue(0.0 < res["utilisation_percent"] <= 100.0)
                     self.assertTrue(res["assumptions"])
                 lengths[width] = res["fabric_length_cm"]
-            self.assertLessEqual(lengths[150], lengths[90])         # wider cloth never needs more length
+            self.assertLessEqual(lengths[152.4], lengths[91.44])    # wider cloth never needs more length
 
     def test_uses_cutting_line_geometry_not_bounding_boxes(self):
         res = NestingAlgorithm(self.pieces, fabric_width_cm=114).run()
@@ -79,7 +79,7 @@ class TestGeometryAwareNesting(unittest.TestCase):
 
     def test_pattern_dimensions_invariant_on_fabric_width_change(self):
         areas = []
-        for width in (90, 114, 150):
+        for width in STANDARD_FABRIC_WIDTHS:
             res = NestingAlgorithm(self.pieces, fabric_width_cm=width).run()
             areas.append(sorted((p["name"], p["polygon_area_cm2"]) for p in res["placed_pieces"]))
         self.assertEqual(areas[0], areas[1])
@@ -109,7 +109,7 @@ class TestGeometryAwareNesting(unittest.TestCase):
         for garment, neck, sleeve, fabric in cases:
             over = {"garment_length_cm": 36} if garment == "crop-top" else {}
             pieces = _pattern(garment, neck, sleeve, fabric, **over)
-            for width in (90, 114, 150):
+            for width in STANDARD_FABRIC_WIDTHS:
                 res = NestingAlgorithm(pieces, fabric_width_cm=width).run()
                 self.assertEqual(res["validation_checks"]["status"], "PASSED", (garment, width))
 

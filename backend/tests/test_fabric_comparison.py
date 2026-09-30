@@ -84,11 +84,11 @@ class TestComparisonRoutes(unittest.TestCase):
 
     def test_system_value_is_the_real_nesting_result_for_the_same_width(self):
         # _comparison_json needs c.pattern_id.id; the unsaved document keeps the pattern object
-        r, pattern, save = self._post({"fabric_width_cm": 114, "cutting_mode": "auto",
+        r, pattern, save = self._post({"fabric_width_cm": 114.3, "cutting_mode": "auto",
                                        "traditional_estimate_m": 2.5, "estimate_source": "tailor",
                                        "estimator_label": "Tailor A"})
         self.assertEqual(r.status_code, 201, r.get_json())
-        expected = estimate_fabric(PIECES, 114, "auto", "woven")
+        expected = estimate_fabric(PIECES, 114.3, "auto", "woven")
         body = r.get_json()
         self.assertEqual(body["system_purchase_m"], expected["purchasing_recommended_m"])
         self.assertEqual(body["system_layout_length_cm"], expected["fabric_length_cm"])
@@ -99,7 +99,7 @@ class TestComparisonRoutes(unittest.TestCase):
         pattern.save.assert_not_called()              # the stored pattern / estimate is not changed
 
     def test_invalid_inputs_are_rejected_and_nothing_is_saved(self):
-        base = {"fabric_width_cm": 114, "traditional_estimate_m": 2.0, "estimate_source": "tailor"}
+        base = {"fabric_width_cm": 114.3, "traditional_estimate_m": 2.0, "estimate_source": "tailor"}
         bad = [
             {"fabric_width_cm": 100},                 # not a supported width
             {"fabric_width_cm": True},
@@ -116,13 +116,13 @@ class TestComparisonRoutes(unittest.TestCase):
             save.assert_not_called()
 
     def test_another_users_pattern_is_forbidden(self):
-        r, _, save = self._post({"fabric_width_cm": 114, "traditional_estimate_m": 2.0, "estimate_source": "tailor"},
+        r, _, save = self._post({"fabric_width_cm": 114.3, "traditional_estimate_m": 2.0, "estimate_source": "tailor"},
                                 pattern=_pattern(owner="someone-else"))
         self.assertEqual(r.status_code, 403)
         save.assert_not_called()
 
     def test_a_pattern_that_failed_validation_cannot_be_compared(self):
-        r, _, save = self._post({"fabric_width_cm": 114, "traditional_estimate_m": 2.0, "estimate_source": "tailor"},
+        r, _, save = self._post({"fabric_width_cm": 114.3, "traditional_estimate_m": 2.0, "estimate_source": "tailor"},
                                 pattern=_pattern(valid=False))
         self.assertEqual(r.status_code, 422)
         self.assertEqual(r.get_json()["error_code"], "PATTERN_NOT_VALID")

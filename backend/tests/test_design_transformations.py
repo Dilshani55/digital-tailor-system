@@ -418,7 +418,7 @@ def _image(attrs):
 
 
 class TestGenerateRouteIntegration(unittest.TestCase):
-    def _post(self, profile, attrs):
+    def _post(self, profile, attrs, fabric_id="cotton-poplin"):
         client = _client()
         with patch("app.routes.patterns.User") as u, patch("app.routes.patterns.MeasurementProfile") as mp, \
              patch("app.routes.patterns.DesignImage") as di, patch("app.routes.patterns.Session") as sess, \
@@ -428,7 +428,7 @@ class TestGenerateRouteIntegration(unittest.TestCase):
             di.objects.return_value.first.return_value = _image(attrs)
             pr.return_value.id, sess.return_value.id = "p1", "s1"
             resp = client.post("/api/patterns/generate", headers=_headers(),
-                               json={"measurement_id": "m1", "image_id": "img1", "fabric_id": "cotton-poplin"})
+                               json={"measurement_id": "m1", "image_id": "img1", "fabric_id": fabric_id})
             return resp, pr
 
     def test_multiple_profiles_and_designs_return_valid_final_patterns(self):
@@ -467,10 +467,29 @@ class TestGenerateRouteIntegration(unittest.TestCase):
         pr.assert_not_called()
 
     def test_stretch_knit_is_rejected_by_the_route(self):
-        resp, pr = self._post(_profile("medium", fabric_type="stretch-knit"), design(garment_type="t-shirt"))
+        resp, pr = self._post(_profile("medium", fabric_type="stretch-knit"), design(garment_type="t-shirt"),
+                              fabric_id="cotton-jersey-knit")
         self.assertEqual(resp.status_code, 422)
         self.assertEqual(resp.get_json()["error_code"], "UNSUPPORTED_FABRIC_TYPE")
         pr.assert_not_called()
+
+
+    def test_incompatible_fabric_is_rejected_not_redrafted(self):
+        resp, pr = self._post(_profile("medium", fabric_type="knit"), design(garment_type="t-shirt"),
+                              fabric_id="cotton-poplin")
+        self.assertEqual(resp.status_code, 422)
+        self.assertEqual(resp.get_json()["error_code"], "FABRIC_NOT_COMPATIBLE")
+        pr.assert_not_called()
+
+    def test_selected_fabric_decides_the_crop_top_block(self):
+        """A knit fabric drafts a knit crop-top even if the profile still says woven (and vice versa)."""
+        attrs = design(garment_type="crop-top")
+        prof = _profile("medium", fabric_type="woven", garment_length_cm=36)
+        resp, pr = self._post(prof, attrs, fabric_id="cotton-jersey-knit")
+        self.assertEqual(resp.status_code, 201, resp.get_json())
+        self.assertEqual(pr.call_args.kwargs["measurements_snapshot"]["fabric_type"], "knit")
+        resp, pr = self._post(_profile("medium", fabric_type="knit", garment_length_cm=36), attrs, fabric_id="cotton-poplin")
+        self.assertEqual(pr.call_args.kwargs["measurements_snapshot"]["fabric_type"], "woven")
 
 
 class TestSupportTableMatchesImplementation(unittest.TestCase):

@@ -118,9 +118,10 @@ describe('Settings', () => {
     imagesAPI.modelStatus.mockResolvedValue({ data: { available: true, checkpoint_sha256: 'abcdef0123456789ffff' } });
     render(<Settings />);
     fireEvent.click(screen.getByRole('button', { name: 'Inches (in)' }));
-    fireEvent.change(screen.getByLabelText(/Fabric width for the first estimate/), { target: { value: '150' } });
+    fireEvent.change(screen.getByLabelText(/Fabric width for the first estimate/), { target: { value: '152.4' } });
+    expect(screen.getByRole('option', { name: '60" (152.4 cm)' })).toBeTruthy();
     fireEvent.click(screen.getByText('Save preferences'));
-    expect(getPreferences()).toEqual({ unit: 'in', fabricWidth: 150 });
+    expect(getPreferences()).toEqual({ unit: 'in', fabricWidth: 152.4 });
     expect(await screen.findByText(/abcdef0123456789…/)).toBeTruthy();
   });
 });

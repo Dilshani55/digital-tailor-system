@@ -7,7 +7,10 @@ from app.models.design_image import DesignImage
 from app.models.session import Session
 from app.models.pdf_export import PdfExport
 from app.models.user import User
-from app.logic.nesting_algorithm import estimate_fabric, NestingError
+from app.logic.nesting_algorithm import estimate_fabric, NestingError, STANDARD_FABRIC_WIDTHS, STANDARD_WIDTHS_IN
+
+VALIDATION_FAILED_MESSAGE = ("Pattern validation failed. Fabric estimation and PDF export are unavailable "
+                             "until the pattern is corrected.")
 from app.logic.pdf_generator import PDFGenerator
 from app.logic.parametric_engine import ParametricEngine
 from app.logic import measurement_schema as ms
@@ -80,6 +83,104 @@ def _geometry_differs(regenerated, stored, tol_cm=0.01):
     return False
 
 
+def width_estimate(pieces, width_cm, width_in, cutting_mode, fabric_type):
+    """
+    One row of the standard-width comparison, computed from the stored pattern pieces by the real nesting.
+    A width where a piece cannot be placed is reported as not fitting (with the reason) — never a number.
+    """
+    row = {"fabric_width_in": width_in, "fabric_width_cm": width_cm, "requested_cutting_mode": cutting_mode}
+    try:
+        n = estimate_fabric(pieces, width_cm, cutting_mode, fabric_type)
+    except NestingError as err:
+        row.update(fits=False, error=err.message, error_code=err.error_code, details=err.details)
+        return row
+    base_cm = n["fabric_length_cm"]
+    purchase_m = n["purchasing_recommended_m"]
+    warnings = []
+    if n["cutting_mode"] == "open" and cutting_mode == "auto":
+        warnings.append("Folding the fabric needs more length (or a piece does not fit folded); the layout is open.")
+    if n["utilisation_percent"] < 45.0:
+        warnings.append("Low utilisation: much of this width is unused for one garment.")
+    row.update(
+        fits=True, cutting_mode=n["cutting_mode"], cutting_method_simple=n["cutting_method_simple"],
+        usable_width_cm=n["usable_width_cm"],
+        base_layout_length_cm=base_cm,
+        purchasing_allowance_cm=round(purchase_m * 100.0 - base_cm, 1),
+        recommended_purchase_m=purchase_m,
+        recommended_purchase_yd=n["yardage_yards"],
+        utilisation_percent=n["utilisation_percent"],
+        waste_percent=n["waste_percent"],
+        total_pieces=n["total_pieces"],
+        placed_pieces=n["placed_pieces"],
+        validation_checks=n["validation_checks"],
+        warnings=warnings,
+    )
+    return row, n
+
+
+def _row(result):
+    return result[0] if isinstance(result, tuple) else result
+
+
+# ── FABRIC REQUIREMENT FOR 36" / 45" / 60" ────────────────────────────────────
+@export_bp.route("/estimates/<pattern_id>", methods=["POST"])
+@jwt_required()
+def estimate_standard_widths(pattern_id):
+    """
+    Fabric requirement for all three standard widths (36", 45", 60") from the STORED validated pieces.
+    Body (optional): {"selected_width_cm": 91.44|114.3|152.4, "cutting_mode": "auto"|"folded"|"open"}.
+    The selected width's layout also becomes the pattern's saved estimate (used by the PDF).
+    """
+    current_user_id = get_jwt_identity()
+    try:
+        pattern = PatternResult.objects(id=pattern_id.strip("<>")).first()
+    except Exception:
+        return jsonify({"error": "Invalid pattern_id format"}), 400
+    if not pattern:
+        return jsonify({"error": "Pattern not found"}), 404
+    if str(pattern.session_id.user_id.id) != current_user_id:
+        return jsonify({"error": "Unauthorized"}), 403
+    if getattr(pattern, "validation_passed", True) is False:
+        return jsonify({"error": VALIDATION_FAILED_MESSAGE, "error_code": "PATTERN_VALIDATION_FAILED",
+                        "validation_passed": False}), 422
+
+    data = request.get_json(silent=True) or {}
+    mode = data.get("cutting_mode", "auto")
+    if mode not in ("auto", "folded", "open"):
+        return jsonify({"error": "cutting_mode must be auto, folded or open.", "error_code": "INVALID_CUTTING_MODE"}), 400
+    selected = data.get("selected_width_cm")
+    if selected is not None and (isinstance(selected, bool) or selected not in STANDARD_FABRIC_WIDTHS):
+        return jsonify({"error": "selected_width_cm must be one of 91.44, 114.3, 152.4 (36\", 45\", 60\").",
+                        "error_code": "INVALID_FABRIC_WIDTH"}), 400
+
+    fabric_type = (getattr(pattern, "measurements_snapshot", None) or {}).get("fabric_type", "woven")
+    results = {w: width_estimate(pattern.pattern_coordinates, w, w_in, mode, fabric_type)
+               for w, w_in in zip(STANDARD_FABRIC_WIDTHS, STANDARD_WIDTHS_IN)}
+    rows = [_row(r) for r in results.values()]
+    if selected is None:                                   # default: the shortest purchase among widths that fit
+        fitting = [r for r in rows if r["fits"]]
+        selected = min(fitting, key=lambda r: r["recommended_purchase_m"])["fabric_width_cm"] if fitting else None
+    for r in rows:
+        r["selected"] = r["fabric_width_cm"] == selected
+
+    pattern.width_estimates = [{k: v for k, v in r.items() if k not in ("placed_pieces", "validation_checks")}
+                               for r in rows]
+    chosen = results.get(selected)
+    if isinstance(chosen, tuple):
+        pattern.yardage_metres = chosen[1]["yardage_metres"]
+        pattern.nesting_summary = _summary_of(chosen[1])
+    pattern.save()
+    return jsonify({
+        "pattern_id": str(pattern.id),
+        "selected_width_cm": selected,
+        "cutting_mode_requested": mode,
+        "estimates": rows,
+        "method": "Bottom-Left-Fill nesting of the stored cutting-line polygons (grain kept: 0/180 degrees only; "
+                  "cut-on-fold pieces on the fold). Pattern pieces are identical for every width; only the layout changes.",
+        "purchase_rule": "recommended purchase = layout length + 3 % shrinkage + 10 cm cutting margin, rounded up to 10 cm",
+    }), 200
+
+
 # ── CALCULATE YARDAGE ─────────────────────────────────────────────────────────
 @export_bp.route("/yardage/<pattern_id>", methods=["POST"])
 @jwt_required()
@@ -102,7 +203,7 @@ def calculate_yardage(pattern_id):
     if getattr(pattern, "validation_passed", True) is False:
         report = getattr(pattern, "validation_report", None) or {}
         return jsonify({
-            "error": "Fabric estimation blocked — pattern failed geometric validation.",
+            "error": VALIDATION_FAILED_MESSAGE, "error_code": "PATTERN_VALIDATION_FAILED",
             "validation_passed": False,
             "validation": report,
             "errors": report.get("errors", []),
@@ -180,7 +281,7 @@ def generate_pdf(pattern_id):
     if getattr(pattern, "validation_passed", True) is False:
         report = getattr(pattern, "validation_report", None) or {}
         return jsonify({
-            "error": "PDF export blocked — pattern failed geometric validation.",
+            "error": VALIDATION_FAILED_MESSAGE, "error_code": "PATTERN_VALIDATION_FAILED",
             "validation_passed": False,
             "validation": report,
             "errors": report.get("errors", []),

@@ -70,6 +70,8 @@ export const patternsAPI = {
 // ── EXPORT ────────────────────────────────────────────────────────────────────
 export const exportAPI = {
   yardage:  (id, data) => api.post(`/export/yardage/${id}`, data),
+  // fabric requirement for 36", 45" and 60" in one call; data: { selected_width_cm?, cutting_mode? }
+  estimates: (id, data) => api.post(`/export/estimates/${id}`, data),
   pdf:      (id)       => api.post(`/export/pdf/${id}`),
   download: (id)       => api.get(`/export/download/${id}`, {
     responseType: 'blob'

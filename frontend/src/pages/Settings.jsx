@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { Check, Cpu, Ruler, Save, User } from 'lucide-react';
 import { imagesAPI } from '../services/api';
-import { FABRIC_WIDTHS, getPreferences, savePreferences } from '../utils/preferences';
+import { FABRIC_WIDTHS, getPreferences, savePreferences, widthLabel } from '../utils/preferences';
 
 // Fixed by the drafting engine (backend/app/logic/drafting/seam_allowance.py) — shown for
 // information only; they are project sewing-practice choices, not user settings.
@@ -73,7 +73,7 @@ export default function Settings() {
             <label className="form-label" htmlFor="width-pref">Fabric width for the first estimate</label>
             <select id="width-pref" className="form-select" value={prefs.fabricWidth}
                     onChange={(e) => setPrefs({ ...prefs, fabricWidth: Number(e.target.value) })}>
-              {FABRIC_WIDTHS.map((w) => <option key={w} value={w}>{w} cm</option>)}
+              {FABRIC_WIDTHS.map((w) => <option key={w} value={w}>{widthLabel(w)}</option>)}
             </select>
           </div>
           <p style={{ fontSize: '11px', color: 'var(--text-muted)', margin: '12px 0', lineHeight: 1.5 }}>

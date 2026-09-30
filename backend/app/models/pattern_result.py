@@ -12,6 +12,7 @@ class PatternResult(Document):
     pattern_coordinates = ListField(DictField(), default=list)
     yardage_metres = FloatField(default=0.0)
     nesting_summary = DictField(default=dict)
+    width_estimates = ListField(DictField(), default=list)   # one entry per standard width (36"/45"/60"), for results and PDF
     garment_type = StringField(default="blouse")
     selected_fabric_id = StringField(default="cotton-poplin")
     selected_fabric_name = StringField(default="Cotton Poplin")

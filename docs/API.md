@@ -65,17 +65,18 @@ Anything else returns `422 UNSUPPORTED_DESIGN` with an explanation; the system n
 
 ## Patterns `/api/patterns` 🔒
 
-* `POST /generate` – body `{measurement_id, image_id | "manual", fabric_id, confirmed_attributes?}`. Drafts the base block, applies the confirmed design, adds seam allowances and validates. Returns `pattern_id`, `base_block`, `final_pattern` (transformations), `pattern_pieces` (per piece: `segments` with Bézier control points, `outline` = sewing line, `cutting_line`, `notches`, `darts`, `grain_line`, `fold_line`, `cut_count`, `cut_on_fold`, `seam_allowances`, `units: "cm"`), `validation` (every check) and `validation_passed`. A pattern that fails validation is **not created** (422).
+* `POST /generate` – body `{measurement_id, image_id | "manual", fabric_id, confirmed_attributes?}`. The selected fabric must be compatible with the garment (`422 FABRIC_NOT_COMPATIBLE`) and its construction (woven/knit) decides the drafting block. Drafts the base block, applies the confirmed design, adds seam allowances and validates. Returns `pattern_id`, `base_block`, `final_pattern` (transformations), `pattern_pieces` (per piece: `segments` with Bézier control points, `outline` = sewing line, `cutting_line`, `notches`, `darts`, `grain_line`, `fold_line`, `cut_count`, `cut_on_fold`, `seam_allowances`, `units: "cm"`), `validation` (every check) and `validation_passed`. A pattern that fails validation is **not created** (422).
 * `GET /` – list (each item has `measurement_id`, the customer profile it was drafted for); `GET /{id}` – full saved pattern (geometry, validation, estimate, PDFs). The measured drafting time is stored as `generation_time_sec`.
 
 ## Fabric `/api/fabric` 🔒
 
-* `POST /recommend` – rule-based ranking with explanations for the confirmed design.
+* `POST /recommend` – **rule-based** recommendation (not machine-learned). Send `{confirmed_attributes: {garment_type, neckline_type, sleeve_length, sleeve_style}, fit_preference}`: every catalogue fabric comes back with `compatible` (the drafting-block rule: T-shirt → knit only, blouse → woven only, crop-top → either, the fabric decides the block), `incompatible_reason`, `recommendation_score` with `score_reasons` (each rule and its delta), `warnings` (e.g. sheer → lining needed), `gsm_range` (from the catalogue text), and `recommended` for the 2–4 best compatible fabrics (`recommended_ids`). No price, stock or availability exists or is returned. The legacy feature-string request is still accepted.
 * `GET /catalog`, `GET /{fabric_id}` – Cotton Poplin, Linen Blend, Rayon, Cotton Jersey Knit, … (ids are lower-case hyphenated).
 
 ## Estimate and PDF `/api/export` 🔒
 
 * `POST /yardage/{pattern_id}` – body `{fabric_width_cm: 90|114|150|any > 0, cutting_mode: "auto"|"folded"|"open"}` (defaults 114, `auto`). Refused (422) if the pattern failed validation. Returns layout length, exact and recommended purchase length (+3 % shrinkage, +10 cm margin, rounded up to 10 cm), utilisation/waste, `placed_pieces` (polygon positions), `validation_checks` (exact overlap, bounds, fold, grain, quantities), `assumptions`, `mode_comparison`.
+* `POST /estimates/{pattern_id}` – fabric requirement for the three standard widths **36" (91.44 cm), 45" (114.3 cm), 60" (152.4 cm)** from the stored validated pieces, body `{selected_width_cm?, cutting_mode?}`. Each row: width in inches and cm, `fits`, `base_layout_length_cm`, `purchasing_allowance_cm`, `recommended_purchase_m` (+ yd), `utilisation_percent`, `waste_percent`, `placed_pieces` (layout), `validation_checks`, `warnings`; a width where a piece cannot be placed is `fits: false` with the reason and no numbers. The selected width (default: shortest purchase) becomes the saved estimate used by the PDF; all three rows are stored as `width_estimates`. 422 `PATTERN_VALIDATION_FAILED` for a pattern that failed validation.
 * `POST /pdf/{pattern_id}` – builds the printable 1:1 A4-tiled PDF from the stored layout width/mode and the measurements the pattern was generated from. → `export_id`, `pages`.
 * `GET /download/{export_id}` – the PDF. `GET /` list, `DELETE /{export_id}`.
 

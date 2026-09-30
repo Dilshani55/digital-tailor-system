@@ -91,11 +91,16 @@ test('register -> upload -> AI review -> measurements -> fabric -> pattern -> es
   // 6. fabric estimate for each supported width
   await page.getByRole('button', { name: 'Continue to fabric estimate' }).click();
   await expect(page.getByRole('heading', { name: 'Fabric estimate' })).toBeVisible();
+  // all three standard widths are calculated together from the stored pieces
+  const table = page.getByTestId('width-comparison');
+  await expect(table).toBeVisible({ timeout: 60_000 });
+  for (const t of ['36"', '45"', '60"', '91.44 cm', '114.3 cm', '152.4 cm']) await expect(table).toContainText(t);
   const lengths = {};
-  for (const w of [90, 114, 150]) {
-    await page.getByTestId(`width-${w}`).click();
-    await expect(page.getByTestId('nesting-layout')).toContainText(`${w} cm wide`, { timeout: 60_000 });
-    lengths[w] = await page.getByTestId('estimate-results').innerText();
+  for (const [inch, cm] of [[36, 91.44], [45, 114.3], [60, 152.4]]) {
+    await page.getByTestId(`width-${inch}`).click();
+    await expect(page.getByTestId(`width-${inch}`)).toHaveText('Selected', { timeout: 60_000 });
+    await expect(page.getByTestId('nesting-layout')).toContainText(`${cm} cm wide`);
+    lengths[inch] = await page.getByTestId(`estimate-row-${inch}`).innerText();
   }
   await shot('06-fabric-estimate');
   mark(`estimates: ${JSON.stringify(lengths).replace(/\s+/g, ' ')}`);

@@ -13,12 +13,11 @@ import {
 } from '../utils/measurementSchema';
 import { formatResult, CALCULATION_FAILED, NOT_CALCULATED as NOT_CALCULATED_LABEL } from '../utils/results';
 import { friendlyError, imageProblem } from '../utils/friendlyError';
-import { getPreferences } from '../utils/preferences';
+import { getPreferences, widthLabel } from '../utils/preferences';
 import {
   imagesAPI, measurementsAPI, patternsAPI, exportAPI, researchAPI,
 } from '../services/api';
 
-const FABRIC_WIDTHS = [90, 114, 150];
 const CUTTING_MODES = [
   { value: 'auto', label: 'Best layout (recommended)' },
   { value: 'folded', label: 'Fabric folded lengthwise' },
@@ -95,7 +94,8 @@ export default function Upload() {
   // step 6 — estimate
   const [fabricWidth, setFabricWidth] = useState(() => getPreferences().fabricWidth);
   const [cuttingMode, setCuttingMode] = useState('auto');
-  const [yardageData, setYardageData] = useState(null);
+  const [yardageData, setYardageData] = useState(null);     // the selected width's layout
+  const [estimates, setEstimates] = useState(null);         // 36" / 45" / 60" comparison rows
   const [yardageError, setYardageError] = useState(false);
 
   // step 7 — export
@@ -364,13 +364,32 @@ export default function Upload() {
     setLoadingMessage('Laying out the pattern pieces on your fabric…');
     setError('');
     try {
-      const res = await exportAPI.yardage(patternId, { fabric_width_cm: width, cutting_mode: mode });
-      setYardageData(res.data);
-      setYardageError(false);
+      // all three standard widths are calculated together; `width` is the one highlighted / used for the PDF
+      const res = await exportAPI.estimates(patternId, { selected_width_cm: width, cutting_mode: mode });
+      const rows = res.data.estimates || [];
+      const sel = rows.find((r) => r.selected);
+      setEstimates(rows);
+      setFabricWidth(res.data.selected_width_cm ?? width);
+      if (sel && sel.fits) {
+        setYardageData({
+          ...sel,
+          fabric_length_cm: sel.base_layout_length_cm,
+          purchasing_recommended_m: sel.recommended_purchase_m,
+          yardage_yards: sel.recommended_purchase_yd,
+          method: res.data.method,
+          purchase_rule: res.data.purchase_rule,
+        });
+        setYardageError(false);
+      } else {
+        setYardageData(null);
+        setYardageError(true);
+        setError(sel?.error ? `${widthLabel(sel.fabric_width_cm)}: ${sel.error}` : 'The fabric estimate could not be calculated.');
+      }
       setExportId(null);          // a new layout means the previous PDF is out of date
       setPdfInfo(null);
     } catch (err) {
       setYardageData(null);
+      setEstimates(null);
       setYardageError(true);
       setError(friendlyError(err, 'The fabric estimate could not be calculated.'));
     } finally {
@@ -587,15 +606,15 @@ export default function Upload() {
                 </select>
               </div>
               <div className="form-field">
-                <label className="form-label" htmlFor="fabric-type">Fabric construction</label>
-                <select id="fabric-type" className="form-select" value={meas.fabric_type} onChange={(e) => setMeas({ ...meas, fabric_type: e.target.value })}>
-                  <option value="woven">Woven (no stretch)</option>
-                  <option value="knit">Knit (moderate stretch)</option>
-                </select>
+                <span className="form-label">Fabric construction</span>
+                <p className="muted small" data-testid="fabric-construction">
+                  {meas.fabric_type === 'knit' ? 'Knit' : 'Woven'} — set by the chosen fabric (it decides the drafting block).
+                </p>
               </div>
               <div className="form-field" style={{ gridColumn: '1/-1' }}>
                 <FabricRecommendation
-                  detectedFeatures={features}
+                  confirmedAttributes={confirmedAttributes}
+                  fitPreference={meas.fit_preference}
                   selectedFabricId={selectedFabricId}
                   onSelectFabric={(id, name, type) => {
                     setSelectedFabricId(id);
@@ -642,23 +661,45 @@ export default function Upload() {
         {!loading && step === 6 && (
           <div className="wizard-body" id="wp6">
             {heading('Fabric estimate', 'The pattern pieces (with seam allowance) are laid out on the fabric to find how much cloth to buy.')}
-            <div className="form-grid">
-              <div className="form-field">
-                <span className="form-label" id="width-label">Fabric width</span>
-                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }} role="group" aria-labelledby="width-label">
-                  {FABRIC_WIDTHS.map((w) => (
-                    <button key={w} type="button" className={fabricWidth === w ? 'btn btn-primary' : 'btn btn-outline'} aria-pressed={fabricWidth === w}
-                            data-testid={`width-${w}`} onClick={() => { setFabricWidth(w); runEstimate(w, cuttingMode); }}>{w} cm</button>
-                  ))}
-                </div>
-              </div>
-              <div className="form-field">
-                <label className="form-label" htmlFor="cut-mode">Cutting layout</label>
-                <select id="cut-mode" className="form-select" value={cuttingMode} onChange={(e) => { setCuttingMode(e.target.value); runEstimate(fabricWidth, e.target.value); }}>
-                  {CUTTING_MODES.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
-                </select>
-              </div>
+            <div className="form-field" style={{ maxWidth: '360px' }}>
+              <label className="form-label" htmlFor="cut-mode">Cutting layout</label>
+              <select id="cut-mode" className="form-select" value={cuttingMode} onChange={(e) => { setCuttingMode(e.target.value); runEstimate(fabricWidth, e.target.value); }}>
+                {CUTTING_MODES.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
+              </select>
             </div>
+
+            {estimates && (
+              <div className="table-wrap width-compare" data-testid="width-comparison">
+                <table className="hist-table">
+                  <caption className="sr-only">Fabric requirement for the three standard widths</caption>
+                  <thead><tr><th>Fabric width</th><th>Base layout length</th><th>Purchasing allowance</th><th>Recommended purchase</th><th>Utilisation</th><th>Waste</th><th><span className="sr-only">Select</span></th></tr></thead>
+                  <tbody>
+                    {estimates.map((e) => (
+                      <tr key={e.fabric_width_cm} className={e.selected ? 'row-selected' : ''} data-testid={`estimate-row-${e.fabric_width_in}`}>
+                        <td><strong>{e.fabric_width_in}"</strong><small>{e.fabric_width_cm} cm</small></td>
+                        {e.fits ? (
+                          <>
+                            <td>{e.base_layout_length_cm} cm<small>{e.cutting_mode === 'folded' ? 'folded' : 'open'}</small></td>
+                            <td>{e.purchasing_allowance_cm} cm</td>
+                            <td><strong>{e.recommended_purchase_m} m</strong><small>{e.recommended_purchase_yd} yd</small></td>
+                            <td>{e.utilisation_percent}%</td>
+                            <td>{e.waste_percent}%</td>
+                          </>
+                        ) : (
+                          <td colSpan={5} className="cell-warning">Does not fit: {e.error}</td>
+                        )}
+                        <td>
+                          <button type="button" className={e.selected ? 'btn btn-primary btn-sm' : 'btn btn-outline btn-sm'} aria-pressed={e.selected}
+                                  data-testid={`width-${e.fabric_width_in}`} disabled={!e.fits}
+                                  onClick={() => runEstimate(e.fabric_width_cm, cuttingMode)}>{e.selected ? 'Selected' : 'Use'}</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {estimates.flatMap((e) => (e.warnings || []).map((w) => `${e.fabric_width_in}": ${w}`)).map((w) => <p key={w} className="muted small">{w}</p>)}
+              </div>
+            )}
 
             <div className="result-grid" style={{ marginTop: '16px' }} data-testid="estimate-results">
               <div className="result-tile"><div className="r-val">{resultOrNA(yardageData?.purchasing_recommended_m, ' m')}</div><div className="r-lbl">Recommended purchase</div></div>
@@ -669,15 +710,14 @@ export default function Upload() {
             {yardageData && (
               <>
                 <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: '12px 0' }}>
-                  {yardageData.cutting_method_simple} · {yardageData.fabric_width_cm} cm wide · {yardageData.yardage_yards} yd.
-                  {' '}{yardageData.usage_status}.
+                  Layout for {widthLabel(yardageData.fabric_width_cm)}: {yardageData.cutting_method_simple} · {yardageData.recommended_purchase_yd} yd.
                 </p>
                 <NestingLayout nesting={yardageData} />
                 <details style={{ marginTop: '12px', fontSize: '12px', color: 'var(--text-secondary)' }}>
                   <summary style={{ cursor: 'pointer', fontWeight: 600 }}>How this was calculated</summary>
                   <ul style={{ paddingLeft: '18px', marginTop: '6px' }}>
-                    {(yardageData.assumptions || []).map((a) => <li key={a}>{a}</li>)}
                     <li>{yardageData.method}</li>
+                    <li>{yardageData.purchase_rule}</li>
                   </ul>
                 </details>
               </>

@@ -55,6 +55,7 @@ Not validated (limits of the method): how the garment fits a real body, drape, s
 
 * Uses the **cutting-line polygons** (seam allowance included), rasterised on a 0.5 cm grid; Bottom-Left-Fill in descending area order; ≥ ~0.5 cm between pieces.
 * Length of the cloth is the y-axis (grain). Only 0° and 180° orientations are tried — a 90° turn would break the grain. Cut-on-fold pieces are pinned to the fold edge and never rotated.
+* Standard widths: **36" = 91.44 cm, 45" = 114.3 cm, 60" = 152.4 cm** (exact 2.54 conversion); all three are computed from the same stored pieces — only the layout and the length change, never the pieces.
 * *Folded* mode: usable width = bolt/2, one placement yields a full fold piece or a pair; *open* mode: full width, fold pieces mirrored to full size. `auto` computes both and keeps the shorter purchase.
 * Exact polygon checks on the result: no overlap, inside the cloth, fold alignment, grain preserved, cut quantities met. Any piece wider than the cloth → `PIECE_DOES_NOT_FIT` (never dropped silently).
 * Purchase length = layout + 3 % shrinkage + 10 cm cutting margin, rounded up to 10 cm. Utilisation = useful piece area ÷ (bolt width × layout length).
