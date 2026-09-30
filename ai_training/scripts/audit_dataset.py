@@ -98,18 +98,19 @@ def taxonomy_report(classes_path):
         report["checks"]["model_head_dims"] = all(DEFAULT_HEAD_DIMS[h] == len(truth[h]) for h in HEADS)
     except Exception as exc:                        # noqa: BLE001
         report["checks"]["model_head_dims"] = f"unavailable: {exc}"
+    # The frontend no longer has its own list: it imports config/garment_scope.json, which the backend loads too.
     js = os.path.join("frontend", "src", "utils", "designSchema.js")
-    if os.path.exists(js):
+    canon = os.path.join("config", "garment_scope.json")
+    if os.path.exists(js) and os.path.exists(canon):
         text = open(js, encoding="utf-8").read()
-        ok = True
-        for h in HEADS:
-            block = re.search(rf"{h}: \[(.*?)\n  \]", text, re.S)
-            values = re.findall(r"value: '([^']+)'", block.group(1)) if block else []
-            try:
-                from app.logic.feature_schema import UI_TAXONOMY as _UI
-                ok = ok and values == list(_UI[h])
-            except Exception:                            # noqa: BLE001
-                ok = False
+        with open(canon, encoding="utf-8") as f:
+            canon_tax = json.load(f)["taxonomy"]
+        ok = "config/garment_scope.json" in text and not re.search(r"value: '[a-z-]+'", text)
+        try:
+            from app.logic.feature_schema import UI_TAXONOMY as _UI
+            ok = ok and all([o["value"] for o in canon_tax[h]] == list(_UI[h]) for h in HEADS)
+        except Exception:                                # noqa: BLE001
+            ok = False
         report["checks"]["frontend_designSchema_matches_active_ui_taxonomy"] = ok
     return report
 
