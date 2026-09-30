@@ -1,5 +1,5 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { BarChart3, FileClock, LogOut, Plus, Ruler, Settings, Sparkles, Users, Database } from 'lucide-react';
+import { BarChart3, FileClock, LogOut, Plus, Ruler, Settings, Sparkles, Users } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 const links = [
@@ -8,7 +8,6 @@ const links = [
   { to: '/history', label: 'Pattern library', icon: FileClock },
   { to: '/customers', label: 'Customers', icon: Users },
   { to: '/measurements', label: 'Measurements', icon: Ruler },
-  { to: '/researcher', label: 'Researcher Metrics', icon: Database },
 ];
 
 export default function Sidebar() {

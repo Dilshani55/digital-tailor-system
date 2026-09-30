@@ -144,9 +144,13 @@ test('out-of-scope design cannot be confirmed through the UI', async ({ page, re
   await page.goto('/upload');
   await page.getByRole('button', { name: /choose the design manually/ }).click();
   await page.getByTestId('select-garment_type').selectOption('t-shirt');
-  await page.getByTestId('select-neckline_type').selectOption('square-neck');
+  // combinations the engine cannot draft are not selectable at all
+  await expect(page.getByTestId('select-neckline_type').locator('option[value="square-neck"]')).toBeDisabled();
+  await expect(page.getByTestId('select-neckline_type').locator('option[value="collared-neck"]')).toBeDisabled();
+  await expect(page.getByTestId('select-sleeve_length').locator('option[value="sleeveless"]')).toBeDisabled();
+  await page.getByTestId('select-neckline_type').selectOption('round-neck');
   await page.getByTestId('select-sleeve_length').selectOption('short-sleeve');
-  await page.getByTestId('select-sleeve_style').selectOption('regular-sleeve');
-  await page.getByTestId('confirm-btn').click();
+  await expect(page.getByTestId('select-sleeve_style').locator('option[value="puff-sleeve"]')).toBeDisabled();
+  await expect(page.getByTestId('confirm-btn')).toBeDisabled();            // style still missing
   await expect(page.getByRole('button', { name: 'Continue to measurements' })).toBeDisabled();
 });

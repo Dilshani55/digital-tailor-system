@@ -1,11 +1,9 @@
-// Real stack: customer profile -> pattern linked to that customer -> traditional-vs-system fabric
-// comparison (system value recomputed by the real nesting) -> researcher summary; plus the honest
-// AI model status in Settings. The researcher account must be listed in the backend's
-// RESEARCHER_EMAILS (default for this test: e2e_researcher@example.test).
+// Real stack: customer profile created in the UI (honest validation) -> a pattern drafted for that customer
+// is linked to it -> the saved pattern opens without any research/tailor-estimate UI -> Settings shows the
+// real AI model state.
 import { test, expect } from '@playwright/test';
 
 const API = process.env.E2E_API_URL || 'http://127.0.0.1:5055/api';
-const RESEARCHER = process.env.E2E_RESEARCHER_EMAIL || 'e2e_researcher@example.test';
 const PASSWORD = 'E2e-Passw0rd!';
 const MEAS = {
   bust_cm: 88, waist_cm: 70, hip_cm: 94, height_cm: 162, neck_cm: 36, shoulder_cm: 12, across_back_cm: 34,
@@ -29,11 +27,10 @@ function watchProblems(page) {
   return problems;
 }
 
-test('customer -> linked pattern -> traditional estimate comparison -> researcher summary', async ({ page, request, browser }) => {
+test('customer -> linked pattern -> saved pattern -> settings', async ({ page, request }) => {
   const problems = watchProblems(page);
   const email = `e2e_eval_${Date.now()}@example.test`;
   expect((await request.post(`${API}/auth/register`, { data: { full_name: 'Eval Tester', email, password: PASSWORD } })).ok()).toBeTruthy();
-  await request.post(`${API}/auth/register`, { data: { full_name: 'E2E Researcher', email: RESEARCHER, password: PASSWORD } }); // may already exist
   const token = (await (await request.post(`${API}/auth/login`, { data: { email, password: PASSWORD } })).json()).token;
   const auth = { Authorization: `Bearer ${token}` };
 
@@ -64,39 +61,15 @@ test('customer -> linked pattern -> traditional estimate comparison -> researche
   await page.goto('/customers');
   await expect(page.getByTestId(`pattern-count-${prof.measurement_id}`)).toHaveText('1');
 
-  // 3. traditional estimate on the saved pattern; system value recomputed for the same width
+  // 3. the saved pattern opens with its geometry and no research / tailor-estimate features
   await page.goto(`/patterns/${patternId}`);
-  const cmp = page.getByTestId('fabric-comparison');
-  await expect(cmp.getByText('No comparison recorded for this pattern yet.')).toBeVisible();
-  await cmp.getByLabel('Fabric width').selectOption('150');
-  await cmp.getByLabel('Traditional estimate (m)').fill('2');
-  await cmp.getByLabel('Estimator label (optional)').fill('Tailor A');
-  await cmp.getByRole('button', { name: 'Save comparison' }).click();
-  await expect(cmp.getByTestId('comparison-table')).toContainText('Tailor A');
-  const stored = (await (await request.get(`${API}/research/fabric-comparisons?pattern_id=${patternId}`, { headers: auth })).json()).comparisons;
-  expect(stored).toHaveLength(1);
-  const est = await (await request.post(`${API}/export/yardage/${patternId}`, { headers: auth, data: { fabric_width_cm: 150, cutting_mode: 'auto' } })).json();
-  expect(stored[0].system_purchase_m).toBe(est.purchasing_recommended_m);          // same real nesting result
-  expect(stored[0].difference_m).toBeCloseTo(2 - est.purchasing_recommended_m, 3);
-  await expect(cmp.getByTestId('comparison-table')).toContainText(`${est.purchasing_recommended_m} m`);
+  await expect(page.getByTestId('pattern-preview')).toBeVisible();
+  await expect(page.getByText(/traditional|tailor.?s estimate/i)).toHaveCount(0);
 
   // 4. settings reports the real model state, no invented server status
   await page.goto('/settings');
   await expect(page.getByTestId('model-state')).toContainText(/Available|Not available/);
   await expect(page.getByText(/ONLINE & CONNECTED/)).toHaveCount(0);
 
-  // 5. the researcher sees the comparison in the study summary (pseudonymised elsewhere)
-  const ctx = await browser.newContext();
-  const rpage = await ctx.newPage();
-  const rproblems = watchProblems(rpage);
-  await uiSignIn(rpage, RESEARCHER);
-  await rpage.goto('/researcher');
-  const summary = rpage.getByTestId('fabric-comparison-summary');
-  await expect(summary).toBeVisible({ timeout: 20_000 });
-  await expect(summary).not.toContainText('no traditional estimate has been recorded');
-  await expect(summary).toContainText(/Comparisons \(patterns\)\d+ \(\d+\)/);   // study-wide count (grows across runs)
-  await ctx.close();
-
-  expect(problems.filter((p) => !/\/auth\/register/.test(p)), problems.join('\n')).toEqual([]);
-  expect(rproblems, rproblems.join('\n')).toEqual([]);
+  expect(problems, problems.join('\n')).toEqual([]);
 });

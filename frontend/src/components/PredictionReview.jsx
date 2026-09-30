@@ -3,7 +3,7 @@ import { CheckCircle2, AlertTriangle, Sparkles, RefreshCw, HelpCircle } from 'lu
 
 import {
   ACTIVE_TAXONOMY_OPTIONS, HEAD_TITLES, supportOf, supportReport, consistencyError, UNSUPPORTED, APPROXIMATED,
-  OUTSIDE_SCOPE_MESSAGE, predictionOutsideScope,
+  OUTSIDE_SCOPE_MESSAGE, LOW_CONFIDENCE_MESSAGE, predictionOutsideScope, optionBlockedReason, labelOf,
 } from '../utils/designSchema';
 
 // Re-exported for existing importers; the single frontend definition lives in utils/designSchema.js.
@@ -22,9 +22,17 @@ export default function PredictionReview({
 
   // A prediction is pre-selected ONLY if it is one of the user-selectable classes. Anything else stays
   // blank (never mapped to a "similar" class) and the user must choose manually.
+  // A prediction is also NOT pre-selected when it cannot be drafted (e.g. collared neck, or a sleeve
+  // style the predicted garment does not support): it stays visible and the user picks a supported option.
+  const predictedSet = Object.fromEntries(Object.keys(HEAD_TITLES).map((h) => [h, predictions?.[h]?.label]));
+  const draftBlock = (head) => {
+    const label = predictions?.[head]?.label;
+    if (!label || predictionOutsideScope(head, label)) return '';
+    return optionBlockedReason(head, label, predictedSet);
+  };
   const suggest = (head) => {
     const label = predictions?.[head]?.label;
-    return label && !predictionOutsideScope(head, label) ? label : '';
+    return label && !predictionOutsideScope(head, label) && !draftBlock(head) ? label : '';
   };
   const outsideScopeHeads = Object.keys(HEAD_TITLES).filter((h) => predictionOutsideScope(h, predictions?.[h]?.label));
 
@@ -304,6 +312,20 @@ export default function PredictionReview({
                 </div>
               )}
 
+              {isLowConf && isEditing && (
+                <div role="note" data-testid={`low-confidence-${headKey}`}
+                     style={{ fontSize: '11px', fontWeight: 600, color: '#92400E', marginBottom: '6px' }}>
+                  {LOW_CONFIDENCE_MESSAGE}
+                </div>
+              )}
+              {isEditing && draftBlock(headKey) && (
+                <div role="note" data-testid={`not-draftable-${headKey}`}
+                     style={{ fontSize: '11px', color: '#92400E', marginBottom: '6px' }}>
+                  AI suggested “{labelOf(headKey, headPred.label)}”, but this pattern cannot be drafted
+                  ({draftBlock(headKey).toLowerCase()}). Please choose a supported option.
+                </div>
+              )}
+
               {/* Select Control */}
               <select
                 className="form-select"
@@ -322,11 +344,14 @@ export default function PredictionReview({
                 data-testid={`select-${headKey}`}
               >
                 <option value="">-- Select {title} --</option>
-                {options.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label} ({opt.value})
-                  </option>
-                ))}
+                {options.map((opt) => {
+                  const blocked = optionBlockedReason(headKey, opt.value, selections);
+                  return (
+                    <option key={opt.value} value={opt.value} disabled={Boolean(blocked)}>
+                      {opt.label} ({opt.value}){blocked ? ` — ${blocked}` : ''}
+                    </option>
+                  );
+                })}
               </select>
               {(() => {
                 const opt = supportOf(headKey, selections[headKey]);
@@ -363,7 +388,7 @@ export default function PredictionReview({
               gap: '6px',
             }}
             onClick={handleConfirmSubmit}
-            disabled={!isComplete || Boolean(consistency) || isSubmitting}
+            disabled={!isComplete || Boolean(consistency) || !report.supported || isSubmitting}
             data-testid="confirm-btn"
           >
             {isSubmitting ? (

@@ -27,48 +27,41 @@ engine gains real geometry for a feature (Phase 4):
                   never silently replaced by a different design
 """
 
+import json
+import os
 from datetime import datetime, timezone
 
-SCHEMA_VERSION = 1
+# The user-selectable taxonomy, its support levels and the draftable combinations live in ONE file shared
+# with the frontend: <repo>/config/garment_scope.json (override with GARMENT_SCOPE_FILE).
+SCOPE_FILE = os.environ.get("GARMENT_SCOPE_FILE") or os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..", "..", "..", "config", "garment_scope.json"))
+with open(SCOPE_FILE, encoding="utf-8") as _f:
+    _CANON = json.load(_f)
 
-HEADS = ("garment_type", "neckline_type", "sleeve_length", "sleeve_style")
+SCHEMA_VERSION = _CANON["schema_version"]
+
+HEADS = tuple(_CANON["heads"])
 
 IMPLEMENTED = "implemented"
 APPROXIMATED = "approximated"
 UNSUPPORTED = "unsupported"
 
-# value -> (support level, note). Order == classifier class order (classes.json).
-_FEATURES = {
-    "garment_type": {
-        "blouse": (IMPLEMENTED, "Woven bodice block with waist darts; hem must reach the waist line."),
-        "t-shirt": (IMPLEMENTED, "Knit bodice block, no darts, neckband piece; hem must reach the waist line."),
-        "crop-top": (IMPLEMENTED, "Hem must be 2 cm or more above the waist line; a longer garment length is reported as a conflict."),
-    },
+# Classes the deployed M13 checkpoint can predict but the user can NOT select (never remapped).
+# (level, note) describe what the engine internals would do; the API rejects them as OUTSIDE_SCOPE.
+_MODEL_ONLY = {
     "neckline_type": {
-        "round-neck": (IMPLEMENTED, "Curved round neck."),
-        "v-neck": (IMPLEMENTED, "True V: straight edges to a centre-front point."),
-        "square-neck": (IMPLEMENTED, "Square front neck with straight edges."),
         "scoop-neck": (APPROXIMATED, "Drafted as the base round neck; scoop depth is NOT applied."),
         "boat-neck": (APPROXIMATED, "Drafted as the base round neck; boat shape is NOT applied."),
         "sweetheart-neck": (APPROXIMATED, "Drafted as the base round neck; sweetheart shape is NOT applied."),
         "halter-neck": (UNSUPPORTED, "Halter/strap construction is not implemented."),
         "high-neck": (APPROXIMATED, "Drafted as the base round neck; no stand/collar piece is generated."),
-        "collared-neck": (UNSUPPORTED, "No collar piece is generated."),
-        "off-shoulder": (UNSUPPORTED, "Off-shoulder construction is not implemented."),
     },
     "sleeve_length": {
-        "sleeveless": (IMPLEMENTED, "No sleeve piece; armhole facing strips are generated."),
         "cap-length": (UNSUPPORTED, "A cap-length sleeve is shorter than the sleeve cap; not implemented."),
-        "short-sleeve": (IMPLEMENTED, "40% of the measured full-arm length (project assumption)."),
         "elbow-length": (IMPLEMENTED, "58% of the measured full-arm length (project assumption)."),
         "three-quarter-sleeve": (IMPLEMENTED, "75% of the measured full-arm length (project assumption)."),
-        "long-sleeve": (IMPLEMENTED, "Full measured arm length, tapering to the wrist."),
     },
     "sleeve_style": {
-        "none": (IMPLEMENTED, "Plain set-in sleeve (or none if sleeveless)."),
-        "regular-sleeve": (IMPLEMENTED, "Plain set-in sleeve."),
-        "puff-sleeve": (UNSUPPORTED, "No geometry for this sleeve style has been implemented."),
-        "bell-sleeve": (UNSUPPORTED, "No geometry for this sleeve style has been implemented."),
         "bishop-sleeve": (UNSUPPORTED, "No geometry for this sleeve style has been implemented."),
         "flutter-sleeve": (UNSUPPORTED, "No geometry for this sleeve style has been implemented."),
         "raglan-sleeve": (UNSUPPORTED, "Raglan construction is not implemented."),
@@ -77,17 +70,29 @@ _FEATURES = {
     },
 }
 
-# PROJECT SCOPE: the only garment/neckline/sleeve combinations the system drafts.
-# (frontend/src/utils/designSchema.js mirrors this; test_feature_contract.py enforces parity.)
-SCOPE = {
-    "blouse": {"neckline_type": ("round-neck", "v-neck", "square-neck"),
-               "sleeve_length": ("short-sleeve", "long-sleeve")},
-    "t-shirt": {"neckline_type": ("round-neck", "v-neck"),
-                "sleeve_length": ("short-sleeve", "long-sleeve")},
-    "crop-top": {"neckline_type": ("round-neck", "v-neck", "square-neck"),
-                 "sleeve_length": ("sleeveless", "short-sleeve")},
+# Class order of the deployed checkpoint (ai_training/config/classes.json; checked by tests).
+_MODEL_ORDER = {
+    "garment_type": ("blouse", "t-shirt", "crop-top"),
+    "neckline_type": ("round-neck", "v-neck", "square-neck", "scoop-neck", "boat-neck", "sweetheart-neck",
+                      "halter-neck", "high-neck", "collared-neck", "off-shoulder"),
+    "sleeve_length": ("sleeveless", "cap-length", "short-sleeve", "elbow-length", "three-quarter-sleeve",
+                      "long-sleeve"),
+    "sleeve_style": ("none", "regular-sleeve", "puff-sleeve", "bell-sleeve", "bishop-sleeve", "flutter-sleeve",
+                     "raglan-sleeve", "dolman-sleeve", "kimono-sleeve"),
 }
-SCOPE_GARMENT_LABEL = {"blouse": "Blouse", "t-shirt": "T-shirt", "crop-top": "Crop-top"}
+
+_ACTIVE = {h: {o["value"]: (o["support"], o["note"]) for o in _CANON["taxonomy"][h]} for h in HEADS}
+LABELS = {h: {o["value"]: o["label"] for o in _CANON["taxonomy"][h]} for h in HEADS}
+
+# value -> (support level, note), in the classifier's class order.
+_FEATURES = {h: {v: (_ACTIVE[h].get(v) or _MODEL_ONLY[h][v]) for v in _MODEL_ORDER[h]} for h in HEADS}
+
+# PROJECT SCOPE: garment -> allowed necklines and {sleeve_length: [allowed sleeve styles]}.
+SCOPE = {g: {"neckline_type": tuple(d["neckline_type"]),
+             "sleeve_length": tuple(d["sleeves"]),
+             "sleeves": {length: tuple(styles) for length, styles in d["sleeves"].items()}}
+         for g, d in _CANON["scope"].items()}
+SCOPE_GARMENT_LABEL = {g: d["label"] for g, d in _CANON["scope"].items()}
 
 
 def _pretty(values):
@@ -95,7 +100,7 @@ def _pretty(values):
 
 
 def scope_violations(clean):
-    """Items outside the supported garment x neckline x sleeve scope (regular sleeve style only)."""
+    """Items outside the draftable garment x neckline x sleeve length x sleeve style combinations."""
     out = []
     allowed = SCOPE.get(clean.get("garment_type"))
     if not allowed:
@@ -106,15 +111,17 @@ def scope_violations(clean):
             what = "necklines" if head == "neckline_type" else "sleeve lengths"
             out.append({"head": head, "value": clean[head],
                         "note": f"Outside the supported scope: {g} supports {_pretty(allowed[head])} {what} only."})
-    if clean["sleeve_length"] == "sleeveless":
-        ok_style = clean["sleeve_style"] == "none"
-    else:
-        ok_style = clean["sleeve_style"] == "regular-sleeve"
-    if not ok_style:
-        want = "none" if clean["sleeve_length"] == "sleeveless" else "regular-sleeve"
+    styles = allowed["sleeves"].get(clean["sleeve_length"])
+    if styles is not None and clean["sleeve_style"] not in styles:
         out.append({"head": "sleeve_style", "value": clean["sleeve_style"],
-                    "note": f"Outside the supported scope: only '{want}' sleeve style is supported with this sleeve length."})
+                    "note": f"Outside the supported scope: {g} with {clean['sleeve_length']} supports "
+                            f"{', '.join(repr(s) for s in styles)} sleeve style only."})
     return out
+
+
+def is_draftable(clean):
+    """True if the confirmed design can actually be drafted (supported values inside the scope)."""
+    return support_report(clean, with_scope=True)["supported"]
 
 
 # The deployed M13 classifier keeps its ORIGINAL output taxonomy (3 / 10 / 6 / 9 classes, order fixed by
@@ -124,16 +131,11 @@ MODEL_TAXONOMY = {head: tuple(values) for head, values in _FEATURES.items()}
 # What the USER may choose and confirm (active production taxonomy, 3 / 5 / 3 / 4 = 15 classes).
 # Values the model can predict but that are not listed here are NOT remapped to a similar class:
 # the prediction is kept as evidence and the user must confirm the design manually.
-UI_TAXONOMY = {
-    "garment_type": ("blouse", "t-shirt", "crop-top"),
-    "neckline_type": ("round-neck", "v-neck", "square-neck", "collared-neck", "off-shoulder"),
-    "sleeve_length": ("sleeveless", "short-sleeve", "long-sleeve"),
-    "sleeve_style": ("none", "regular-sleeve", "puff-sleeve", "bell-sleeve"),
-}
+UI_TAXONOMY = {h: tuple(o["value"] for o in _CANON["taxonomy"][h]) for h in HEADS}
 TAXONOMY = UI_TAXONOMY          # the API / frontend contract
 
-OUTSIDE_SCOPE_MESSAGE = ("The detected feature is outside the supported pattern scope. "
-                         "Please confirm the design manually.")
+OUTSIDE_SCOPE_MESSAGE = _CANON["outside_scope_message"]
+LOW_CONFIDENCE_MESSAGE = _CANON["low_confidence_message"]
 
 
 def support_of(head, value):
@@ -156,7 +158,10 @@ def schema_payload():
         "active_class_count": sum(len(v) for v in UI_TAXONOMY.values()),
         "model_class_counts": {h: len(v) for h, v in MODEL_TAXONOMY.items()},
         "outside_scope_message": OUTSIDE_SCOPE_MESSAGE,
-        "scope": {g: {h: list(v) for h, v in d.items()} for g, d in SCOPE.items()},
+        "scope": {g: {"neckline_type": list(d["neckline_type"]), "sleeve_length": list(d["sleeve_length"]),
+                      "sleeves": {k: list(v) for k, v in d["sleeves"].items()}} for g, d in SCOPE.items()},
+        "labels": LABELS,
+        "low_confidence_message": LOW_CONFIDENCE_MESSAGE,
         "rule_based_features": {
             "darts": "derived from garment_type (blouse: bust dart; others: none)",
             "seams": "side seam",

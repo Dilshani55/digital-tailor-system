@@ -21,7 +21,7 @@
 6. **Estimate** – `routes/export.py` → `estimate_fabric` (nesting). Refused when validation failed.
 7. **PDF** – `PDFGenerator` from the stored layout width/mode and the measurement snapshot.
 8. **Library** – `GET /api/patterns/{id}` returns everything needed to redraw the pattern and list its PDFs.
-9. **Evaluation (optional)** – `POST /api/research/fabric-comparisons` stores a traditional estimate next to the system estimate recomputed for the same width (collection `fabric_comparisons`); researchers read a descriptive summary in `/api/research/metrics`.
+9. **Internal research API (not in the app)** – researcher-only endpoints (`/api/research/metrics`, `/api/research/fabric-comparisons`, CSV exports) for study data; the customer app only sends the optional ease-of-use rating.
 
 The analyse step times the classifier inference and the generate step times the drafting; both are stored and used by the research records. If the checkpoint cannot be loaded, analyse answers 503 `MODEL_UNAVAILABLE` and `GET /api/images/model-status` says so; the manual design path is unaffected. The PDF prints the stored, validated pieces.
 
@@ -48,4 +48,4 @@ The analyse step times the classifier inference and the generate step times the 
 
 ## Frontend
 
-`pages/Upload.jsx` is the wizard controller (7 gated steps, see `components/StepIndicator.jsx`); `components/PredictionReview.jsx` (AI review), `MeasurementGuide.jsx`, `FabricRecommendation.jsx`, `PatternPreview.jsx` (SVG: cutting line, dashed sewing line, notches, darts, fold, grain), `NestingLayout.jsx` (SVG marker); `pages/History.jsx` (library) and `PatternDetail.jsx` (saved pattern). `utils/designSchema.js` and `utils/measurementSchema.js` mirror the backend schemas (a backend test fails if the taxonomy drifts); `utils/friendlyError.js` turns API failures into plain-language messages.
+The 15 selectable classes, their drafting support and the draftable combinations come from `config/garment_scope.json` (imported by `utils/designSchema.js`, loaded by `feature_schema.py`); the review screen disables options that cannot be drafted. `pages/Upload.jsx` is the wizard controller (7 gated steps, see `components/StepIndicator.jsx`); `components/PredictionReview.jsx` (AI review), `MeasurementGuide.jsx`, `FabricRecommendation.jsx`, `PatternPreview.jsx` (SVG: cutting line, dashed sewing line, notches, darts, fold, grain), `NestingLayout.jsx` (SVG marker); `pages/History.jsx` (library) and `PatternDetail.jsx` (saved pattern). `utils/designSchema.js` and `utils/measurementSchema.js` mirror the backend schemas (a backend test fails if the taxonomy drifts); `utils/friendlyError.js` turns API failures into plain-language messages.

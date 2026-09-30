@@ -38,7 +38,7 @@ test('all pages and navigation links work with no console errors', async ({ page
   await page.waitForURL('**/dashboard', { timeout: 30_000 });
 
   // each protected page renders real content (empty states for a brand-new account)
-  const pages = ['/dashboard', '/upload', '/history', '/fabric-savings', '/measurements', '/customers', '/settings', '/researcher'];
+  const pages = ['/dashboard', '/upload', '/history', '/fabric-savings', '/measurements', '/customers', '/settings'];
   for (const path of pages) {
     await page.goto(path);
     await expect(page.locator('.main-content')).toBeVisible();
@@ -65,9 +65,11 @@ test('all pages and navigation links work with no console errors', async ({ page
   await page.goto('/this-page-does-not-exist');
   await expect(page).toHaveURL(/\/$/);
 
-  // researcher data is not exposed to an ordinary account
+  // research features are not part of the customer app
+  await page.goto('/dashboard');
+  await expect(page.getByText(/Research(er)? Metrics/i)).toHaveCount(0);
   await page.goto('/researcher');
-  await expect(page.getByText(/only available to researcher accounts/i)).toBeVisible({ timeout: 15_000 });
+  await expect(page).toHaveURL(/\/$/);          // no such page: falls back to home
 
   expect(problems, problems.join('\n')).toEqual([]);
 });

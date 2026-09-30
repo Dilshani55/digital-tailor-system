@@ -72,6 +72,8 @@ describe('PredictionReview Component', () => {
     expect(screen.getByTestId('confidence-tag-sleeve_length')).toHaveTextContent('38.5% Low');
     expect(screen.getByTestId('low-confidence-alert')).toBeInTheDocument();
     expect(screen.getByTestId('low-confidence-alert')).toHaveTextContent('Sleeve Length');
+    expect(screen.getByTestId('low-confidence-sleeve_length')).toHaveTextContent('Low confidence — please confirm this feature');
+    expect(screen.queryByTestId('low-confidence-garment_type')).toBeNull();
   });
 
   it('allows editing predicted values in select controls', () => {
@@ -88,16 +90,19 @@ describe('PredictionReview Component', () => {
     const handleConfirm = vi.fn();
     render(<PredictionReview garmentAttributes={mockGarmentAttributes} onConfirm={handleConfirm} />);
 
-    // the model said three-quarter-sleeve, which is outside the selectable classes: the user must choose
-    fireEvent.change(screen.getByTestId('select-sleeve_length'), { target: { value: 'long-sleeve' } });
+    // the model said three-quarter-sleeve (outside the selectable classes) and bell-sleeve (not draftable yet):
+    // neither is pre-selected, the user must choose supported values
+    expect(screen.getByTestId('select-sleeve_style').value).toBe('');
+    fireEvent.change(screen.getByTestId('select-sleeve_length'), { target: { value: 'short-sleeve' } });
+    fireEvent.change(screen.getByTestId('select-sleeve_style'), { target: { value: 'regular-sleeve' } });
     const confirmBtn = screen.getByTestId('confirm-btn');
     fireEvent.click(confirmBtn);
 
     expect(handleConfirm).toHaveBeenCalledWith({
       garment_type: 'crop-top',
       neckline_type: 'v-neck',
-      sleeve_length: 'long-sleeve',
-      sleeve_style: 'bell-sleeve',
+      sleeve_length: 'short-sleeve',
+      sleeve_style: 'regular-sleeve',
     });
   });
 

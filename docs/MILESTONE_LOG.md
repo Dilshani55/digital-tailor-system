@@ -15,3 +15,17 @@ Each milestone records what changed, the commit and the tests that were actually
   real-stack Playwright E2E 6 passed.
 * Lint: `npm run lint` cannot run — the repository has no ESLint configuration.
 * Hardware: CPU only (22 logical cores, 16 GB RAM, Intel Arc graphics without CUDA).
+
+## Milestone 1 — scope and taxonomy
+
+* One canonical file `config/garment_scope.json`: the 15 selectable classes (3/5/3/4, fixed order), their
+  drafting support, and the draftable combinations *including which sleeve styles each sleeve length allows*.
+  `backend/app/logic/feature_schema.py` loads it; `frontend/src/utils/designSchema.js` imports it (no hand-copied list).
+* Review screen: options that cannot be drafted with the other selections are disabled with the reason; an
+  AI prediction that cannot be drafted is shown but not pre-selected ("AI suggested …, but this pattern cannot be
+  drafted"); confirm is blocked until the design is draftable; each low-confidence head shows
+  "Low confidence — please confirm this feature".
+* Removed from the customer app: Research Metrics page and navigation entry, traditional-vs-system fabric
+  comparison UI. The researcher-only backend API and the internal docs remain.
+* Tests: backend 355 passed · frontend 118 passed (6 tests of the removed UI replaced by 2 removal tests and 3
+  scope tests) · E2E 6 passed · build OK.

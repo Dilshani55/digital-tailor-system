@@ -11,7 +11,7 @@
 
 **Fabric**
 6. Nesting is a **greedy Bottom-Left-Fill heuristic** on a 0.5 cm grid — an upper bound on cloth, not an optimal marker. Plain fabric only (no print matching, nap, or stripes). Fabric shrinkage (3 %) and cutting margin (10 cm) are assumptions.
-7. **No comparison with tailors or with a manual baseline has been collected yet**, so no fabric-saving percentage versus traditional practice can be claimed. The *instrument* now exists (a traditional estimate can be recorded per saved pattern and is compared with the system estimate recomputed for the same width; researchers get a descriptive summary and CSV), but it holds no study data. Even with data, "the system recommends less" does not show the amount is enough - that needs a real cut. "Utilisation" is the share of the laid fabric covered by pattern pieces.
+7. **No comparison with tailors or with a manual baseline has been collected yet**, so no fabric-saving percentage versus traditional practice can be claimed. An internal, researcher-only API for such a comparison exists (not in the customer app), but it holds no study data. Even with data, "the system recommends less" does not show the amount is enough - that needs a real cut. "Utilisation" is the share of the laid fabric covered by pattern pieces.
 8. The fabric knowledge base is an author-compiled, rule-based ranking; its properties are not cited to a published standard.
 
 **AI**
@@ -36,7 +36,7 @@
 * Reported AI metrics are those in AI_EVIDENCE.md, computed by the scripts in `ai_training/`; a new model is deployed only if it beats the deployed one on the locked benchmark **and** a clean test split (acceptance gate); the newer experimental models did not, so the earlier checkpoint stays.
 * Security and privacy measures: verified Google sign-in, hashed passwords, JWT with ownership checks, content-checked uploads, researcher-only pseudonymised study data, no internal error details in API responses.
 * The system is honest about the AI being unavailable (HTTP 503, "choose the design manually"), and the manual path drafts the same pattern.
-* An evaluation instrument for comparing traditional and system fabric estimates exists (same fabric width, server-recomputed system value, descriptive statistics, pseudonymised export) - **results only once data is collected**.
+* An internal, researcher-only API can record traditional fabric estimates next to the system estimate for the same width (descriptive statistics, pseudonymised export) — it is not part of the customer app, and **no results exist until data is collected**.
 
 ## Claims that MUST NOT be made
 
@@ -58,6 +58,5 @@
 5. **Pattern preview.** Point at the solid cutting line vs dashed sewing line, notches, darts, fold and grain; open the validation panel ("Geometry validation passed", armhole vs sleeve-cap numbers).
 6. **Fabric estimate.** Click 90, 114, 150 cm; show the layout drawing and the "how this was calculated" assumptions. Say plainly it is a heuristic, not optimal.
 7. **PDF.** Create and download; open it; show the 5 cm calibration square, instructions and a tile page; hold a ruler to the square if printing.
-8. **Evaluation instrument.** Open the saved pattern, enter a traditional estimate (e.g. "Tailor A", 2.0 m at 150 cm); show that the system value is recomputed for the same width, and the researcher summary (descriptive only; no study data collected yet).
-9. **Evidence.** Show `docs/AI_EVIDENCE.md` (metrics, dataset audit, why the new models were *not* deployed) and the green test suites.
-10. **Close with the limitations** (no fit test yet; assumptions registry; small dataset) and the future work: muslin trials with 3–5 tailors/testers, more sleeveless/regular-sleeve data, Aldrich verification.
+8. **Evidence.** Show `docs/AI_EVIDENCE.md` (metrics, dataset audit, why the new models were *not* deployed) and the green test suites.
+9. **Close with the limitations** (no fit test yet; assumptions registry; small dataset) and the future work: muslin trials with 3–5 tailors/testers, more sleeveless/regular-sleeve data, Aldrich verification.

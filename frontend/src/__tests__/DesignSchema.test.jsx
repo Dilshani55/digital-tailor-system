@@ -77,12 +77,23 @@ describe('PredictionReview keeps user corrections', () => {
     expect(screen.getByTestId('confidence-tag-neckline_type').textContent).toContain('50.3%');
   });
 
-  it('shows an unsupported alert and a per-head note for a style the engine cannot draft', () => {
+  it('shows a style the engine cannot draft, does not pre-select it, and disables it', () => {
     const attrs = { ...garmentAttributes, predictions: { ...garmentAttributes.predictions,
       sleeve_style: pred('puff-sleeve') } };
     render(<PredictionReview garmentAttributes={attrs} />);
-    expect(screen.getByTestId('unsupported-alert').textContent).toMatch(/Puff Sleeve/);
-    expect(screen.getByTestId('support-note-sleeve_style').textContent).toMatch(/Unsupported/);
+    expect(screen.getByTestId('not-draftable-sleeve_style').textContent).toMatch(/Puff Sleeve.*cannot be drafted/);
+    expect(screen.getByTestId('select-sleeve_style').value).toBe('');                  // not silently kept
+    expect(screen.getByTestId('select-sleeve_style').querySelector('option[value="puff-sleeve"]').disabled).toBe(true);
+    expect(screen.getByTestId('confirm-btn').disabled).toBe(true);
+  });
+
+  it('never allows confirming a combination outside the draftable scope', () => {
+    render(<PredictionReview garmentAttributes={garmentAttributes} />);
+    fireEvent.change(screen.getByTestId('select-garment_type'), { target: { value: 't-shirt' } });
+    fireEvent.change(screen.getByTestId('select-neckline_type'), { target: { value: 'square-neck' } });
+    expect(screen.getByTestId('select-neckline_type').querySelector('option[value="square-neck"]').disabled).toBe(true);
+    expect(screen.getByTestId('unsupported-alert').textContent).toMatch(/Neckline Type: Square Neck/);
+    expect(screen.getByTestId('confirm-btn').disabled).toBe(true);
   });
 
   it('shows no unsupported alert for a fully supported design', () => {
@@ -95,6 +106,7 @@ describe('PredictionReview keeps user corrections', () => {
   it('blocks confirmation of a contradictory sleeveless + style selection', () => {
     const onConfirm = vi.fn();
     render(<PredictionReview garmentAttributes={garmentAttributes} onConfirm={onConfirm} />);
+    fireEvent.change(screen.getByTestId('select-garment_type'), { target: { value: 'crop-top' } });
     fireEvent.change(screen.getByTestId('select-sleeve_length'), { target: { value: 'sleeveless' } });
     expect(screen.getByTestId('consistency-error')).toBeTruthy();
     expect(screen.getByTestId('confirm-btn').disabled).toBe(true);

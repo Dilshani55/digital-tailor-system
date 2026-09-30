@@ -17,7 +17,8 @@ Garment photo ─► AI suggests the design ─► YOU review and confirm it ─
 * **AI part.** One image classifier (YOLOv8n-cls backbone, four output heads: garment type, neckline, sleeve length, sleeve style). Its answers are only *suggestions*; the user must confirm or correct them, and only the confirmed design reaches the pattern engine. Users choose from 15 active classes (3 / 5 / 3 / 4); if the model predicts something outside them the app says so and asks for manual confirmation — it never swaps in a similar class.
 * **Pattern part.** Pure, deterministic geometry (`backend/app/logic/drafting/`). No second AI model invents the pattern. Every constant that is not derived from your measurements is listed in `assumptions.py` and marked as a *project assumption*.
 * **Fabric part.** Fabric recommendation is rule-based and explains itself. The fabric quantity comes from laying the real cutting-line polygons on the cloth (Bottom-Left-Fill heuristic).
-* **Evaluation part.** A traditional (e.g. tailor's) fabric estimate can be recorded for any saved pattern and compared with the system's estimate for the same fabric width; researchers see a descriptive summary. No study data has been collected yet.
+* **What it is not.** The system does not ask for or predict a tailor's estimate: the fabric requirement is calculated from the real pattern pieces. Study-wide research endpoints exist only as an internal, researcher-only API (not in the app).
+* **One source of truth.** The 15 selectable classes, what the engine can draft and the allowed combinations are in [`config/garment_scope.json`](config/garment_scope.json), read by both the backend and the frontend.
 
 ### Supported designs (anything else is rejected with a clear message)
 

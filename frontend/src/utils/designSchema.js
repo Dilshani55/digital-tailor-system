@@ -1,7 +1,7 @@
 // Design-feature schema used by the confirmation UI: the 15 ACTIVE classes the user may choose
-// (3 garment / 5 neckline / 3 sleeve length / 4 sleeve style).
-// MUST stay identical to backend/app/logic/feature_schema.py UI_TAXONOMY (values, order and support
-// levels). A backend test (test_feature_contract.py) fails if the two drift apart.
+// (3 garment / 5 neckline / 3 sleeve length / 4 sleeve style), their drafting support and the
+// draftable combinations. Everything comes from the single canonical file <repo>/config/garment_scope.json,
+// which the backend (app/logic/feature_schema.py) reads too — there is no second, hand-copied list.
 // The deployed classifier still predicts its original larger taxonomy (3/10/6/9); a prediction
 // outside this list is never remapped - see `predictionOutsideScope` below.
 //
@@ -9,47 +9,17 @@
 //   implemented   – geometry reflects the value
 //   approximated  – accepted, but only part of the design is reflected
 //   unsupported   – cannot be drafted; pattern generation is rejected (never substituted)
+import CANON from '../../../config/garment_scope.json';
 
 export const IMPLEMENTED = 'implemented';
 export const APPROXIMATED = 'approximated';
 export const UNSUPPORTED = 'unsupported';
 
-export const HEADS = ['garment_type', 'neckline_type', 'sleeve_length', 'sleeve_style'];
-
-export const HEAD_TITLES = {
-  garment_type: 'Garment Type',
-  neckline_type: 'Neckline Type',
-  sleeve_length: 'Sleeve Length',
-  sleeve_style: 'Sleeve Style',
-};
-
-const NOT_CONNECTED = 'No geometry for this sleeve style has been implemented.';
-
-export const DESIGN_SCHEMA = {
-  garment_type: [
-    { value: 'blouse', label: 'Blouse', support: IMPLEMENTED, note: 'Woven bodice block with waist darts; hem must reach the waist line.' },
-    { value: 't-shirt', label: 'T-Shirt', support: IMPLEMENTED, note: 'Knit bodice block, no darts, neckband piece; hem must reach the waist line.' },
-    { value: 'crop-top', label: 'Crop-Top', support: IMPLEMENTED, note: 'Hem must be 2 cm or more above the waist line; a longer garment length is reported as a conflict.' },
-  ],
-  neckline_type: [
-    { value: 'round-neck', label: 'Round Neck', support: IMPLEMENTED, note: 'Curved round neck.' },
-    { value: 'v-neck', label: 'V-Neck', support: IMPLEMENTED, note: 'True V: straight edges to a centre-front point.' },
-    { value: 'square-neck', label: 'Square Neck', support: IMPLEMENTED, note: 'Square front neck with straight edges.' },
-    { value: 'collared-neck', label: 'Collared Neck', support: UNSUPPORTED, note: 'No collar piece is generated.' },
-    { value: 'off-shoulder', label: 'Off-Shoulder', support: UNSUPPORTED, note: 'Off-shoulder construction is not implemented.' },
-  ],
-  sleeve_length: [
-    { value: 'sleeveless', label: 'Sleeveless', support: IMPLEMENTED, note: 'No sleeve piece; armhole facing strips are generated.' },
-    { value: 'short-sleeve', label: 'Short Sleeve', support: IMPLEMENTED, note: '40% of the measured full-arm length (project assumption).' },
-    { value: 'long-sleeve', label: 'Long Sleeve', support: IMPLEMENTED, note: 'Full measured arm length, tapering to the wrist.' },
-  ],
-  sleeve_style: [
-    { value: 'none', label: 'None (No Special Style)', support: IMPLEMENTED, note: 'Plain set-in sleeve (or none if sleeveless).' },
-    { value: 'regular-sleeve', label: 'Regular Sleeve', support: IMPLEMENTED, note: 'Plain set-in sleeve.' },
-    { value: 'puff-sleeve', label: 'Puff Sleeve', support: UNSUPPORTED, note: NOT_CONNECTED },
-    { value: 'bell-sleeve', label: 'Bell Sleeve', support: UNSUPPORTED, note: NOT_CONNECTED },
-  ],
-};
+export const HEADS = CANON.heads;
+export const HEAD_TITLES = CANON.head_titles;
+export const DESIGN_SCHEMA = CANON.taxonomy;
+export const OUTSIDE_SCOPE_MESSAGE = CANON.outside_scope_message;
+export const LOW_CONFIDENCE_MESSAGE = CANON.low_confidence_message;
 
 /** { head: [{value,label}] } — the shape the review UI has always used. */
 export const ACTIVE_TAXONOMY_OPTIONS = Object.fromEntries(
@@ -60,6 +30,8 @@ export function supportOf(head, value) {
   return (DESIGN_SCHEMA[head] || []).find((o) => o.value === value) || null;
 }
 
+export const labelOf = (head, value) => supportOf(head, value)?.label || value;
+
 /** Mirrors backend validate_attributes' relationship rule. Returns a message or ''. */
 export function consistencyError(selections) {
   if (selections?.sleeve_length === 'sleeveless' && selections?.sleeve_style
@@ -67,16 +39,20 @@ export function consistencyError(selections) {
     return `A sleeveless garment cannot have sleeve style '${selections.sleeve_style}'. `
       + "Choose sleeve style 'none' or change the sleeve length.";
   }
+  if (selections?.sleeve_style === 'none' && selections?.sleeve_length && selections.sleeve_length !== 'sleeveless') {
+    return "Sleeve style 'none' is only for sleeveless garments. Choose a sleeve style or make the garment sleeveless.";
+  }
   return '';
 }
 
-// PROJECT SCOPE — mirrors backend feature_schema.SCOPE.
-export const SCOPE = {
-  blouse: { neckline_type: ['round-neck', 'v-neck', 'square-neck'], sleeve_length: ['short-sleeve', 'long-sleeve'] },
-  't-shirt': { neckline_type: ['round-neck', 'v-neck'], sleeve_length: ['short-sleeve', 'long-sleeve'] },
-  'crop-top': { neckline_type: ['round-neck', 'v-neck', 'square-neck'], sleeve_length: ['sleeveless', 'short-sleeve'] },
-};
-const SCOPE_LABEL = { blouse: 'Blouse', 't-shirt': 'T-shirt', 'crop-top': 'Crop-top' };
+// PROJECT SCOPE: garment -> { neckline_type: [...], sleeves: { sleeve_length: [sleeve styles] } }
+export const SCOPE = Object.fromEntries(Object.entries(CANON.scope).map(([g, d]) => [g, {
+  label: d.label,
+  neckline_type: d.neckline_type,
+  sleeve_length: Object.keys(d.sleeves),
+  sleeves: d.sleeves,
+}]));
+
 const pretty = (vals) => vals.map((v) => v.replace('-neck', '').replace('-sleeve', '').replace(/-/g, ' ')).join(', ');
 
 export function scopeViolations(sel) {
@@ -85,20 +61,36 @@ export function scopeViolations(sel) {
   const out = [];
   [['neckline_type', 'necklines'], ['sleeve_length', 'sleeve lengths']].forEach(([head, what]) => {
     if (!allowed[head].includes(sel[head])) {
-      const opt = supportOf(head, sel[head]);
-      out.push({ head, value: sel[head], label: opt ? opt.label : sel[head],
-        note: `Outside the supported scope: ${SCOPE_LABEL[sel.garment_type]} supports ${pretty(allowed[head])} ${what} only.` });
+      out.push({ head, value: sel[head], label: labelOf(head, sel[head]),
+        note: `Outside the supported scope: ${allowed.label} supports ${pretty(allowed[head])} ${what} only.` });
     }
   });
-  if (sel.sleeve_style) {
-    const want = sel.sleeve_length === 'sleeveless' ? 'none' : 'regular-sleeve';
-    if (sel.sleeve_style !== want) {
-      const opt = supportOf('sleeve_style', sel.sleeve_style);
-      out.push({ head: 'sleeve_style', value: sel.sleeve_style, label: opt ? opt.label : sel.sleeve_style,
-        note: `Outside the supported scope: only '${want}' sleeve style is supported with this sleeve length.` });
-    }
+  const styles = allowed.sleeves[sel.sleeve_length];
+  if (sel.sleeve_style && styles && !styles.includes(sel.sleeve_style)) {
+    out.push({ head: 'sleeve_style', value: sel.sleeve_style, label: labelOf('sleeve_style', sel.sleeve_style),
+      note: `Outside the supported scope: ${allowed.label} with ${sel.sleeve_length} supports ${styles.map((s) => `'${s}'`).join(', ')} sleeve style only.` });
   }
   return out;
+}
+
+/**
+ * Can `value` be chosen for `head` given the other current selections and still be draftable?
+ * Returns '' when it can, otherwise a short reason (used to disable dropdown options).
+ */
+export function optionBlockedReason(head, value, sel = {}) {
+  const opt = supportOf(head, value);
+  if (!opt) return 'Not a supported class.';
+  if (opt.support === UNSUPPORTED) return 'Pattern not available yet';
+  const g = head === 'garment_type' ? value : sel.garment_type;
+  const allowed = SCOPE[g];
+  if (!allowed || head === 'garment_type') return '';   // any garment can be chosen; conflicts show on the other heads
+  if (head === 'neckline_type' && !allowed.neckline_type.includes(value)) return `Not available for ${allowed.label}`;
+  if (head === 'sleeve_length' && !allowed.sleeve_length.includes(value)) return `Not available for ${allowed.label}`;
+  if (head === 'sleeve_style') {
+    const styles = sel.sleeve_length ? allowed.sleeves[sel.sleeve_length] : [...new Set(Object.values(allowed.sleeves).flat())];
+    if (styles && !styles.includes(value)) return `Not available for ${allowed.label}${sel.sleeve_length ? ` with ${labelOf('sleeve_length', sel.sleeve_length).toLowerCase()}` : ''}`;
+  }
+  return '';
 }
 
 /** Unsupported / approximated selections among the four heads (empty entries ignored). */
@@ -118,9 +110,6 @@ export function supportReport(selections) {
   const approx = approximated.filter((a) => !bad.has(`${a.head}:${a.value}`));
   return { supported: unsupported.length === 0, unsupported, approximated: approx };
 }
-
-export const OUTSIDE_SCOPE_MESSAGE =
-  'The detected feature is outside the supported pattern scope. Please confirm the design manually.';
 
 /** True if the model's top-1 label for `head` is not one of the user-selectable classes. */
 export function predictionOutsideScope(head, label) {

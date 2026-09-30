@@ -79,21 +79,32 @@ class TestTaxonomyParity(unittest.TestCase):
             positions = [fs.MODEL_TAXONOMY[head].index(v) for v in fs.TAXONOMY[head]]
             self.assertEqual(positions, sorted(positions), head)
 
-    def test_frontend_schema_matches_backend(self):
-        text = open(os.path.join(REPO_ROOT, "frontend", "src", "utils", "designSchema.js"),
-                    encoding="utf-8").read()
-        block = text[text.index("export const DESIGN_SCHEMA"):text.index("/** { head: [{value,label}]")]
-        found = {}
+    def test_frontend_and_backend_read_the_same_canonical_file(self):
+        """One source of truth: config/garment_scope.json, imported by the frontend and loaded by the backend."""
+        canon_path = os.path.join(REPO_ROOT, "config", "garment_scope.json")
+        self.assertEqual(os.path.abspath(fs.SCOPE_FILE), canon_path)
+        with open(canon_path, encoding="utf-8") as f:
+            canon = json.load(f)
         for head in fs.HEADS:
-            start = block.index(f"{head}: [")
-            end = block.index("  ],", start)
-            chunk = block[start:end]
-            found[head] = re.findall(r"value: '([^']+)'.*?support: (IMPLEMENTED|APPROXIMATED|UNSUPPORTED)", chunk)
-        level = {"IMPLEMENTED": fs.IMPLEMENTED, "APPROXIMATED": fs.APPROXIMATED, "UNSUPPORTED": fs.UNSUPPORTED}
-        for head in fs.HEADS:
-            self.assertEqual([v for v, _ in found[head]], list(fs.TAXONOMY[head]), head)
-            for value, lvl in found[head]:
-                self.assertEqual(level[lvl], fs.support_of(head, value)[0], f"{head}={value}")
+            self.assertEqual([o["value"] for o in canon["taxonomy"][head]], list(fs.TAXONOMY[head]), head)
+            for o in canon["taxonomy"][head]:
+                self.assertEqual(fs.support_of(head, o["value"])[0], o["support"], f"{head}={o['value']}")
+        text = open(os.path.join(REPO_ROOT, "frontend", "src", "utils", "designSchema.js"), encoding="utf-8").read()
+        self.assertIn("from '../../../config/garment_scope.json'", text)
+        self.assertNotRegex(text, r"value: '(blouse|round-neck|sleeveless|puff-sleeve)'")   # no hand-copied list
+
+    def test_scope_only_contains_active_supported_values(self):
+        for garment, d in fs.SCOPE.items():
+            self.assertIn(garment, fs.TAXONOMY["garment_type"])
+            for n in d["neckline_type"]:
+                self.assertEqual(fs.support_of("neckline_type", n)[0], fs.IMPLEMENTED, n)
+            for length, styles in d["sleeves"].items():
+                self.assertEqual(fs.support_of("sleeve_length", length)[0], fs.IMPLEMENTED, length)
+                for st in styles:
+                    self.assertEqual(fs.support_of("sleeve_style", st)[0], fs.IMPLEMENTED, st)
+                    self.assertEqual(st == "none", length == "sleeveless", (length, st))
+                    self.assertTrue(fs.is_draftable({"garment_type": garment, "neckline_type": d["neckline_type"][0],
+                                                     "sleeve_length": length, "sleeve_style": st}))
 
     def test_frontend_review_component_uses_shared_schema(self):
         text = open(os.path.join(REPO_ROOT, "frontend", "src", "components", "PredictionReview.jsx"),

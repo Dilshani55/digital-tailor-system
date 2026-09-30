@@ -7,13 +7,11 @@ import { fileURLToPath } from 'node:url';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import History from '../pages/History';
-import ResearcherDashboard from '../pages/ResearcherDashboard';
-import { exportAPI, researchAPI } from '../services/api';
+import { exportAPI } from '../services/api';
 import { formatResult, NOT_CALCULATED, CALCULATION_FAILED } from '../utils/results';
 
 vi.mock('../services/api', () => ({
   exportAPI: { getAll: vi.fn(), download: vi.fn(), delete: vi.fn() },
-  researchAPI: { getMetrics: vi.fn(), getCSVUrl: vi.fn(() => '#') },
 }));
 
 const source = (rel) => fs.readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
@@ -95,39 +93,5 @@ describe('History page shows stored data or "unavailable"', () => {
     renderHistory();
     const alert = await screen.findByRole('alert');
     expect(alert.textContent).toMatch(/Could not load/);
-  });
-});
-
-describe('Researcher dashboard never invents metrics', () => {
-  beforeEach(() => vi.clearAllMocks());
-
-  it('shows "Not measured" for null metrics and no legacy constants', async () => {
-    researchAPI.getMetrics.mockResolvedValue({ data: {
-      available: true, total_participants: 1, total_patterns: 1,
-      model_evaluation: { available: false }, ai_accuracy: null, precision: null, recall: null,
-      f1_score: null, avg_correction_rate: null, avg_fabric_savings: null, avg_processing_time: null,
-      usability_score: null, feedbacks: [],
-    } });
-    render(<ResearcherDashboard />);
-    await waitFor(() => expect(screen.getAllByText('Not measured').length).toBeGreaterThanOrEqual(6));
-    const text = document.body.textContent;
-    for (const fake of ['0.91', '0.93', '0.90', '0.82', '2.5 m', 'YOLOv8 Accuracy']) {
-      expect(text).not.toContain(fake);
-    }
-  });
-
-  it('shows model metrics only from the evaluation source', async () => {
-    researchAPI.getMetrics.mockResolvedValue({ data: {
-      available: true, total_participants: 0, total_patterns: 0,
-      model_evaluation: { available: true, per_head: { garment_type: {
-        accuracy: 0.7752, macro_precision: 0.7846, macro_recall: 0.7757, macro_f1: 0.7781 } } },
-      avg_correction_rate: null, avg_fabric_savings: null, avg_processing_time: null,
-      usability_score: null, feedbacks: [],
-    } });
-    render(<ResearcherDashboard />);
-    await screen.findByText('77.5%');
-    expect(screen.getByText('0.785')).toBeTruthy();
-    expect(screen.getByText('0.776')).toBeTruthy();
-    expect(screen.getByText('0.778')).toBeTruthy();
   });
 });

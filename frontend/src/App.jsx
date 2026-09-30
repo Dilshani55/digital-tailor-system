@@ -10,7 +10,6 @@ import History        from './pages/History';
 import Measurements   from './pages/Measurements';
 import Customers      from './pages/Customers';
 import Settings       from './pages/Settings';
-import ResearcherDashboard from './pages/ResearcherDashboard';
 import FabricSavings from './pages/FabricSavings';
 import PatternDetail from './pages/PatternDetail';
 import LoadingSpinner from './components/LoadingSpinner';
@@ -67,9 +66,6 @@ function AppRoutes() {
       }/>
       <Route path="/settings" element={
         <ProtectedLayout><Settings /></ProtectedLayout>
-      }/>
-      <Route path="/researcher" element={
-        <ProtectedLayout><ResearcherDashboard /></ProtectedLayout>
       }/>
       <Route path="*" element={<Navigate to="/" />} />
     </Routes>

@@ -8,9 +8,9 @@ import Customers from '../pages/Customers';
 import Measurements from '../pages/Measurements';
 import Settings from '../pages/Settings';
 import Navbar from '../components/Navbar';
-import FabricComparison from '../components/FabricComparison';
-import ResearcherDashboard from '../pages/ResearcherDashboard';
-import { measurementsAPI, patternsAPI, exportAPI, imagesAPI, researchAPI } from '../services/api';
+import Sidebar from '../components/Sidebar';
+import PatternDetail from '../pages/PatternDetail';
+import { measurementsAPI, patternsAPI, exportAPI, imagesAPI } from '../services/api';
 import { getPreferences } from '../utils/preferences';
 
 vi.mock('../context/AuthContext', () => ({
@@ -18,13 +18,10 @@ vi.mock('../context/AuthContext', () => ({
 }));
 vi.mock('../services/api', () => ({
   measurementsAPI: { getAll: vi.fn(), save: vi.fn(), update: vi.fn(), delete: vi.fn() },
-  patternsAPI: { getAll: vi.fn() },
-  exportAPI: { getAll: vi.fn() },
+  patternsAPI: { getAll: vi.fn(), getOne: vi.fn() },
+  exportAPI: { getAll: vi.fn(), download: vi.fn() },
   imagesAPI: { modelStatus: vi.fn() },
-  researchAPI: {
-    getComparisons: vi.fn(), addComparison: vi.fn(), deleteComparison: vi.fn(), getMetrics: vi.fn(),
-    getCSVUrl: vi.fn(() => '#'), getComparisonCSVUrl: vi.fn(() => '#'),
-  },
+  researchAPI: { submitFeedback: vi.fn() },
 }));
 
 const PROFILE = {
@@ -160,59 +157,20 @@ describe('Measurements page', () => {
   });
 });
 
-describe('Traditional vs system fabric comparison', () => {
-  it('saves a comparison with only the entered values and shows the server-computed difference', async () => {
-    researchAPI.getComparisons.mockResolvedValueOnce({ data: { comparisons: [] } });
-    researchAPI.addComparison.mockResolvedValue({ data: {} });
-    researchAPI.getComparisons.mockResolvedValueOnce({ data: { comparisons: [{
-      comparison_id: 'c1', fabric_width_cm: 114, traditional_estimate_m: 2, system_purchase_m: 1.4,
-      system_layout_length_cm: 120, system_cutting_mode: 'folded', difference_m: 0.6, relative_difference_percent: 30,
-      estimate_source: 'tailor', estimator_label: 'Tailor A',
-    }] } });
-    render(<FabricComparison patternId="p1" defaultWidth={114} />);
-    await screen.findByText(/No comparison recorded/);
-    fireEvent.click(screen.getByText('Save comparison'));
-    expect((await screen.findByRole('alert')).textContent).toMatch(/traditional estimate in metres/);
-    fireEvent.change(screen.getByLabelText('Traditional estimate (m)'), { target: { value: '2' } });
-    fireEvent.change(screen.getByLabelText(/Estimator label/), { target: { value: 'Tailor A' } });
-    fireEvent.click(screen.getByText('Save comparison'));
-    await waitFor(() => expect(researchAPI.addComparison).toHaveBeenCalledWith({
-      pattern_id: 'p1', fabric_width_cm: 114, cutting_mode: 'auto', traditional_estimate_m: 2,
-      estimate_source: 'tailor', estimator_label: 'Tailor A', notes: undefined,
-    }));
-    const table = await screen.findByTestId('comparison-table');
-    expect(table.textContent).toMatch(/\+0\.6 m/);
-    expect(table.textContent).toMatch(/1\.4 m/);
-  });
-});
-
-describe('Researcher dashboard: fabric comparison summary', () => {
-  const base = { available: true, total_participants: 0, total_patterns: 0, model_evaluation: { available: false },
-    avg_correction_rate: null, avg_fabric_savings: null, avg_processing_time: null, usability_score: null, feedbacks: [] };
-
-  it('says "Not measured" when no comparison exists', async () => {
-    researchAPI.getMetrics.mockResolvedValue({ data: { ...base, fabric_comparison: null } });
-    render(<ResearcherDashboard />);
-    expect((await screen.findByTestId('fabric-comparison-summary')).textContent).toMatch(/Not measured — no traditional estimate/);
+describe('Customer workflow has no research features', () => {
+  it('the navigation has no Research Metrics entry', () => {
+    render(<MemoryRouter><Sidebar /></MemoryRouter>);
+    expect(screen.queryByText(/Research(er)? Metrics/i)).toBeNull();
+    expect(document.querySelector('a[href="/researcher"]')).toBeNull();
   });
 
-  it('shows the real summary when comparisons exist', async () => {
-    researchAPI.getMetrics.mockResolvedValue({ data: { ...base, fabric_comparison: {
-      n: 3, patterns: 2, mean_difference_m: 0.1, median_difference_m: 0, sd_difference_m: 0.36,
-      mean_relative_difference_percent: 1.7, system_lower_count: 1, system_higher_count: 1, equal_count: 1,
-      definition: 'difference = traditional estimate - system recommended purchase, same fabric width', note: 'Descriptive only.',
-    } } });
-    render(<ResearcherDashboard />);
-    const card = await screen.findByTestId('fabric-comparison-summary');
-    expect(card.textContent).toMatch(/3 \(2\)/);
-    expect(card.textContent).toMatch(/0\.100 m/);
-    expect(card.textContent).toMatch(/1 \/ 1 \/ 1/);
-  });
-
-  it('shows only the access message (no "no data" card) to a non-researcher', async () => {
-    researchAPI.getMetrics.mockRejectedValue({ response: { status: 403 } });
-    render(<ResearcherDashboard />);
-    expect((await screen.findByRole('alert')).textContent).toMatch(/only available to researcher accounts/);
-    expect(screen.queryByText('No research data available')).toBeNull();
+  it('a saved pattern has no tailor-estimate input or comparison', async () => {
+    patternsAPI.getOne.mockResolvedValue({ data: {
+      pattern_id: 'p1', garment_type: 'blouse', design_attributes: {}, selected_fabric_name: 'Cotton Poplin',
+      nesting_summary: {}, pattern_pieces: [], validation: { passed: true }, validation_passed: true, exports: [],
+    } });
+    render(<MemoryRouter initialEntries={['/patterns/p1']}><PatternDetail /></MemoryRouter>);
+    await screen.findByText(/Blouse pattern/);
+    expect(document.body.textContent).not.toMatch(/traditional|tailor.?s estimate|comparison/i);
   });
 });

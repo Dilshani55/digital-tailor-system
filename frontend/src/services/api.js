@@ -79,15 +79,10 @@ export const exportAPI = {
 };
 
 // ── RESEARCH METRICS ──────────────────────────────────────────────────────────
+// Only the optional ease-of-use rating is part of the customer workflow; study-wide research
+// endpoints are internal (researcher accounts, not linked from the app).
 export const researchAPI = {
   submitFeedback: (data) => api.post('/research/feedback', data),
-  getMetrics:     ()     => api.get('/research/metrics'),
-  getCSVUrl:      ()     => `${BASE_URL}/research/export/csv`,
-  getComparisonCSVUrl: () => `${BASE_URL}/research/export/fabric-comparisons.csv`,
-  // traditional (e.g. tailor) fabric estimate vs the system estimate for the same width
-  addComparison:   (data)      => api.post('/research/fabric-comparisons', data),
-  getComparisons:  (patternId) => api.get('/research/fabric-comparisons', { params: patternId ? { pattern_id: patternId } : {} }),
-  deleteComparison: (id)       => api.delete(`/research/fabric-comparisons/${id}`),
 };
 
 // ── FABRIC RECOMMENDATION ─────────────────────────────────────────────────────
