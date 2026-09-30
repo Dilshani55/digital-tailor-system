@@ -44,3 +44,16 @@ Each milestone records what changed, the commit and the tests that were actually
 * No training run: 5 classes have no locked-benchmark example and 3 have no trusted validation/test example,
   so the acceptance gate cannot be passed honestly; earlier experiments on the same data failed the gate.
 * Production checkpoint unchanged (SHA-256 `3b69a470…0339`, backup identical).
+
+## Milestone 4 — pattern engine: puff and bell sleeves
+
+* New transformations with real geometry (`drafting/sleeve.py`): puff (gathered cap, band for short sleeves) and
+  bell (fitted cap, flared curved hem); new constants registered in `assumptions.py`; validation adds
+  "puff cap gathering vs armhole", "puff cap flat below notches" and "bell sleeve flares"; sleeve band is a
+  required piece for short puff sleeves.
+* Scope (config/garment_scope.json) now equals the specified minimum: blouse short/long × regular/puff/bell,
+  T-shirt short/long × regular, crop-top sleeveless/none and short × regular/puff/bell. Collared and off-shoulder
+  remain AI-only (no geometry).
+* Every scope combination drafts and validates for three body sizes (woven and knit where applicable).
+* Tests: backend 360 passed (+5 new, 7 adapted from "puff/bell unsupported" to still-unsupported designs) ·
+  frontend 118 passed (3 adapted).

@@ -123,14 +123,45 @@ def _pair_checks(front, back, dv, res):
                   "bust point lies inside the front piece", "Bust point lies outside the front piece")
 
 
+def _flat_cap_ok(sleeve_piece, front, back, tol=0.05):
+    """The cap from each underarm to its first notch equals the bodice's 30 % armhole segment (sewn flat)."""
+    from app.logic.drafting import seam_allowance as _sa
+    left, right = sleeve_piece.segment("cap_left"), sleeve_piece.segment("cap_right")
+    marks = {n["id"]: tuple(n["point"]) for n in sleeve_piece.notches}
+    if "sleeve_front_1" not in marks or "sleeve_back_1" not in marks:
+        return False, "notches missing"
+    df, _ = _sa.arc_length_to_point(left, marks["sleeve_front_1"])
+    arc_b, total_r = _sa.arc_length_to_point(right, marks["sleeve_back_1"])
+    db = total_r - arc_b
+    want_f, want_b = 0.30 * front.meta["armhole_length_cm"], 0.30 * back.meta["armhole_length_cm"]
+    ok = abs(df - want_f) <= tol and abs(db - want_b) <= tol
+    return ok, f"flat lower cap: front {df:.2f}/{want_f:.2f} cm, back {db:.2f}/{want_b:.2f} cm"
+
+
 def _sleeve_checks(front, back, sleeve_piece, res):
     total = front.meta["armhole_length_cm"] + back.meta["armhole_length_cm"]
     cap = sleeve_piece.meta["cap_length_cm"]
     ease = cap - total
-    lo, hi = A["sleeve_cap_ease_tolerance_cm"]
-    res.check("sleeve cap vs armhole", lo <= ease <= hi,
-              f"cap {cap:.2f} cm - armhole {total:.2f} cm = ease {ease:.2f} cm (accepted {lo:g}..{hi:g})",
-              f"Sleeve cap ({cap:.1f} cm) is not compatible with the armhole ({total:.1f} cm); ease {ease:.1f} cm")
+    if sleeve_piece.meta.get("gathered_cap"):
+        # puff sleeve: the excess is gathered between the notches, so a larger (but bounded) excess is intended
+        lo, hi = A["puff_gather_excess_range_cm"]
+        res.check("puff cap gathering vs armhole", lo <= ease <= hi,
+                  f"cap {cap:.2f} cm - armhole {total:.2f} cm = {ease:.2f} cm gathered (accepted {lo:g}..{hi:g})",
+                  f"Puff sleeve cap ({cap:.1f} cm) gathers {ease:.1f} cm into the armhole ({total:.1f} cm); "
+                  f"outside {lo:g}..{hi:g} cm")
+        flat = _flat_cap_ok(sleeve_piece, front, back)
+        res.check("puff cap flat below notches", flat[0], flat[1],
+                  "Puff sleeve notches do not leave the lower cap sewn flat against the armhole")
+    else:
+        lo, hi = A["sleeve_cap_ease_tolerance_cm"]
+        res.check("sleeve cap vs armhole", lo <= ease <= hi,
+                  f"cap {cap:.2f} cm - armhole {total:.2f} cm = ease {ease:.2f} cm (accepted {lo:g}..{hi:g})",
+                  f"Sleeve cap ({cap:.1f} cm) is not compatible with the armhole ({total:.1f} cm); ease {ease:.1f} cm")
+    if sleeve_piece.meta.get("sleeve_style") == "bell":
+        wider = sleeve_piece.meta["width_hem_cm"] > sleeve_piece.meta["width_bicep_cm"]
+        res.check("bell sleeve flares", wider,
+                  f"hem {sleeve_piece.meta['width_hem_cm']:.1f} cm > bicep {sleeve_piece.meta['width_bicep_cm']:.1f} cm",
+                  "Bell sleeve hem is not wider than the sleeve at the bicep")
     return {"front_armhole_seam_cm": front.meta["armhole_length_cm"], "back_armhole_seam_cm": back.meta["armhole_length_cm"],
             "total_armhole_seam_cm": total, "sleeve_cap_seam_cm": cap, "cap_ease_cm": ease}
 
@@ -218,6 +249,8 @@ def _completeness(final, res):
         need.append("armhole_facing")
     else:
         need.append("sleeve")
+        if final.sleeve is not None and final.sleeve.meta.get("gathered_hem"):
+            need.append("sleeve_band")
     if final.base.block.get("add_neckband"):
         need.append("neckband")
     missing = [t for t in need if t not in types]

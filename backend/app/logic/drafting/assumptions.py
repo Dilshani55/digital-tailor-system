@@ -90,6 +90,22 @@ ASSUMPTIONS = {
     "sleeve_cap_ease_tolerance_cm": dict(
         status=ASSUMPTION, value=(0.0, 5.0),
         note="Accepted range of (sleeve cap seam - total armhole seam)."),
+    "puff_spread_fraction": dict(
+        status=ASSUMPTION, value=0.5,
+        note="Puff sleeve: the plain sleeve is spread to 1.5 x its eased bicep width (slash-and-spread)."),
+    "puff_crown_rise_cm": dict(
+        status=ASSUMPTION, value=2.5,
+        note="Puff sleeve: crown raised by 2.5 cm so the gathered cap stands up; underarm-to-hem length kept."),
+    "puff_gather_excess_range_cm": dict(
+        status=ASSUMPTION, value=(4.0, 30.0),
+        note="Accepted (puff cap seam - total armhole seam), gathered between the front and back notches."),
+    "puff_band_height_cm": dict(
+        status=ASSUMPTION, value=2.5,
+        note="Short puff sleeve: finished band height; the band strip is cut double (folded) and its length is "
+             "the eased bicep width."),
+    "bell_flare_fraction": dict(
+        status=ASSUMPTION, value={"short-sleeve": 0.6, "long-sleeve": 0.9},
+        note="Bell sleeve: hem width = eased bicep width x (1 + fraction); the cap stays the fitted, solved cap."),
     "facing_width_cm": dict(status=ASSUMPTION, value=4.0, note="Armhole facing strip width."),
     "neckband_stretch_factor": dict(
         status=ASSUMPTION, value=0.85, note="Knit neckband length = 0.85 * neckline seam length."),

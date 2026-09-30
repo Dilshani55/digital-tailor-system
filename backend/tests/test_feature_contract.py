@@ -200,8 +200,11 @@ class TestValidation(unittest.TestCase):
         self.assertEqual(errors, {})
 
     def test_support_report_flags_unsupported_and_approximated(self):
-        clean, _ = fs.validate_attributes(dict(GOOD, neckline_type="collared-neck", sleeve_style="puff-sleeve"))
-        report = fs.support_report(clean)
+        # collared neck has no geometry; puff sleeves exist but not for a T-shirt (outside the scope)
+        clean, _ = fs.validate_attributes(dict(GOOD, garment_type="t-shirt", neckline_type="collared-neck",
+                                               sleeve_style="puff-sleeve"))
+        self.assertEqual({u["value"] for u in fs.support_report(clean)["unsupported"]}, {"collared-neck"})
+        report = fs.support_report(clean, with_scope=True)
         self.assertFalse(report["supported"])
         self.assertEqual({u["value"] for u in report["unsupported"]}, {"collared-neck", "puff-sleeve"})
         self.assertTrue(all(u["note"] for u in report["unsupported"]))
@@ -216,7 +219,7 @@ class TestValidation(unittest.TestCase):
         from app.logic.parametric_engine import ParametricEngine
         from app.logic.drafting.ease import DraftingError
         from tests.fixtures import measurements
-        for style in ("puff-sleeve", "bell-sleeve", "bishop-sleeve"):
+        for style in ("bishop-sleeve",):          # puff and bell now have real geometry
             with self.assertRaises(DraftingError) as ctx:
                 ParametricEngine(measurements(), confirmed_to_cad_features(dict(GOOD, sleeve_style=style))).generate()
             self.assertEqual(ctx.exception.code, "UNSUPPORTED_DESIGN", style)
@@ -287,7 +290,7 @@ class TestConfirmRoute(unittest.TestCase):
         self.assertIn("neckline_type", body["field_errors"])
 
     def test_unsupported_design_can_be_recorded_but_is_flagged(self):
-        resp = self._confirm(dict(GOOD, sleeve_style="puff-sleeve"), _image())
+        resp = self._confirm(dict(GOOD, neckline_type="collared-neck"), _image())
         self.assertEqual(resp.status_code, 200)
         self.assertFalse(resp.get_json()["engine_support"]["supported"])
 
@@ -370,7 +373,8 @@ class TestGenerateRoute(unittest.TestCase):
         self.assertEqual(seen["features"]["sleeves"], "short sleeve")
 
     def test_unsupported_design_is_rejected_not_replaced(self):
-        image = self._confirmed_image(dict(GOOD, neckline_type="collared-neck", sleeve_style="puff-sleeve"))
+        image = self._confirmed_image(dict(GOOD, garment_type="t-shirt", neckline_type="collared-neck",
+                                           sleeve_style="puff-sleeve"))
         resp, pr, _ = self._generate(self.base(), image)
         self.assertEqual(resp.status_code, 422)
         body = resp.get_json()

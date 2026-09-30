@@ -164,13 +164,24 @@ class TestProductScope(unittest.TestCase):
             self.assertTrue(all(u["note"] for u in r["unsupported"]))
 
     def test_non_regular_sleeve_style_rejected(self):
-        self.assertFalse(self._report("blouse", "round-neck", "short-sleeve", "puff-sleeve")["supported"])
+        self.assertFalse(self._report("t-shirt", "round-neck", "short-sleeve", "puff-sleeve")["supported"])
+        self.assertFalse(self._report("t-shirt", "round-neck", "long-sleeve", "bell-sleeve")["supported"])
+        self.assertTrue(self._report("blouse", "round-neck", "short-sleeve", "puff-sleeve")["supported"])
+        self.assertTrue(self._report("crop-top", "square-neck", "short-sleeve", "bell-sleeve")["supported"])
         self.assertFalse(self._report("blouse", "round-neck", "short-sleeve", "none")["supported"])
 
     def test_scope_matrix_is_exactly_the_specified_one(self):
         self.assertEqual(set(fs.SCOPE), {"blouse", "t-shirt", "crop-top"})
         self.assertEqual(fs.SCOPE["t-shirt"]["neckline_type"], ("round-neck", "v-neck"))
         self.assertEqual(fs.SCOPE["crop-top"]["sleeve_length"], ("sleeveless", "short-sleeve"))
+        s3 = ("regular-sleeve", "puff-sleeve", "bell-sleeve")
+        self.assertEqual({g: {n: d["neckline_type"], "sleeves": d["sleeves"]} for g, d in fs.SCOPE.items() for n in ["n"]}, {
+            "blouse": {"n": ("round-neck", "v-neck", "square-neck"), "sleeves": {"short-sleeve": s3, "long-sleeve": s3}},
+            "t-shirt": {"n": ("round-neck", "v-neck"),
+                        "sleeves": {"short-sleeve": ("regular-sleeve",), "long-sleeve": ("regular-sleeve",)}},
+            "crop-top": {"n": ("round-neck", "v-neck", "square-neck"),
+                         "sleeves": {"sleeveless": ("none",), "short-sleeve": s3}},
+        })
 
 
 if __name__ == "__main__":

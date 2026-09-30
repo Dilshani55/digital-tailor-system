@@ -1,7 +1,12 @@
 {
   "_comment": "SINGLE SOURCE OF TRUTH for the user-selectable garment taxonomy (15 classes, 3/5/3/4), what the drafting engine supports, and which combinations can be drafted. Read by backend/app/logic/feature_schema.py and frontend/src/utils/designSchema.js. Change it only together with the engine and its tests.",
   "schema_version": 2,
-  "heads": ["garment_type", "neckline_type", "sleeve_length", "sleeve_style"],
+  "heads": [
+    "garment_type",
+    "neckline_type",
+    "sleeve_length",
+    "sleeve_style"
+  ],
   "head_titles": {
     "garment_type": "Garment Type",
     "neckline_type": "Neckline Type",
@@ -10,44 +15,157 @@
   },
   "taxonomy": {
     "garment_type": [
-      {"value": "blouse", "label": "Blouse", "support": "implemented", "note": "Woven bodice block with waist darts; hem must reach the waist line."},
-      {"value": "t-shirt", "label": "T-Shirt", "support": "implemented", "note": "Knit bodice block, no darts, neckband piece; hem must reach the waist line."},
-      {"value": "crop-top", "label": "Crop-Top", "support": "implemented", "note": "Hem must be 2 cm or more above the waist line; a longer garment length is reported as a conflict."}
+      {
+        "value": "blouse",
+        "label": "Blouse",
+        "support": "implemented",
+        "note": "Woven bodice block with waist darts; hem must reach the waist line."
+      },
+      {
+        "value": "t-shirt",
+        "label": "T-Shirt",
+        "support": "implemented",
+        "note": "Knit bodice block, no darts, neckband piece; hem must reach the waist line."
+      },
+      {
+        "value": "crop-top",
+        "label": "Crop-Top",
+        "support": "implemented",
+        "note": "Hem must be 2 cm or more above the waist line; a longer garment length is reported as a conflict."
+      }
     ],
     "neckline_type": [
-      {"value": "round-neck", "label": "Round Neck", "support": "implemented", "note": "Curved round neck."},
-      {"value": "v-neck", "label": "V-Neck", "support": "implemented", "note": "True V: straight edges to a centre-front point."},
-      {"value": "square-neck", "label": "Square Neck", "support": "implemented", "note": "Square front neck with straight edges."},
-      {"value": "collared-neck", "label": "Collared Neck", "support": "unsupported", "note": "No collar piece is generated yet; the pattern cannot be drafted."},
-      {"value": "off-shoulder", "label": "Off-Shoulder", "support": "unsupported", "note": "Off-shoulder construction is not implemented yet; the pattern cannot be drafted."}
+      {
+        "value": "round-neck",
+        "label": "Round Neck",
+        "support": "implemented",
+        "note": "Curved round neck."
+      },
+      {
+        "value": "v-neck",
+        "label": "V-Neck",
+        "support": "implemented",
+        "note": "True V: straight edges to a centre-front point."
+      },
+      {
+        "value": "square-neck",
+        "label": "Square Neck",
+        "support": "implemented",
+        "note": "Square front neck with straight edges."
+      },
+      {
+        "value": "collared-neck",
+        "label": "Collared Neck",
+        "support": "unsupported",
+        "note": "No collar piece is generated yet; the pattern cannot be drafted."
+      },
+      {
+        "value": "off-shoulder",
+        "label": "Off-Shoulder",
+        "support": "unsupported",
+        "note": "Off-shoulder construction is not implemented yet; the pattern cannot be drafted."
+      }
     ],
     "sleeve_length": [
-      {"value": "sleeveless", "label": "Sleeveless", "support": "implemented", "note": "No sleeve piece; armhole facing strips are generated."},
-      {"value": "short-sleeve", "label": "Short Sleeve", "support": "implemented", "note": "40% of the measured full-arm length (project assumption)."},
-      {"value": "long-sleeve", "label": "Long Sleeve", "support": "implemented", "note": "Full measured arm length, tapering to the wrist."}
+      {
+        "value": "sleeveless",
+        "label": "Sleeveless",
+        "support": "implemented",
+        "note": "No sleeve piece; armhole facing strips are generated."
+      },
+      {
+        "value": "short-sleeve",
+        "label": "Short Sleeve",
+        "support": "implemented",
+        "note": "40% of the measured full-arm length (project assumption)."
+      },
+      {
+        "value": "long-sleeve",
+        "label": "Long Sleeve",
+        "support": "implemented",
+        "note": "Full measured arm length, tapering to the wrist."
+      }
     ],
     "sleeve_style": [
-      {"value": "none", "label": "None (Sleeveless)", "support": "implemented", "note": "Only with a sleeveless garment."},
-      {"value": "regular-sleeve", "label": "Regular Sleeve", "support": "implemented", "note": "Plain set-in sleeve."},
-      {"value": "puff-sleeve", "label": "Puff Sleeve", "support": "unsupported", "note": "No geometry for this sleeve style has been implemented."},
-      {"value": "bell-sleeve", "label": "Bell Sleeve", "support": "unsupported", "note": "No geometry for this sleeve style has been implemented."}
+      {
+        "value": "none",
+        "label": "None (Sleeveless)",
+        "support": "implemented",
+        "note": "Only with a sleeveless garment."
+      },
+      {
+        "value": "regular-sleeve",
+        "label": "Regular Sleeve",
+        "support": "implemented",
+        "note": "Plain set-in sleeve."
+      },
+      {
+        "value": "puff-sleeve",
+        "label": "Puff Sleeve",
+        "support": "implemented",
+        "note": "Cap spread to 1.5x and crown raised 2.5 cm; the extra cap length is gathered between the notches. Short: hem gathered into a sleeve band. Long: tapers to the wrist."
+      },
+      {
+        "value": "bell-sleeve",
+        "label": "Bell Sleeve",
+        "support": "implemented",
+        "note": "Fitted cap; flares from the underarm to a curved hem (short +60%, long +90% of the eased bicep width)."
+      }
     ]
   },
   "scope": {
     "blouse": {
       "label": "Blouse",
-      "neckline_type": ["round-neck", "v-neck", "square-neck"],
-      "sleeves": {"short-sleeve": ["regular-sleeve"], "long-sleeve": ["regular-sleeve"]}
+      "neckline_type": [
+        "round-neck",
+        "v-neck",
+        "square-neck"
+      ],
+      "sleeves": {
+        "short-sleeve": [
+          "regular-sleeve",
+          "puff-sleeve",
+          "bell-sleeve"
+        ],
+        "long-sleeve": [
+          "regular-sleeve",
+          "puff-sleeve",
+          "bell-sleeve"
+        ]
+      }
     },
     "t-shirt": {
       "label": "T-shirt",
-      "neckline_type": ["round-neck", "v-neck"],
-      "sleeves": {"short-sleeve": ["regular-sleeve"], "long-sleeve": ["regular-sleeve"]}
+      "neckline_type": [
+        "round-neck",
+        "v-neck"
+      ],
+      "sleeves": {
+        "short-sleeve": [
+          "regular-sleeve"
+        ],
+        "long-sleeve": [
+          "regular-sleeve"
+        ]
+      }
     },
     "crop-top": {
       "label": "Crop-top",
-      "neckline_type": ["round-neck", "v-neck", "square-neck"],
-      "sleeves": {"sleeveless": ["none"], "short-sleeve": ["regular-sleeve"]}
+      "neckline_type": [
+        "round-neck",
+        "v-neck",
+        "square-neck"
+      ],
+      "sleeves": {
+        "sleeveless": [
+          "none"
+        ],
+        "short-sleeve": [
+          "regular-sleeve",
+          "puff-sleeve",
+          "bell-sleeve"
+        ]
+      }
     }
   },
   "outside_scope_message": "The detected feature is outside the supported pattern scope. Please confirm the design manually.",

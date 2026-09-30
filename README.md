@@ -22,11 +22,14 @@ Garment photo ─► AI suggests the design ─► YOU review and confirm it ─
 
 ### Supported designs (anything else is rejected with a clear message)
 
-| Garment | Necklines | Sleeves | Construction |
-|---|---|---|---|
-| Blouse | round, V, square | regular short, regular long | woven bodice |
-| T-shirt | round, V | regular short, regular long | knit bodice |
-| Crop-top | round, V, square | sleeveless, regular short | woven or knit (chosen by fabric) |
+| Garment | Necklines | Sleeve lengths | Sleeve styles | Construction |
+|---|---|---|---|---|
+| Blouse | round, V, square | short, long | regular, puff, bell | woven bodice |
+| T-shirt | round, V | short, long | regular | knit bodice |
+| Crop-top | round, V, square | sleeveless (style *none*), short | none / regular, puff, bell | woven or knit (chosen by fabric) |
+
+Collared and off-shoulder necklines are part of the AI taxonomy but have **no pattern geometry yet**: the app shows
+such a prediction and asks for a supported choice. The matrix lives in [`config/garment_scope.json`](config/garment_scope.json).
 
 ### Honest status
 

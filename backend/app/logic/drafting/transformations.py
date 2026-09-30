@@ -161,15 +161,42 @@ def apply_design(base, attributes):
         sleeve_hem = frac * dv.sleeve_length
         cap_h = base.armhole["cap_height_cm"]
         label = LENGTH_LABEL[length_attr]
-        sleeve_piece = sleeve_mod.build_sleeve(dv, cap_h, sleeve_hem, name=f"Sleeve ({label})", sleeve_kind=label)
+        if style_attr == "puff-sleeve":
+            gathered_hem = length_attr != "long-sleeve"
+            sleeve_piece = sleeve_mod.build_puff_sleeve(
+                dv, cap_h, sleeve_hem, spread=A["puff_spread_fraction"], rise=A["puff_crown_rise_cm"],
+                gathered_hem=gathered_hem, name=f"Puff Sleeve ({label})", sleeve_kind=label)
+            style_record = {
+                "id": "sleeve_style", "type": "puff_slash_and_spread", "design": style_attr, "status": "applied",
+                "spread_fraction": A["puff_spread_fraction"], "crown_rise_cm": A["puff_crown_rise_cm"],
+                "gathered_hem": gathered_hem,
+                "note": "Plain solved sleeve widened and crown raised; the extra cap length is gathered between "
+                        "the front and back notches" + ("; the hem is gathered into a sleeve band." if gathered_hem
+                                                        else "; the lower sleeve tapers to the wrist.")}
+            if gathered_hem:
+                band_len = dv.bicep_width
+                extras.append(_strip("Sleeve Band", "sleeve_band", band_len, 2.0 * A["puff_band_height_cm"], 2,
+                                     {"length_cm": band_len, "finished_height_cm": A["puff_band_height_cm"],
+                                      "rule": "length = eased bicep width; cut double and folded"}))
+        elif style_attr == "bell-sleeve":
+            flare = A["bell_flare_fraction"][length_attr]
+            sleeve_piece = sleeve_mod.build_bell_sleeve(dv, cap_h, sleeve_hem, flare=flare,
+                                                        name=f"Bell Sleeve ({label})", sleeve_kind=label)
+            style_record = {
+                "id": "sleeve_style", "type": "bell_flare", "design": style_attr, "status": "applied",
+                "flare_fraction": flare, "hem_width_cm": round(sleeve_piece.meta["width_hem_cm"], 3),
+                "note": "Fitted solved cap; flares from the underarm to a curved hem meeting both seams at 90 degrees."}
+        else:
+            sleeve_piece = sleeve_mod.build_sleeve(dv, cap_h, sleeve_hem, name=f"Sleeve ({label})", sleeve_kind=label)
+            style_record = {
+                "id": "sleeve_style", "type": "plain_set_in", "design": style_attr, "status": "applied",
+                "note": "Plain set-in sleeve; cap solved from the bodice armhole seam lengths."}
         sleeve_piece.transformations = ["sleeve_length", "sleeve_style"]
         transformations.append({
             "id": "sleeve_length", "type": f"{label}_sleeve", "design": length_attr,
             "full_arm_reference_cm": dv.sleeve_length, "fraction": frac, "sleeve_length_cm": round(sleeve_hem, 3),
             "rule": "design length = fraction x measured sleeve_cm (project assumption)", "status": "applied"})
-        transformations.append({
-            "id": "sleeve_style", "type": "plain_set_in", "design": style_attr, "status": "applied",
-            "note": "Plain set-in sleeve; cap solved from the bodice armhole seam lengths."})
+        transformations.append(style_record)
 
     # 4. accessory pieces required by the block
     if block.get("add_neckband"):

@@ -177,8 +177,8 @@ class TestSleeveTransformations(unittest.TestCase):
         self.assertEqual(ctx.exception.code, "UNSUPPORTED_DESIGN")
 
     def test_unsupported_styles_are_rejected_not_ignored(self):
-        for style in ("puff-sleeve", "bell-sleeve", "bishop-sleeve", "flutter-sleeve", "raglan-sleeve",
-                      "dolman-sleeve", "kimono-sleeve"):
+        # puff and bell have real geometry now (test_puff_bell_sleeves.py); these still have none
+        for style in ("bishop-sleeve", "flutter-sleeve", "raglan-sleeve", "dolman-sleeve", "kimono-sleeve"):
             with self.assertRaises(DraftingError) as ctx:
                 final(style=style)
             self.assertEqual(ctx.exception.code, "UNSUPPORTED_DESIGN", style)
@@ -289,9 +289,9 @@ class TestContradictoryOrInvalidDesigns(unittest.TestCase):
 
     def test_unsupported_design_error_lists_the_features(self):
         with self.assertRaises(DraftingError) as ctx:
-            final(neckline="halter-neck", style="puff-sleeve")
+            final(neckline="halter-neck", style="bishop-sleeve")
         values = {u["value"] for u in ctx.exception.extra["unsupported_features"]}
-        self.assertEqual(values, {"halter-neck", "puff-sleeve"})
+        self.assertEqual(values, {"halter-neck", "bishop-sleeve"})
 
     def test_engine_never_returns_a_pattern_for_a_rejected_design(self):
         with self.assertRaises(DraftingError):

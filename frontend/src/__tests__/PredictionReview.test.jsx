@@ -90,11 +90,11 @@ describe('PredictionReview Component', () => {
     const handleConfirm = vi.fn();
     render(<PredictionReview garmentAttributes={mockGarmentAttributes} onConfirm={handleConfirm} />);
 
-    // the model said three-quarter-sleeve (outside the selectable classes) and bell-sleeve (not draftable yet):
-    // neither is pre-selected, the user must choose supported values
-    expect(screen.getByTestId('select-sleeve_style').value).toBe('');
+    // the model said three-quarter-sleeve (outside the selectable classes): not pre-selected, the user must
+    // choose; its bell-sleeve prediction is draftable for a crop-top and is kept
+    expect(screen.getByTestId('select-sleeve_length').value).toBe('');
+    expect(screen.getByTestId('select-sleeve_style').value).toBe('bell-sleeve');
     fireEvent.change(screen.getByTestId('select-sleeve_length'), { target: { value: 'short-sleeve' } });
-    fireEvent.change(screen.getByTestId('select-sleeve_style'), { target: { value: 'regular-sleeve' } });
     const confirmBtn = screen.getByTestId('confirm-btn');
     fireEvent.click(confirmBtn);
 
@@ -102,7 +102,7 @@ describe('PredictionReview Component', () => {
       garment_type: 'crop-top',
       neckline_type: 'v-neck',
       sleeve_length: 'short-sleeve',
-      sleeve_style: 'regular-sleeve',
+      sleeve_style: 'bell-sleeve',
     });
   });
 

@@ -4,9 +4,9 @@
 
 **Pattern**
 1. The pattern is **mathematically generated and geometry-validated only**. It has not been fit-tested on bodies, compared with a professional pattern-maker's block, or checked by a muslin. Fit quality is therefore *unknown*.
-2. About 25 drafting constants (ease, shoulder slope, back-neck depth, waist-to-hip distance, sleeve fractions, allowance widths …) are **project assumptions**, registered in `backend/app/logic/drafting/assumptions.py`. None is traced to Aldrich's *Metric Pattern Cutting* (the book is not in the repository) — do not describe the method as "Aldrich-based" without verifying each equation against the book.
-3. Height, bust-point position, waist-to-hip distance and elbow circumference are not measured; the engine uses fixed assumptions where a tailor would measure. Negative-ease stretch-knit drafting is not implemented (rejected with a message).
-4. Scope is deliberately narrow: three garments, the necklines and sleeves in the scope table. Other necklines/sleeve styles/lengths are rejected, not approximated.
+2. About 30 drafting constants (ease, shoulder slope, back-neck depth, waist-to-hip distance, sleeve fractions, allowance widths …) are **project assumptions**, registered in `backend/app/logic/drafting/assumptions.py`. None is traced to Aldrich's *Metric Pattern Cutting* (the book is not in the repository) — do not describe the method as "Aldrich-based" without verifying each equation against the book.
+3. Height, bust-point position (bust height, apex-to-apex), waist-to-hip distance and elbow circumference are not measured (considered on 30 Sep 2026 and deliberately not added: the bust point stays a registered assumption and is labelled as derived); the engine uses fixed assumptions where a tailor would measure. Negative-ease stretch-knit drafting is not implemented (rejected with a message).
+4. Scope is deliberately narrow: three garments, the necklines and sleeves in the scope table. Other necklines/sleeve styles/lengths (incl. collared and off-shoulder) are rejected, not approximated. Puff and bell sleeves are geometry-validated (gathering range, flat lower cap, flare, perpendicular hem) but their spread, crown rise and flare amounts are project assumptions that have not been sewn.
 5. Pieces are simple (no collar, facing shapes are straight strips, no pockets/closures/lining); construction instructions are minimal.
 
 **Fabric**

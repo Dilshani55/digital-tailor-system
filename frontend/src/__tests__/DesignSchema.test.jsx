@@ -42,7 +42,8 @@ describe('designSchema', () => {
   });
 
   it('reports unsupported selections instead of hiding them', () => {
-    const r = supportReport({ garment_type: 'blouse', neckline_type: 'collared-neck',
+    // collared neck has no geometry; puff sleeves exist, but not for a T-shirt
+    const r = supportReport({ garment_type: 't-shirt', neckline_type: 'collared-neck',
       sleeve_length: 'short-sleeve', sleeve_style: 'puff-sleeve' });
     expect(r.supported).toBe(false);
     expect(r.unsupported.map((u) => u.value).sort()).toEqual(['collared-neck', 'puff-sleeve']);
@@ -79,7 +80,7 @@ describe('PredictionReview keeps user corrections', () => {
 
   it('shows a style the engine cannot draft, does not pre-select it, and disables it', () => {
     const attrs = { ...garmentAttributes, predictions: { ...garmentAttributes.predictions,
-      sleeve_style: pred('puff-sleeve') } };
+      garment_type: pred('t-shirt'), sleeve_style: pred('puff-sleeve') } };   // puff is not drafted for a T-shirt
     render(<PredictionReview garmentAttributes={attrs} />);
     expect(screen.getByTestId('not-draftable-sleeve_style').textContent).toMatch(/Puff Sleeve.*cannot be drafted/);
     expect(screen.getByTestId('select-sleeve_style').value).toBe('');                  // not silently kept

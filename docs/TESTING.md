@@ -4,7 +4,7 @@ Counts below are from the runs recorded in the final evidence report (see the la
 
 | Suite | Command (from the folder shown) | Count | Notes |
 |---|---|---|---|
-| Backend | `backend`: `venv\Scripts\python -m unittest discover -s tests -t .` | 355 | Database access is mocked; no MongoDB needed. `pymupdf` (requirements-dev.txt) is needed for the PDF tests — without it they skip visibly. |
+| Backend | `backend`: `venv\Scripts\python -m unittest discover -s tests -t .` | 360 | Database access is mocked; no MongoDB needed. `pymupdf` (requirements-dev.txt) is needed for the PDF tests — without it they skip visibly. |
 | Frontend | `frontend`: `npm test` | 118 | vitest + Testing Library, mocked API. |
 | Production build | `frontend`: `npm run build` | – | must finish without errors. |
 | AI pipeline | repo root: `$env:PYTHONPATH="."; backend\venv\Scripts\python -m unittest discover -s ai_training/tests` | 134 | manifests, labels, leakage helpers, taxonomy parity, gate logic, the future 15-class pipeline (masking, readiness, human decisions, training guard, isolation from production); the checkpoint test skips if the `.pt` file is absent. |

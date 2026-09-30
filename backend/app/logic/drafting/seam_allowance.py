@@ -33,6 +33,10 @@ def allowance_table(block_id):
     return dict(ALLOWANCES[block_id])
 
 
+# Strip pieces (straight bands/facings) take the narrower "strip" allowance on every edge.
+STRIP_TYPES = ("neckband", "armhole_facing", "sleeve_band")
+
+
 def edge_kind(piece, seg_id):
     """Classify a segment id into an allowance kind ('fold' for the centre line of a fold piece)."""
     if seg_id == "centre_line" and piece.cut_on_fold:
@@ -41,7 +45,7 @@ def edge_kind(piece, seg_id):
         return "neckline"
     if seg_id == "hem":
         return "hem"
-    if piece.piece_type in ("neckband", "armhole_facing"):
+    if piece.piece_type in STRIP_TYPES:
         return "strip"
     return "seam"
 
@@ -208,6 +212,24 @@ def _point_at_arc(segment, distance_from_start):
     return pts[-1]
 
 
+def arc_length_to_point(segment, point):
+    """(arc length from the segment start to the polyline point nearest `point`, total arc length) using the
+    same 200-step flattening as _point_at_arc, so notch distances can be verified exactly."""
+    pts = segment.flatten(200)
+    best, best_arc, acc = None, 0.0, 0.0
+    for i in range(len(pts) - 1):
+        a, b = pts[i], pts[i + 1]
+        d = g.dist(a, b)
+        if d > 0:
+            t = max(0.0, min(1.0, ((point[0] - a[0]) * (b[0] - a[0]) + (point[1] - a[1]) * (b[1] - a[1])) / (d * d)))
+            q = g.lerp(a, b, t)
+            e = g.dist(q, point)
+            if best is None or e < best:
+                best, best_arc = e, acc + t * d
+        acc += d
+    return best_arc, acc
+
+
 def _notch(nid, point, label, kind="single"):
     return {"id": nid, "point": [round(point[0], 4), round(point[1], 4)], "label": label, "kind": kind}
 
@@ -230,18 +252,23 @@ def bodice_notches(piece):
 
 
 def sleeve_notches(piece, front_armhole_len, back_armhole_len):
-    """Sleeve cap balance marks mirroring the bodice: crown, front (1) and back (2)."""
+    """
+    Sleeve cap balance marks mirroring the bodice: crown, front (1) and back (2).
+    Plain/bell cap: notch distances are scaled by (cap / armhole) so the cap ease is spread evenly.
+    Gathered (puff) cap: the cap below the notches is sewn flat, so the notches sit at exactly the bodice's
+    distances from the underarm and all the extra length lies between them (the gathering zone).
+    """
     left, right = piece.segment("cap_left"), piece.segment("cap_right")
     cap_total = left.length() + right.length()
     armhole_total = front_armhole_len + back_armhole_len
-    scale = cap_total / armhole_total if armhole_total else 1.0
+    scale = 1.0 if piece.meta.get("gathered_cap") else (cap_total / armhole_total if armhole_total else 1.0)
     # front = left quadrant (x = 0 side); its notch is 30 % of the front armhole above the underarm
     df = 0.30 * front_armhole_len * scale
     db = 0.30 * back_armhole_len * scale
     notches = [_notch("sleeve_crown", piece.points["CROWN"], "crown", "crown")]
     notches.append(_notch("sleeve_front_1", _point_at_arc(left, df), "single notch"))
     # back = right quadrant, measured from the underarm end (x = width) upward
-    rlen = right.length()
+    rlen = arc_length_to_point(right, right.end)[1]          # same flattening as _point_at_arc
     notches.append(_notch("sleeve_back_1", _point_at_arc(right, rlen - db), "double notch", "double"))
     notches.append(_notch("sleeve_back_2", _point_at_arc(right, rlen - db - 0.06 * cap_total), "double notch", "double"))
     return notches
@@ -259,7 +286,7 @@ def apply_seam_allowance(piece, block_id):
     kinds = [edge_kind(piece, sid) for sid in ids]
     offsets = [0.0 if k == "fold" else table[k] for k in kinds]
     piece.allowances = dict(table)
-    piece.seam_allowance_cm = table["seam"] if piece.piece_type not in ("neckband", "armhole_facing") else table["strip"]
+    piece.seam_allowance_cm = table["seam"] if piece.piece_type not in STRIP_TYPES else table["strip"]
     piece.seam_outline = pts
     piece.edge_kinds = kinds
     piece.edge_offsets = offsets
