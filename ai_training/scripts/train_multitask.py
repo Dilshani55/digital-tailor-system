@@ -28,6 +28,7 @@ from torch.utils.data import DataLoader
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
+from ai_training.datasets.multitask_dataset_v2 import MultiTaskDatasetV2
 from ai_training.datasets.multitask_dataset import MultiTaskDataset, HEADS
 from ai_training.models.multitask_yolov8 import YOLOv8MultiTaskClassifier
 from ai_training.training.masked_loss import MaskedMultiTaskLoss, compute_capped_class_weights
@@ -217,7 +218,9 @@ def run_training():
     print(f"Batch Size: {config.get('batch_size', 16)} | Image Size: {config.get('image_size', 224)}")
 
     # Datasets
-    train_dataset = MultiTaskDataset(
+    _Cls = MultiTaskDatasetV2 if config.get("full_image_prob") is not None else MultiTaskDataset
+    _extra_train = {"full_image_prob": config["full_image_prob"]} if _Cls is MultiTaskDatasetV2 else {}
+    train_dataset = _Cls(
         jsonl_path=args.train_manifest,
         class_to_idx=class_to_idx,
         is_train=True,
@@ -226,9 +229,10 @@ def run_training():
         provenance_weights=config.get("provenance_weights"),
         image_size=config.get("image_size", 224),
         augmentation=config.get("augmentation", "basic"),
+        **_extra_train,
     )
 
-    val_dataset = MultiTaskDataset(
+    val_dataset = _Cls(
         jsonl_path=args.val_manifest,
         class_to_idx=class_to_idx,
         is_train=False,

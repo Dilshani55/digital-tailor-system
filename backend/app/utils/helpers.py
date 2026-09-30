@@ -1,6 +1,6 @@
 import os
 import uuid
-from PIL import Image
+from PIL import Image, ImageOps
 from werkzeug.utils import secure_filename
 
 ALLOWED_EXTENSIONS = {"jpg", "jpeg", "png", "webp"}
@@ -40,6 +40,8 @@ def save_image(file, upload_folder):
         filepath = os.path.join(upload_folder, unique_filename)
         with Image.open(tmp_path) as img:
             img.load()
+            # re-encoding drops EXIF, so bake the camera rotation into the pixels first
+            img = ImageOps.exif_transpose(img)
             img.thumbnail(MAX_IMAGE_SIZE, Image.LANCZOS)
             img.save(filepath)
         return unique_filename

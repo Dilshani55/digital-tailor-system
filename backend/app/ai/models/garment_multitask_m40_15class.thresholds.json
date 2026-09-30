@@ -1,0 +1,7 @@
+{
+  "garment_type": null,
+  "neckline_type": null,
+  "sleeve_length": 0.7005850076675415,
+  "sleeve_style": null,
+  "_note": "null = always 'uncertain / please select'. garment_type and neckline_type never reached 90% accepted accuracy on validation. sleeve_style is forced to null although validation suggested 0.388: regular-sleeve has NO trusted training/validation data, so validation cannot reveal that failure. Only sleeve_length is answered automatically (validation-selected threshold)."
+}

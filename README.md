@@ -54,10 +54,12 @@ npm install
 npm run dev                                 # http://localhost:3000
 ```
 
-The trained classifier is **not stored in Git** (large file). Put the deployed checkpoint at
-`backend/app/ai/models/garment_multitask_yolov8_best.pt` and the pretrained backbone at
-`backend/app/ai/models/yolov8n-cls.pt`; the checksum of the deployed model is in [docs/AI_EVIDENCE.md](docs/AI_EVIDENCE.md).
-Without them the app still works in "choose the design manually" mode.
+The trained classifiers are **not stored in Git** (large files). Put the current model (M40, 3/5/3/4 classes) at
+`backend/app/ai/models/garment_multitask_m40_15class.pt` (its validation-selected thresholds file is tracked next to it) and the
+pretrained backbone at `backend/app/ai/models/yolov8n-cls.pt`. The previous model (M13) at
+`backend/app/ai/models/garment_multitask_yolov8_best.pt` is the automatic fallback and the rollback: set the environment variable
+`GARMENT_MODEL_PATH` to choose a specific checkpoint. Checksums, test results and the honest accuracy figures are in
+[docs/AI_EVIDENCE.md](docs/AI_EVIDENCE.md) (§7). Without any checkpoint the app still works in "choose the design manually" mode.
 
 Configuration (all optional except the two secrets) is described in `backend/.env.example`:
 `SECRET_KEY`, `JWT_SECRET_KEY`, `MONGO_URI`, `CORS_ORIGINS`, `GOOGLE_CLIENT_ID` (enables Google sign-in), `RESEARCHER_EMAILS` (who may open the researcher dashboard).

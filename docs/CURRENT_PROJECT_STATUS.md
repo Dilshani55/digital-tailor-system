@@ -11,10 +11,10 @@ Verified against the code, the test runs and the evidence files on branch `wip/f
 | Customer / measurement profiles | Complete | profiles are the customers; patterns now carry `measurement_id`; add-customer form fixed |
 | Measurement validation (13 fields, cm/in, ranges, cross-field rules) | Complete | `test_measurement_validation.py`, `MeasurementValidation.test.jsx`, `HonestPages.test.jsx` |
 | Image upload (content-checked, size-limited, random names) | Complete | `test_hardening.py` |
-| AI classifier inference (M13, SHA-256 `3b69a470…`) | Complete | checksum verified 30 Sep 2026; `test_m13_inference.py` |
+| AI classifier inference (**M40**, 3/5/3/4, SHA-256 `3ed45bc1…`; M13 `3b69a470…` kept as rollback) | Complete | `test_m40_inference.py`, `test_m13_inference.py`, `test_uncertainty_and_exif.py`; uncertain heads are never pre-selected; EXIF corrected |
 | AI unavailable / unreadable photo handling | Complete (added) | 503 `MODEL_UNAVAILABLE`, 422 `IMAGE_NOT_ANALYSABLE`, `GET /api/images/model-status`, wizard banner |
 | Prediction review / mandatory confirmation, 15-class active taxonomy | Complete | `PredictionReview.test.jsx`, `test_feature_contract.py`, E2E `analysis.spec.js` |
-| AI accuracy | Research risk | garment type macro-F1 ≈ 0.79; neckline ≈ 0.42, sleeve length ≈ 0.60, sleeve style ≈ 0.32; scope classes (sleeveless, regular sleeve) barely represented; 3 experiments failed the acceptance gate — more labelled data needed, not more training runs |
+| AI accuracy | Research risk — 90 % target NOT reached | independent test (n per head in [AI_EVIDENCE.md §7](AI_EVIDENCE.md)): garment type 77 % (crop) / 67 % (whole photo); neckline 73 % / 51 % (majority baseline 67 %); sleeve length 86 % / 79 %, and 92 % / 90 % when it answers (threshold from validation); sleeve design dominated by the sleeveless-derived class, regular-sleeve and collared-neck have no trusted data. More human-labelled data needed |
 | Base block, transformations, seam allowance, geometry validation | Complete | `test_base_block.py`, `test_design_transformations.py`, `test_seam_allowance.py`, `evidence/evidence.json` |
 | Drafting method traceability (Aldrich) | Research risk / proposal mismatch | ~25 constants are documented project assumptions; not verified against Aldrich |
 | Fit validity | Missing (research) | no muslin / body fit trial |
@@ -35,11 +35,11 @@ Verified against the code, the test runs and the evidence files on branch `wip/f
 
 | Suite | Result |
 |---|---|
-| Backend unittest | 354 passed |
-| AI pipeline unittest | 134 passed |
-| Frontend vitest | 121 passed |
+| Backend unittest | 384 passed (392 with the separate detector work stream's 8 tests) |
+| AI pipeline unittest | 139 passed |
+| Frontend vitest | 125 passed |
 | Production build | succeeds (bundle-size warning only) |
-| Real-stack Playwright E2E | 6 passed (real Chrome, Flask, MongoDB, M13 classifier, PDF) |
+| Real-stack Playwright E2E | 6 passed (real Chrome, Flask, MongoDB, M40 classifier, PDF) |
 
 ## What is still needed for the thesis (cannot be done by code alone)
 

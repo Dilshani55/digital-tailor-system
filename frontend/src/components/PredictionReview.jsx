@@ -32,9 +32,11 @@ export default function PredictionReview({
     if (!label || predictionOutsideScope(head, label)) return '';
     return optionBlockedReason(head, label, predictedSet);
   };
+  // "Uncertain / please select": a guess the model itself flags as unreliable is shown but never pre-selected.
+  const isUncertain = (head) => Boolean(predictions?.[head]?.uncertain ?? predictions?.[head]?.requires_user_confirmation);
   const suggest = (head) => {
     const label = predictions?.[head]?.label;
-    return label && !predictionOutsideScope(head, label) && !draftBlock(head) ? label : '';
+    return label && !predictionOutsideScope(head, label) && !draftBlock(head) && !isUncertain(head) ? label : '';
   };
   const outsideScopeHeads = Object.keys(HEAD_TITLES).filter((h) => predictionOutsideScope(h, predictions?.[h]?.label));
 
@@ -98,7 +100,7 @@ export default function PredictionReview({
     <div data-testid="prediction-review-container">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
         <p className="form-hint" style={{ margin: 0 }}>
-          {hasPredictions ? 'The AI suggestion is a starting point — check every feature and correct anything that is wrong.'
+          {hasPredictions ? 'The AI suggestion is a starting point — check every feature and correct anything that is wrong. A model score is not proof that a prediction is correct.'
             : 'Choose each feature of the garment you want to make.'}
         </p>
         {!isEditing && confirmedAttributes && (
@@ -153,7 +155,7 @@ export default function PredictionReview({
           const headPred = predictions[headKey];
           const options = ACTIVE_TAXONOMY_OPTIONS[headKey] || [];
           const rawConfPct = headPred?.confidence != null ? (headPred.confidence * 100).toFixed(1) : null;
-          const isLowConf = headPred?.requires_user_confirmation || false;
+          const isLowConf = isUncertain(headKey);
           const Icon = HEAD_ICONS[headKey];
           const opt = supportOf(headKey, selections[headKey]);
           return (
@@ -164,19 +166,26 @@ export default function PredictionReview({
                   <label htmlFor={`sel-${headKey}`}>{title}</label>
                   {rawConfPct !== null && (
                     <span className={`pill ${isLowConf ? 'warn' : 'good'}`} data-testid={`confidence-tag-${headKey}`}>
-                      {rawConfPct}% {isLowConf ? 'Low' : 'High'} confidence
+                      Model score {rawConfPct}%{isLowConf ? ' · uncertain' : ''}
                     </span>
                   )}
                 </div>
                 {isLowConf && isEditing && (
                   <div role="note" className="head-note warn" data-testid={`low-confidence-${headKey}`} style={{ marginTop: 0, marginBottom: 6 }}>
-                    {LOW_CONFIDENCE_MESSAGE}
+                    Uncertain — please select this feature yourself.
+                    {headPred?.label ? ` AI best guess: “${labelOf(headKey, headPred.label)}” (${rawConfPct}%).` : ''}
                   </div>
                 )}
                 {isEditing && draftBlock(headKey) && (
                   <div role="note" className="head-note warn" data-testid={`not-draftable-${headKey}`} style={{ marginTop: 0, marginBottom: 6 }}>
                     AI suggested “{labelOf(headKey, headPred.label)}”, but this pattern cannot be drafted
                     ({draftBlock(headKey).toLowerCase()}). Please choose a supported option.
+                  </div>
+                )}
+                {isEditing && headKey === 'garment_type' && (hasPredictions || selections.garment_type) && (
+                  <div role="note" className="head-note info" data-testid="garment-length-note" style={{ marginTop: 0, marginBottom: 6 }}>
+                    A crop top and a T-shirt can look alike in a photo. Choose the garment you want to make: a crop top ends
+                    above the waist, a T-shirt reaches at least the waist. You set the finished length in the next step.
                   </div>
                 )}
                 <select id={`sel-${headKey}`} className="form-select" value={selections[headKey] || ''}

@@ -25,6 +25,11 @@
 14. Usability, accuracy and fabric-waste **user studies have not been run**; there is no participant data. The in-app instruments (1-5 usability rating, traditional-vs-system fabric comparison, measured analysis/drafting times) are ready for such a study.
 15. The proposal promised items that were not built: a supervised size-prediction model, YOLO detection of darts/seams/landmarks, collars, negative-ease stretch knits and a chat assistant. See [THESIS_RECONCILIATION.md](THESIS_RECONCILIATION.md).
 
+## AI accuracy — what may and may not be said (updated with M40)
+
+* **May say:** a 3/5/3/4 classifier was trained on licensed, trusted data (DeepFashion2 sleeve categories + Fashionpedia attributes) and evaluated on independent, near-duplicate-filtered test sets; it clearly improves on the earlier model (especially on whole photos); the app shows each feature's score, marks unreliable features "uncertain — please select", and always requires user confirmation.
+* **Must not say:** that it reaches 90 %. Measured (forced answer): garment type 77 % on crops / 67 % on whole photos, neckline 73 % / 51 % (majority-class baseline 67 %), sleeve length 86 % / 79 %, sleeve design 91–95 % but dominated by one class (macro-F1 0.51–0.73, bell-sleeve never recognised). Only sleeve length, when the model chooses to answer, is ~90–95 % correct on two of four test sets. Collared-neck and regular-sleeve cannot be recognised at all (no trusted examples). See [AI_EVIDENCE.md §7](AI_EVIDENCE.md).
+
 ## SAFE thesis / viva claims
 
 * An integrated prototype implements the full pipeline photo → AI suggestion → mandatory user confirmation → validated measurements → parametric pattern → seam allowances → automatic validation → polygon nesting → printable 1:1 PDF, verified by automated tests (see TESTING.md) and a real-browser end-to-end run.

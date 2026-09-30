@@ -68,11 +68,11 @@ describe('PredictionReview Component', () => {
   it('displays confidence percentages and low-confidence warning', () => {
     render(<PredictionReview garmentAttributes={mockGarmentAttributes} />);
 
-    expect(screen.getByTestId('confidence-tag-garment_type')).toHaveTextContent('95.6% High');
-    expect(screen.getByTestId('confidence-tag-sleeve_length')).toHaveTextContent('38.5% Low');
+    expect(screen.getByTestId('confidence-tag-garment_type')).toHaveTextContent('Model score 95.6%');
+    expect(screen.getByTestId('confidence-tag-sleeve_length')).toHaveTextContent('Model score 38.5% · uncertain');
     expect(screen.getByTestId('low-confidence-alert')).toBeInTheDocument();
     expect(screen.getByTestId('low-confidence-alert')).toHaveTextContent('Sleeve Length');
-    expect(screen.getByTestId('low-confidence-sleeve_length')).toHaveTextContent('Low confidence — please confirm this feature');
+    expect(screen.getByTestId('low-confidence-sleeve_length')).toHaveTextContent('Uncertain — please select');
     expect(screen.queryByTestId('low-confidence-garment_type')).toBeNull();
   });
 
@@ -197,5 +197,55 @@ describe('predictions outside the supported scope (deployed M13 model still pred
     const count = (head) => screen.getByTestId(`select-${head}`).querySelectorAll('option').length - 1;   // minus placeholder
     expect([count('garment_type'), count('neckline_type'), count('sleeve_length'), count('sleeve_style')]).toEqual([3, 5, 3, 4]);
     expect(ACTIVE_TAXONOMY_OPTIONS.sleeve_length.map((o) => o.value)).not.toContain('elbow-length');
+  });
+});
+
+describe('uncertain predictions and honest score wording', () => {
+  const p = (label, confidence, uncertain) => ({
+    label, class_index: 0, confidence, uncertain, requires_user_confirmation: uncertain, threshold_used: 0.6,
+    top_3: [{ class_name: label, class_index: 0, confidence }],
+  });
+  const make = (over = {}) => ({
+    model_version: 'M-test',
+    predictions: {
+      garment_type: p('blouse', 0.93, false), neckline_type: p('round-neck', 0.9, false),
+      sleeve_length: p('short-sleeve', 0.88, false), sleeve_style: p('regular-sleeve', 0.8, false), ...over,
+    },
+    low_confidence_heads: [], requires_user_confirmation: false,
+  });
+
+  it('an uncertain head is shown but NOT pre-selected, and says "please select"', () => {
+    render(<PredictionReview garmentAttributes={make({ neckline_type: p('v-neck', 0.41, true) })} />);
+    expect(screen.getByTestId('select-neckline_type').value).toBe('');
+    const note = screen.getByTestId('low-confidence-neckline_type').textContent;
+    expect(note).toMatch(/Uncertain — please select/);
+    expect(note).toMatch(/V-Neck/);
+    expect(note).toMatch(/41\.0%/);
+    expect(screen.getByTestId('confirm-btn').disabled).toBe(true);
+    expect(screen.getByTestId('select-garment_type').value).toBe('blouse');         // certain heads still pre-selected
+  });
+
+  it('every head shows its own model score; a high score is not called "confident" or proof', () => {
+    render(<PredictionReview garmentAttributes={make()} />);
+    ['garment_type', 'neckline_type', 'sleeve_length', 'sleeve_style'].forEach((h) => {
+      expect(screen.getByTestId(`confidence-tag-${h}`).textContent).toMatch(/^Model score \d+(\.\d)?%$/);
+    });
+    expect(document.body.textContent).not.toMatch(/High confidence|Confident|Verified/);
+    expect(document.body.textContent).toMatch(/not proof/);
+  });
+
+  it('the user can correct an uncertain head and then confirm', () => {
+    const onConfirm = vi.fn();
+    render(<PredictionReview garmentAttributes={make({ sleeve_length: p('long-sleeve', 0.4, true) })} onConfirm={onConfirm} />);
+    fireEvent.change(screen.getByTestId('select-sleeve_length'), { target: { value: 'short-sleeve' } });
+    fireEvent.click(screen.getByTestId('confirm-btn'));
+    expect(onConfirm).toHaveBeenCalledWith({
+      garment_type: 'blouse', neckline_type: 'round-neck', sleeve_length: 'short-sleeve', sleeve_style: 'regular-sleeve' });
+  });
+
+  it('explains that a crop top and a T-shirt need the user\'s confirmation', () => {
+    render(<PredictionReview garmentAttributes={make({ garment_type: p('crop-top', 0.95, false) })} />);
+    expect(screen.getByTestId('garment-length-note').textContent).toMatch(/crop top and a T-shirt can look alike/);
+    expect(screen.getByTestId('select-garment_type').value).toBe('crop-top');
   });
 });

@@ -19,7 +19,7 @@ import hashlib
 import threading
 import torch
 import torch.nn as nn
-from PIL import Image
+from PIL import Image, ImageOps
 from ultralytics import YOLO
 
 # Add parent directory to path if needed for imports
@@ -41,9 +41,15 @@ DEFAULT_CONFIDENCE_THRESHOLDS = {
     "sleeve_style": 0.40,
 }
 
-DEPLOYED_MODEL_PATH = os.path.join(
-    os.path.dirname(__file__), "models", "garment_multitask_yolov8_best.pt"
-)
+# The production checkpoint. GARMENT_MODEL_PATH (environment) selects another one for evaluation/staging; the
+# deployed default only changes after a candidate passes the acceptance gate (see docs/AI_EVIDENCE.md).
+_MODELS_DIR = os.path.join(os.path.dirname(__file__), "models")
+M13_MODEL_PATH = os.path.join(_MODELS_DIR, "garment_multitask_yolov8_best.pt")         # previous production model (kept as rollback)
+M40_MODEL_PATH = os.path.join(_MODELS_DIR, "garment_multitask_m40_15class.pt")         # 3/5/3/4 model, see docs/AI_EVIDENCE.md
+
+# Production checkpoint: GARMENT_MODEL_PATH (environment) wins; otherwise M40 if present, else the M13 rollback.
+# To roll back set GARMENT_MODEL_PATH to M13_MODEL_PATH (or remove the M40 file).
+DEPLOYED_MODEL_PATH = os.environ.get("GARMENT_MODEL_PATH") or (M40_MODEL_PATH if os.path.exists(M40_MODEL_PATH) else M13_MODEL_PATH)
 
 M14D_CANDIDATE_MODEL_PATH = os.path.abspath(os.path.join(
     os.path.dirname(__file__),
@@ -93,6 +99,24 @@ def build_model_version(ckpt: dict, sha256: str) -> str:
         parts.append(f"epoch={ckpt['epoch']}")
     parts.append(f"sha256={sha256[:12]}")
     return "|".join(parts)
+
+
+def load_thresholds(model_path: str) -> dict:
+    """
+    Per-head "uncertain below this score" thresholds.
+    A model may ship `<checkpoint>.thresholds.json` ({head: value | null}); those values were chosen on the
+    VALIDATION split only. `null` means the head never reached the accuracy target on validation, so it is always
+    reported as uncertain. Without the file the conservative defaults are used.
+    """
+    side = os.path.splitext(model_path)[0] + ".thresholds.json"
+    if os.path.exists(side):
+        try:
+            import json
+            data = json.load(open(side, encoding="utf-8"))
+            return {h: (None if data.get(h) is None else float(data[h])) for h in HEADS}
+        except Exception:                                   # noqa: BLE001 - a broken sidecar falls back to defaults
+            pass
+    return dict(DEFAULT_CONFIDENCE_THRESHOLDS)
 
 
 class MultiTaskModelError(Exception):
@@ -290,7 +314,8 @@ def preprocess_image_crop(image_path: str, bbox: list = None) -> torch.Tensor:
         raise MultiTaskModelError(f"Image file not found at {image_path}")
 
     try:
-        pil_img = Image.open(image_path).convert("RGB")
+        # honour the camera's EXIF orientation: a sideways phone photo must not reach the model sideways
+        pil_img = ImageOps.exif_transpose(Image.open(image_path)).convert("RGB")
     except Exception as e:
         raise MultiTaskModelError(f"Failed to open or decode image {image_path}: {e}")
 
@@ -340,10 +365,10 @@ def predict_multitask_features(
     input_tensor = preprocess_image_crop(image_path, bbox=bbox)
 
     if thresholds is None:
-        thresholds = DEFAULT_CONFIDENCE_THRESHOLDS
+        thresholds = load_thresholds(meta["model_path"])
     else:
-        # Merge defaults with custom provided thresholds
-        merged_thresholds = DEFAULT_CONFIDENCE_THRESHOLDS.copy()
+        # Merge model thresholds with custom provided thresholds
+        merged_thresholds = load_thresholds(meta["model_path"])
         merged_thresholds.update(thresholds)
         thresholds = merged_thresholds
 
@@ -377,8 +402,9 @@ def predict_multitask_features(
                 "confidence": round(float(v), 4)
             })
 
-        thresh = float(thresholds.get(head, DEFAULT_CONFIDENCE_THRESHOLDS[head]))
-        head_requires_confirm = confidence < thresh
+        raw_thresh = thresholds.get(head, DEFAULT_CONFIDENCE_THRESHOLDS[head])
+        thresh = None if raw_thresh is None else float(raw_thresh)
+        head_requires_confirm = thresh is None or confidence < thresh      # no reliable threshold -> always uncertain
 
         if head_requires_confirm:
             low_confidence_heads.append(head)
@@ -389,6 +415,7 @@ def predict_multitask_features(
             "confidence": confidence,
             "top_3": top_3,
             "requires_user_confirmation": head_requires_confirm,
+            "uncertain": head_requires_confirm,      # "uncertain / please select": the UI must not pre-select this guess
             "threshold_used": thresh,
         }
 

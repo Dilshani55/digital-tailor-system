@@ -32,6 +32,8 @@ from app.ai.multitask_classifier import (
     MultiTaskModelError,
     DEFAULT_MODEL_PATH,
     DEFAULT_BACKBONE_PATH,
+    M13_MODEL_PATH,
+    M40_MODEL_PATH,
     HEADS,
 )
 
@@ -59,6 +61,8 @@ class TestMultiTaskIntegration(unittest.TestCase):
 
     def test_checkpoint_existence_and_sha(self):
         self.assertTrue(os.path.exists(self.target_ckpt), "Backend checkpoint missing!")
+        self.assertTrue(os.path.exists(M13_MODEL_PATH), "The M13 rollback checkpoint must stay in place")
+        self.target_ckpt = M13_MODEL_PATH                      # the rollback model is verified against its training output
         if not os.path.exists(self.source_ckpt):
             # ai_training/data is git-ignored; the training output only exists on the training machine.
             self.skipTest("M12 training output not present (ai_training/data is not in the repository)")
@@ -106,10 +110,10 @@ class TestMultiTaskIntegration(unittest.TestCase):
         with torch.no_grad():
             out = model(dummy_input)
 
-        self.assertEqual(out["garment_type"].shape, (1, 3))
-        self.assertEqual(out["neckline_type"].shape, (1, 10))
-        self.assertEqual(out["sleeve_length"].shape, (1, 6))
-        self.assertEqual(out["sleeve_style"].shape, (1, 9))
+        dims = (3, 5, 3, 4) if os.path.abspath(DEFAULT_MODEL_PATH) == os.path.abspath(M40_MODEL_PATH) else (3, 10, 6, 9)
+        for head, n in zip(HEADS, dims):
+            self.assertEqual(out[head].shape, (1, n), head)
+        self.assertEqual([int(meta["head_dims"][h]) for h in HEADS], list(dims))
 
     def test_class_mapping_validation(self):
         _, meta = get_multitask_classifier()
@@ -122,9 +126,10 @@ class TestMultiTaskIntegration(unittest.TestCase):
             expected_dim = meta["head_dims"][head]
             self.assertEqual(len(class_to_idx[head]), expected_dim)
 
-        # Check total taxonomy size = 28
+        # active model: M40 = 15 classes (3/5/3/4); the M13 rollback = 28 classes (3/10/6/9)
         total_classes = sum(len(class_to_idx[h]) for h in HEADS)
-        self.assertEqual(total_classes, 28)
+        is_m40 = os.path.abspath(DEFAULT_MODEL_PATH) == os.path.abspath(M40_MODEL_PATH)
+        self.assertEqual(total_classes, 15 if is_m40 else 28)
 
     def test_valid_image_inference(self):
         res = predict_multitask_features(self.sample_img_path)
