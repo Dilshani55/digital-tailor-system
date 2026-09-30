@@ -77,7 +77,8 @@ test('M40 analysis: separate scores, uncertain heads not pre-selected, honest wo
 test('hidden or unclear feature: a low score keeps sleeve length as "please select"', async ({ page, request }) => {
   await signIn(page, request);
   // find a benchmark photo where the model itself is unsure of the sleeve length (score below 0.70)
-  const files = ['blouse_05.jpg', 'blouse_08.jpg', 'crop-top_03.jpg', 'crop-top_08.jpg', 't-shirt_04.jpg', 't-shirt_09.jpg'];
+  const files = ['blouse_05.jpg', 'blouse_08.jpg', 'crop-top_03.jpg', 'crop-top_08.jpg', 't-shirt_04.jpg', 't-shirt_09.jpg',
+    'blouse_12.jpg', 'crop-top_12.jpg', 't-shirt_12.jpg', 'blouse_16.jpg', 'crop-top_16.jpg', 't-shirt_16.jpg'];
   let seenUncertain = false;
   for (const f of files) {
     await analyse(page, f);
@@ -89,7 +90,11 @@ test('hidden or unclear feature: a low score keeps sleeve length as "please sele
       seenUncertain = true;
       break;
     }
-    expect(value).not.toBe('');                                                        // a confident prediction is pre-selected
+    if (await page.getByTestId('not-draftable-sleeve_length').count()) {               // confident but not draftable (e.g. crop-top + long sleeve)
+      expect(value).toBe('');                                                          // -> never forced, the note explains why
+      continue;
+    }
+    expect(value).not.toBe('');                                                        // a confident, draftable prediction is pre-selected
   }
   expect(seenUncertain, 'no low-score sleeve-length photo found among the samples').toBe(true);
 });
