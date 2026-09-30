@@ -18,7 +18,7 @@ import threading
 from PIL import Image, ImageOps
 
 DEFAULT_DETECTOR_PATH = os.path.join(os.path.dirname(__file__), "models", "garment_detector_v1.pt")
-MIN_SCORE = 0.35          # below this a detection is ignored (provisional until checked on the detector's val split)
+MIN_SCORE = 0.35          # fixed before testing (not tuned); results: ai_training/runs_v2/detector/df2_top_outer_dress_v1/independent_test
 CROP_MARGIN = 0.10        # margin the CALLER adds before classifying (same as the classifier training crops)
 SUPPORTED_CLASS = "top"
 

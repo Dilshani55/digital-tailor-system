@@ -11,7 +11,11 @@ Mapping (source label -> class; anything else is MASKED, never remapped to a loo
   sleeve style    only when sleeve length is sleeveless: none (rule "none iff sleeveless"); otherwise masked
                   (DMM has no puff/bell/regular information)
   neckline        0 V -> v-neck | 1 square -> square-neck | 2 round -> round-neck | 4 lapel -> collared-neck
-                  (ONLY if --lapel-as-collared, decided after visual inspection) | 3 standing, 5 suspenders, 6 NA
+                  (ONLY with --lapel-as-collared: a seeded sample of 16
+                  women's-top "lapel" front views was inspected on 1 Oct 2026 and all 16 showed a shirt/blouse collar;
+                  sheet ai_training/runs_v2/label_checks/dmm_lapel_sample.jpg. 16 images cannot establish the mapping
+                  and "lapel" can also mean a blazer lapel, so these labels carry provenance
+                  candidate_dmm_lapel_needs_human_review and must NOT be treated as trusted until a person reviews them) | 3 standing, 5 suspenders, 6 NA
                   -> masked; masked on back views (view code 3), where the neckline is not visible
   garment type    shop category Blouses_Shirts -> blouse, Tees_Tanks / Graphic_Tees -> t-shirt;
                   if "upper clothing covering navel" == 0 (no) the record becomes crop-top (provenance
@@ -75,7 +79,8 @@ def main():
         if labels["sleeve_length"] == "sleeveless":
             labels["sleeve_style"], prov["sleeve_style"] = "none", "derived_from_explicit_sleeveless"
         if neck in NECK and view_code != "3":
-            labels["neckline_type"], prov["neckline_type"] = NECK[neck], "dmm_human_shape"
+            labels["neckline_type"] = NECK[neck]
+            prov["neckline_type"] = "candidate_dmm_lapel_needs_human_review" if neck == 4 else "dmm_human_shape"
         masks = {h: int(labels[h] is not None) for h in labels}
         sp = split_of(item)
         out[sp].append({

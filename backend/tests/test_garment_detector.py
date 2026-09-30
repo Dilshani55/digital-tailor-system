@@ -109,3 +109,26 @@ class TestDetectGarment(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+BENCH = os.path.join(ROOT, "ai_training", "data", "eval_real_product_set", "images")
+
+
+@unittest.skipUnless(os.path.exists(gd.DEFAULT_DETECTOR_PATH),
+                     "SKIPPED: detector weights are a local file (not in Git) and are absent here")
+class TestRealDetector(unittest.TestCase):
+    def test_real_weights_find_the_top_in_real_photos(self):
+        if not os.path.isdir(BENCH):
+            self.skipTest("SKIPPED: benchmark photos are local data and are absent here")
+        files = sorted(f for f in os.listdir(BENCH) if f.startswith(("blouse", "t-shirt")))[:6]
+        found = 0
+        for f in files:
+            r = gd.detect_garment(os.path.join(BENCH, f))
+            self.assertTrue(r["available"])
+            self.assertEqual(len(r["model_sha256"]), 64)
+            if r["box_xyxy"]:
+                x1, y1, x2, y2 = r["box_xyxy"]
+                self.assertTrue(0 <= x1 < x2 and 0 <= y1 < y2)
+                found += r["class"] == "top"
+        self.assertGreaterEqual(found, 4)       # independent test: correct top crop in 79-90 % of photos

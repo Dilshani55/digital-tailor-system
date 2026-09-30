@@ -25,7 +25,9 @@ Index 0 sleeve length (0 sleeveless, 1 short, 2 medium, 3 long, 4 not long, 5 NA
 Done by `ai_training/scripts/v2/build_dmm_annotations.py` (see its docstring). Only source labels are used; a
 value outside the 15 classes is **masked, never remapped**: medium sleeves, "standing" and "suspenders" necklines
 and all NA values are masked; necklines are masked on back views; sleeve design is `none` only for sleeveless
-(DMM has no puff / bell / regular information). `lapel → collared-neck` is only enabled after a visual check.
+(DMM has no puff / bell / regular information). `lapel → collared-neck` is a **candidate** only (provenance `candidate_dmm_lapel_needs_human_review`): 16 of 16
+sampled women's-top images showed a shirt collar, but 16 images cannot establish the mapping and "lapel" may also
+mean a blazer lapel, so a person must review these before they are used as trusted labels.
 Garment type comes from the shop category in the file name (`Blouses_Shirts` → blouse, `Tees_Tanks` /
 `Graphic_Tees` → t-shirt) and becomes crop-top when the navel is not covered; these are *merchant categories and a
 length rule*, recorded as provenance `dmm_shop_category` / `dmm_navel_uncovered`, not human garment-type labels.

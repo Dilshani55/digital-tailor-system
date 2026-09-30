@@ -29,6 +29,8 @@ def main():
     ap.add_argument("--detector", required=True)
     ap.add_argument("--classifier", default=M40)
     ap.add_argument("--out", required=True)
+    ap.add_argument("--sets", default=",".join(ev.SETS), help="comma list of M40 test sets")
+    ap.add_argument("--limit", type=int, default=0, help="smoke test only: first N records per set")
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
     model, meta = get_multitask_classifier(model_path=a.classifier)
@@ -38,7 +40,12 @@ def main():
     result = {"classifier": a.classifier, "classifier_sha256": meta["checkpoint_sha256"], "detector": a.detector,
               "detector_min_score": gd.MIN_SCORE, "crop_margin": gd.CROP_MARGIN, "thresholds_used": thresholds, "sets": {}}
     for set_name, fname in ev.SETS.items():
+        if set_name not in a.sets.split(","):
+            continue
         recs = ev.load(os.path.join(ev.MAN, fname))
+        if a.limit:
+            recs = recs[:a.limit]
+            result["SMOKE_TEST_LIMIT"] = a.limit
         probs = {h: [] for h in ev.HEADS}
         det_stats = {"box": 0, "no_box": 0, "unavailable": 0, "class": {}}
         with torch.inference_mode():
