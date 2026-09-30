@@ -96,3 +96,22 @@ Each milestone records what changed, the commit and the tests that were actually
 * Phone width (390 px): no horizontal page scroll; the stepper shows only the active label.
 * Tests: frontend 121 passed · build OK · real-stack E2E 6 passed (register → PDF download → library).
 * Lint: no ESLint configuration exists in the repo, so no lint result is claimed.
+
+## Milestone 8 — verification of the complete workflow (2026-09-30)
+
+| Check | Result |
+|---|---|
+| Backend `unittest` | 371 run, OK, 0 skipped |
+| AI pipeline `unittest` | 139 run, OK, 0 skipped |
+| Frontend vitest | 121 passed |
+| Production build | OK (bundle-size warning only) |
+| Real-stack E2E (Chrome → Vite → Flask → MongoDB `digital_tailor_e2e` → M13 → PDF) | 6 passed |
+| PDF visual check | 19 pages; summary, printing page with 5 cm square, tiles with labels, footers |
+| Phone width 390 px | no horizontal page scroll |
+| Secrets / tracked `.env` / files > 5 MB | none (only `.env.example`) |
+| `npm audit --omit=dev` | 2 moderate (react-router ≤ 7.17.0); fix needs a major upgrade — not applied, recorded |
+| Lint | not run — no ESLint configuration in the repo |
+
+Known limitations: no classifier retraining (the data audit showed the weak classes cannot be recovered; M13 kept);
+patterns are geometry-validated, not fit-tested on real bodies; collared and off-shoulder designs are recognised by
+the AI only and are not drafted.

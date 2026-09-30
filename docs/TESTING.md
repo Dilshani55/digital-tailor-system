@@ -7,7 +7,7 @@ Counts below are from the runs recorded in the final evidence report (see the la
 | Backend | `backend`: `venv\Scripts\python -m unittest discover -s tests -t .` | 371 | Database access is mocked; no MongoDB needed. `pymupdf` (requirements-dev.txt) is needed for the PDF tests — without it they skip visibly. |
 | Frontend | `frontend`: `npm test` | 121 | vitest + Testing Library, mocked API. |
 | Production build | `frontend`: `npm run build` | – | must finish without errors. |
-| AI pipeline | repo root: `$env:PYTHONPATH="."; backend\venv\Scripts\python -m unittest discover -s ai_training/tests` | 134 | manifests, labels, leakage helpers, taxonomy parity, gate logic, the future 15-class pipeline (masking, readiness, human decisions, training guard, isolation from production); the checkpoint test skips if the `.pt` file is absent. |
+| AI pipeline | repo root: `$env:PYTHONPATH="."; backend\venv\Scripts\python -m unittest discover -s ai_training/tests` | 139 | manifests, labels, leakage helpers, taxonomy parity, gate logic, the future 15-class pipeline (masking, readiness, human decisions, training guard, isolation from production); the checkpoint test skips if the `.pt` file is absent. |
 | End-to-end | `frontend`: `npm run e2e` | 6 | Real Chrome → Vite → Flask → MongoDB → real M13 classifier → PDF: full workflow; out-of-scope design refusal; supported M13 predictions pre-selected; unsupported M13 predictions flagged with manual confirmation (real benchmark photos); every page and sidebar link renders with no console/API errors; customer -> linked pattern -> saved pattern without research UI -> settings (model state). See below. |
 
 ## What the backend tests cover
