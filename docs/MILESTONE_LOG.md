@@ -29,3 +29,18 @@ Each milestone records what changed, the commit and the tests that were actually
   comparison UI. The researcher-only backend API and the internal docs remain.
 * Tests: backend 355 passed · frontend 118 passed (6 tests of the removed UI replaced by 2 removal tests and 3
   scope tests) · E2E 6 passed · build OK.
+
+## Milestone 2 — AI data audit
+
+* Re-ran `build_15class_manifests.py` (identical counts to the earlier report; verdict NOT_READY) and a new
+  per-class audit against the raw Fashionpedia annotations: see [AI_DATA_AUDIT.md](AI_DATA_AUDIT.md).
+* Weak-class recovery: explicit puff/bell/square/off-shoulder evidence on tops is already used; 15 new explicit
+  sleeveless candidates listed (not enough for the targets); collared-neck/regular-sleeve need human review.
+* 45 review contact sheets + CSVs generated from the 1,413-item queue (local data).
+* Tests: AI pipeline 139 passed.
+
+## Milestone 3 — classifier decision: baseline retained
+
+* No training run: 5 classes have no locked-benchmark example and 3 have no trusted validation/test example,
+  so the acceptance gate cannot be passed honestly; earlier experiments on the same data failed the gate.
+* Production checkpoint unchanged (SHA-256 `3b69a470…0339`, backup identical).

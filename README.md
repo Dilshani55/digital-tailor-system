@@ -86,4 +86,4 @@ Details, current counts and the E2E set-up are in [docs/TESTING.md](docs/TESTING
 
 ## Documentation
 
-[Current status](docs/CURRENT_PROJECT_STATUS.md) · [Proposal ↔ implementation](docs/THESIS_RECONCILIATION.md) · [Architecture](docs/ARCHITECTURE.md) · [Pattern engine](docs/PATTERN_ENGINE.md) · [API](docs/API.md) · [AI evidence](docs/AI_EVIDENCE.md) · [Testing](docs/TESTING.md) · [Limitations and thesis-safe claims](docs/LIMITATIONS_AND_CLAIMS.md) · [Future 15-class model (planned)](docs/FUTURE_15_CLASS_MODEL.md) · [AI development history](docs/ai_history/)
+[Current status](docs/CURRENT_PROJECT_STATUS.md) · [15-class data audit](docs/AI_DATA_AUDIT.md) · [Proposal ↔ implementation](docs/THESIS_RECONCILIATION.md) · [Architecture](docs/ARCHITECTURE.md) · [Pattern engine](docs/PATTERN_ENGINE.md) · [API](docs/API.md) · [AI evidence](docs/AI_EVIDENCE.md) · [Testing](docs/TESTING.md) · [Limitations and thesis-safe claims](docs/LIMITATIONS_AND_CLAIMS.md) · [Future 15-class model (planned)](docs/FUTURE_15_CLASS_MODEL.md) · [AI development history](docs/ai_history/)
