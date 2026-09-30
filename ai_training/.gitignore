@@ -1,2 +1,13 @@
 # Ignore raw data downloads
 data/
+
+# downloaded / derived datasets (licence: no redistribution) - README.md files stay tracked
+datasets/*/raw/
+datasets/*/images/
+datasets/*/annotations/*.jsonl
+datasets/*/crops/
+datasets/*/cache/
+runs_v2/
+datasets/*/labels/
+datasets/*/data.yaml
+datasets/*/*.jsonl

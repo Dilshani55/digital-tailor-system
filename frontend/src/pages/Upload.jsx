@@ -579,6 +579,16 @@ export default function Upload() {
             <div className="review-layout">
               <div className={`review-photo${imagePreview && imageId ? '' : ' empty'}`}>
                 {imagePreview && imageId ? <img src={imagePreview} alt="Uploaded garment" /> : <p>No photo — design chosen manually.</p>}
+                {garmentAttributes?.garment_region && (
+                  <p className={`region-note${garmentAttributes.garment_region.supported_garment === false ? ' warn' : ''}`}
+                     data-testid="garment-region" role={garmentAttributes.garment_region.supported_garment === false ? 'alert' : undefined}>
+                    {garmentAttributes.garment_region.supported_garment === false
+                      ? garmentAttributes.garment_region.note
+                      : garmentAttributes.garment_region.used === 'garment_crop'
+                        ? 'The AI looked at the garment area it found in this photo.'
+                        : 'The AI looked at the whole photo (no garment area was found), so its suggestions are less reliable.'}
+                  </p>
+                )}
               </div>
               <PredictionReview garmentAttributes={garmentAttributes} confirmedAttributes={confirmedAttributes}
                                 onConfirm={handleConfirmGarmentAttributes} isSubmitting={confirmLoading} error={confirmError} />

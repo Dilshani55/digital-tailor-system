@@ -100,6 +100,34 @@ def upload_image():
     }), 201
 
 
+def _locate_garment(filepath):
+    """
+    Finds the garment so the classifier sees a garment crop, as it did in training (whole photos are much less
+    accurate - docs/AI_EVIDENCE.md 7.1). Never raises: without a detector or a confident box the full image is used.
+    """
+    region = {"detector_available": False, "detected_class": None, "detector_score": None, "box_xyxy": None,
+              "crop_box_xyxy": None, "used": "full_image", "supported_garment": None, "note": None}
+    try:
+        from PIL import Image, ImageOps
+        from app.ai import garment_detector as gd
+        d = gd.detect_garment(filepath)
+        region.update(detector_available=d["available"], detected_class=d["class"], detector_score=d["score"],
+                      box_xyxy=d["box_xyxy"], note=d.get("reason"))
+        if d["box_xyxy"]:
+            with Image.open(filepath) as im:
+                w, h = ImageOps.exif_transpose(im).size
+            region["crop_box_xyxy"] = [round(v, 1) for v in gd.pad_box(d["box_xyxy"], w, h)]
+            region["used"] = "garment_crop"
+            region["supported_garment"] = d["class"] == gd.SUPPORTED_CLASS
+            if not region["supported_garment"]:
+                region["note"] = (f"This photo looks like {'a dress' if d['class'] == 'dress' else 'outerwear (jacket/coat)'}. "
+                                  "Only blouses, T-shirts and crop tops can be drafted; the suggestions below may not apply.")
+    except Exception as e:  # noqa: BLE001 - detection is optional; the classifier still runs on the full image
+        current_app.logger.warning(f"Garment detection skipped: {e}")
+        region["note"] = "Garment detection unavailable; the whole photo was analysed."
+    return region
+
+
 # ── ANALYSE IMAGE WITH YOLOV8 ─────────────────────────────────────────────────
 @images_bp.route("/<image_id>/analyse", methods=["POST"])
 @jwt_required()
@@ -144,7 +172,9 @@ def analyse_image(image_id):
         return _model_unavailable()
     try:
         t0 = time.perf_counter()
-        garment_attributes = predict_multitask_features(filepath)
+        garment_region = _locate_garment(filepath)
+        garment_attributes = predict_multitask_features(filepath, bbox=garment_region["crop_box_xyxy"])
+        garment_attributes["garment_region"] = garment_region
         analysis_time_sec = round(time.perf_counter() - t0, 4)
         # Keep every genuine prediction; only ADD scope flags. A class outside the user-selectable
         # taxonomy is never remapped to a similar one - the user must confirm the design manually.
@@ -222,6 +252,7 @@ def analyse_image(image_id):
         "requires_user_verification": requires_confirmation,  # alias for older clients
         "unsupported_heads": (garment_attributes or {}).get("unsupported_heads", []),
         "unsupported_message": (garment_attributes or {}).get("unsupported_message"),
+        "garment_region": (garment_attributes or {}).get("garment_region"),
         "confirmed_attributes": {},
         "status": "analysis complete — confirm garment features before pattern generation"
     }), 200

@@ -1,5 +1,5 @@
 // End-to-end behaviour of the 7-step creation wizard against a mocked API.
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -166,6 +166,25 @@ describe('creation wizard — full workflow', () => {
     fireEvent.change(screen.getByTestId('image-input'), { target: { files: [new File(['x'], 'a.pdf', { type: 'application/pdf' })] } });
     expect(screen.getByRole('alert').textContent).toMatch(/JPG, PNG or WEBP/);
     expect(imagesAPI.upload).not.toHaveBeenCalled();
+  });
+
+  it('says which part of the photo was analysed and flags a garment that cannot be drafted', async () => {
+    const region = (r) => ({ data: { confirmed_attributes: {}, garment_attributes: { predictions: {}, garment_region: r } } });
+    imagesAPI.analyse.mockResolvedValueOnce(region({ used: 'garment_crop', supported_garment: true, note: null }));
+    startWizard();
+    fireEvent.change(screen.getByTestId('image-input'), { target: { files: [new File(['x'], 'a.jpg', { type: 'image/jpeg' })] } });
+    fireEvent.click(screen.getByText('Upload and analyse'));
+    expect((await screen.findByTestId('garment-region')).textContent).toMatch(/garment area it found/);
+
+    cleanup();
+    imagesAPI.analyse.mockResolvedValueOnce(region({ used: 'garment_crop', supported_garment: false,
+      note: 'This photo looks like a dress. Only blouses, T-shirts and crop tops can be drafted; the suggestions below may not apply.' }));
+    startWizard();
+    fireEvent.change(screen.getByTestId('image-input'), { target: { files: [new File(['x'], 'b.jpg', { type: 'image/jpeg' })] } });
+    fireEvent.click(screen.getByText('Upload and analyse'));
+    const note = await screen.findByTestId('garment-region');
+    expect(note.getAttribute('role')).toBe('alert');
+    expect(note.textContent).toMatch(/looks like a dress/);
   });
 
   it('shows a friendly message (no stack trace) when the AI service fails', async () => {
