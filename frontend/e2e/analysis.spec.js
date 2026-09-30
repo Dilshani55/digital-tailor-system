@@ -20,9 +20,11 @@ async function signIn(page, request) {
 
 async function analyse(page, file) {
   await page.goto('/upload');
+  await page.getByLabel('Customer name').fill('E2E Customer');
+  await page.getByRole('button', { name: 'Continue to upload' }).click();
   await page.getByTestId('image-input').setInputFiles(IMG(file));
   await page.getByRole('button', { name: 'Upload and analyse' }).click();
-  await expect(page.getByRole('heading', { name: 'Review the AI suggestion' })).toBeVisible({ timeout: 180_000 });
+  await expect(page.getByRole('heading', { name: 'Review the AI suggestions' })).toBeVisible({ timeout: 180_000 });
 }
 
 test('all four M13 predictions supported: pre-selected, no scope warning, confirm works unchanged', async ({ page, request }) => {

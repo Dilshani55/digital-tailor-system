@@ -88,9 +88,16 @@ describe('measurementSchema utils', () => {
 });
 
 // ── the wizard's measurement step ─────────────────────────────────────────────
-function openMeasurementStep({ neckline = 'round-neck', sleeveStyle = 'regular-sleeve' } = {}) {
+function startWizard() {
   const view = render(<MemoryRouter><Upload /></MemoryRouter>);
-  fireEvent.click(screen.getByText('No photo — choose the design manually'));
+  fireEvent.change(screen.getByLabelText('Customer name'), { target: { value: 'Test Customer' } });
+  fireEvent.click(screen.getByText('Continue to upload'));
+  fireEvent.click(screen.getByText('Choose the design manually'));
+  return view;
+}
+
+function openMeasurementStep({ neckline = 'round-neck', sleeveStyle = 'regular-sleeve' } = {}) {
+  const view = startWizard();
   const set = (testId, value) => fireEvent.change(screen.getByTestId(testId), { target: { value } });
   set('select-garment_type', 'blouse');
   set('select-neckline_type', neckline);
@@ -154,6 +161,8 @@ describe('Measurement form in the Upload wizard', () => {
     expect(payload.unit).toBe('cm');
     FIELD_KEYS.forEach((k) => expect(payload[k]).toBe(VALID[k]));
     expect(payload.fabric_type).toBe('woven');
+    expect(payload.client_name).toBe('Test Customer');
+    expect(payload).not.toHaveProperty('email');                    // no contact entered -> none invented
   });
 
   it('supports inches: toggling converts displayed values and the raw entry is sent with unit "in"', async () => {
@@ -207,8 +216,7 @@ describe('Measurement form in the Upload wizard', () => {
   });
 
   it('does not let an out-of-scope combination through (t-shirt with square neck)', () => {
-    const view = render(<MemoryRouter><Upload /></MemoryRouter>);
-    fireEvent.click(screen.getByText('No photo — choose the design manually'));
+    const view = startWizard();
     const set = (id, v) => fireEvent.change(screen.getByTestId(id), { target: { value: v } });
     set('select-garment_type', 't-shirt');
     set('select-neckline_type', 'square-neck');
@@ -222,6 +230,7 @@ describe('Measurement form in the Upload wizard', () => {
   it('only lets the user open steps they have already reached', () => {
     render(<MemoryRouter><Upload /></MemoryRouter>);
     expect(screen.getByText('Measurements', { selector: '.wstep-lbl' }).closest('button').disabled).toBe(true);
-    expect(screen.getByText('Upload', { selector: '.wstep-lbl' }).closest('button').disabled).toBe(false);
+    expect(screen.getByText('Customer & design', { selector: '.wstep-lbl' }).closest('button').disabled).toBe(false);
+    expect(screen.getByText('Upload image', { selector: '.wstep-lbl' }).closest('button').disabled).toBe(true);
   });
 });

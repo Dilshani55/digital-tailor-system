@@ -42,7 +42,7 @@ export default function PatternDetail() {
   const n = data?.nesting_summary || {};
   const a = data?.design_attributes || {};
   return (
-    <div className="history-page">
+    <div className="page">
       <section className="page-heading">
         <div>
           <span className="section-kicker">Saved pattern</span>
@@ -54,7 +54,7 @@ export default function PatternDetail() {
         </div>
         <button type="button" className="btn btn-outline" onClick={() => navigate('/history')}>Back to library</button>
       </section>
-      {error && <div role="alert" className="dashboard-error">{error}</div>}
+      {error && <div role="alert" className="alert error dashboard-error">{error}</div>}
       {data && (
         <>
           <div className="result-grid" style={{ marginBottom: '16px' }}>

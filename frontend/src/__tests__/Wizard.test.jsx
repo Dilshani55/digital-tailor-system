@@ -76,42 +76,53 @@ const chooseDesign = (over = {}) => {
 const fill = () => Object.entries(VALID).forEach(([k, v]) =>
   fireEvent.change(document.querySelector(`#meas-${k}`), { target: { value: String(v) } }));
 
-async function reachStep4() {
+const heading = (name) => screen.findByRole('heading', { name });
+
+function startWizard({ name = 'Test Customer', contact = '', project = '' } = {}) {
   render(<MemoryRouter><Upload /></MemoryRouter>);
+  fireEvent.change(screen.getByLabelText('Customer name'), { target: { value: name } });
+  if (contact) fireEvent.change(screen.getByLabelText(/Contact \/ reference/), { target: { value: contact } });
+  if (project) fireEvent.change(screen.getByLabelText(/Design \/ project name/), { target: { value: project } });
+  fireEvent.click(screen.getByText('Continue to upload'));
+}
+
+async function reachStep4(opts) {
+  startWizard(opts);
   const file = new File(['x'], 'top.jpg', { type: 'image/jpeg' });
   fireEvent.change(screen.getByTestId('image-input'), { target: { files: [file] } });
   fireEvent.click(screen.getByText('Upload and analyse'));
-  await screen.findByText('Review the AI suggestion');
+  await heading('Review the AI suggestions');
   chooseDesign();
   await waitFor(() => expect(screen.getByText('Continue to measurements').disabled).toBe(false));
   fireEvent.click(screen.getByText('Continue to measurements'));
   fill();
   fireEvent.click(screen.getByText('Save and continue'));
-  await screen.findByText('Fabric and fit');
+  await heading('Choose fabric and fit');
 }
 
 describe('creation wizard — full workflow', () => {
   beforeEach(stubAll);
 
-  it('runs upload → AI review → measurements → fabric → pattern → estimate → PDF → feedback', async () => {
-    await reachStep4();
+  it('runs customer → upload → AI review → measurements → fabric → pattern → estimate → PDF → feedback', async () => {
+    await reachStep4({ contact: 'amara@example.com', project: 'Wedding blouse' });
     expect(imagesAPI.upload).toHaveBeenCalledTimes(1);
     expect(imagesAPI.analyse).toHaveBeenCalledWith('i1');
     expect(imagesAPI.confirmAttributes).toHaveBeenCalledWith('i1', CONFIRMED);
-    expect(measurementsAPI.save.mock.calls[0][0].unit).toBe('cm');
+    expect(measurementsAPI.save.mock.calls[0][0]).toMatchObject({ unit: 'cm', client_name: 'Test Customer', email: 'amara@example.com' });
 
     fireEvent.click(screen.getByText('pick-poplin'));
     fireEvent.click(screen.getByText('Confirm and generate pattern'));
-    await screen.findByText('Your pattern');
+    await heading('Pattern preview');
     expect(measurementsAPI.update).toHaveBeenCalledWith('m1', { fabric_type: 'woven', fit_preference: 'standard' });
     expect(patternsAPI.generate.mock.calls[0][0]).toMatchObject({
       measurement_id: 'm1', image_id: 'i1', fabric_id: 'cotton-poplin', confirmed_attributes: CONFIRMED,
+      project_name: 'Wedding blouse',
     });
     expect(screen.getByTestId('pattern-preview')).toBeTruthy();
     expect(screen.getByTestId('cutting-line-0')).toBeTruthy();       // seam-allowance geometry is drawn
 
     fireEvent.click(screen.getByText('Continue to fabric estimate'));
-    await screen.findByText('Fabric estimate');
+    await heading('Fabric estimate');
     await waitFor(() => expect(exportAPI.estimates).toHaveBeenCalledWith('p1', { selected_width_cm: 114.3, cutting_mode: 'auto' }));
     expect((await screen.findAllByText('1.4 m')).length).toBeGreaterThan(0);
     const table = screen.getByTestId('width-comparison');
@@ -122,12 +133,13 @@ describe('creation wizard — full workflow', () => {
     await waitFor(() => expect(screen.getByTestId('width-60').textContent).toBe('Selected'));
 
     fireEvent.click(screen.getByText('Continue to PDF export'));
-    await screen.findByText('Printable pattern (PDF)');
+    await heading('Printable pattern (PDF)');
     expect(screen.getByText(/100% \/ Actual size/)).toBeTruthy();
+    expect(screen.getByTestId('tile-preview')).toBeTruthy();
     fireEvent.click(screen.getByText('Create printable PDF'));
     await screen.findByTestId('pdf-ready');
-    expect(screen.getByText(/14 pages/)).toBeTruthy();
-    fireEvent.click(screen.getByText('Download PDF'));
+    expect(screen.getByTestId('pdf-ready').textContent).toMatch(/14 pages/);
+    fireEvent.click(screen.getByRole('button', { name: 'Download PDF' }));
     await waitFor(() => expect(exportAPI.download).toHaveBeenCalledWith('e1'));
 
     await screen.findByLabelText(/How easy was it/);
@@ -138,12 +150,19 @@ describe('creation wizard — full workflow', () => {
 
   it('cannot open later steps before earlier ones are done', () => {
     render(<MemoryRouter><Upload /></MemoryRouter>);
-    ['AI review', 'Measurements', 'Fabric & fit', 'Pattern preview', 'Fabric estimate', 'PDF export'].forEach((label) =>
+    ['Upload image', 'AI review', 'Measurements', 'Fabric & fit', 'Pattern preview', 'Fabric estimate', 'Download PDF'].forEach((label) =>
       expect(screen.getByText(label, { selector: '.wstep-lbl' }).closest('button').disabled).toBe(true));
   });
 
-  it('rejects a non-image or oversized file with a plain message', () => {
+  it('asks for the customer name before continuing', () => {
     render(<MemoryRouter><Upload /></MemoryRouter>);
+    fireEvent.click(screen.getByText('Continue to upload'));
+    expect(screen.getByRole('alert').textContent).toMatch(/customer name/);
+    expect(screen.queryByTestId('image-input')).toBeNull();
+  });
+
+  it('rejects a non-image or oversized file with a plain message', () => {
+    startWizard();
     fireEvent.change(screen.getByTestId('image-input'), { target: { files: [new File(['x'], 'a.pdf', { type: 'application/pdf' })] } });
     expect(screen.getByRole('alert').textContent).toMatch(/JPG, PNG or WEBP/);
     expect(imagesAPI.upload).not.toHaveBeenCalled();
@@ -151,7 +170,7 @@ describe('creation wizard — full workflow', () => {
 
   it('shows a friendly message (no stack trace) when the AI service fails', async () => {
     imagesAPI.analyse.mockRejectedValue({ response: { status: 500, data: { error: 'Traceback (most recent call last): File "C:\\x\\y.py"' } } });
-    render(<MemoryRouter><Upload /></MemoryRouter>);
+    startWizard();
     fireEvent.change(screen.getByTestId('image-input'), { target: { files: [new File(['x'], 'a.jpg', { type: 'image/jpeg' })] } });
     fireEvent.click(screen.getByText('Upload and analyse'));
     const alert = await screen.findByRole('alert');
@@ -161,19 +180,19 @@ describe('creation wizard — full workflow', () => {
 
   it('says honestly when the AI model is unavailable and keeps the manual path open', async () => {
     imagesAPI.modelStatus.mockResolvedValue({ data: { available: false } });
-    render(<MemoryRouter><Upload /></MemoryRouter>);
+    startWizard();
     await screen.findByTestId('model-unavailable');
     fireEvent.change(screen.getByTestId('image-input'), { target: { files: [new File(['x'], 'a.jpg', { type: 'image/jpeg' })] } });
     expect(screen.getByText('Upload and analyse').disabled).toBe(true);
-    fireEvent.click(screen.getByText('No photo — choose the design manually'));
-    await screen.findByText('Review the AI suggestion');
+    fireEvent.click(screen.getByText('Choose the design manually'));
+    await heading('Review the AI suggestions');
     expect(screen.getByTestId('fallback-notice')).toBeTruthy();
     expect(imagesAPI.analyse).not.toHaveBeenCalled();
   });
 
   it('turns a 503 from the analyse call into the model-unavailable message', async () => {
     imagesAPI.analyse.mockRejectedValue({ response: { status: 503, data: { error_code: 'MODEL_UNAVAILABLE', error: 'x' } } });
-    render(<MemoryRouter><Upload /></MemoryRouter>);
+    startWizard();
     fireEvent.change(screen.getByTestId('image-input'), { target: { files: [new File(['x'], 'a.jpg', { type: 'image/jpeg' })] } });
     fireEvent.click(screen.getByText('Upload and analyse'));
     const alert = await screen.findByRole('alert');
@@ -185,7 +204,7 @@ describe('creation wizard — full workflow', () => {
     patternsAPI.generate.mockRejectedValue({ response: { status: 422, data: { error_code: 'UNSUPPORTED_DESIGN', error: 'raw' } } });
     fireEvent.click(screen.getByText('pick-poplin'));
     fireEvent.click(screen.getByText('Confirm and generate pattern'));
-    await screen.findByText('Review the AI suggestion');
+    await heading('Review the AI suggestions');
     expect(screen.getByRole('alert').textContent).toMatch(/outside what the system can draft/);
   });
 
@@ -197,7 +216,7 @@ describe('creation wizard — full workflow', () => {
     await reachStep4();
     fireEvent.click(screen.getByText('pick-poplin'));
     fireEvent.click(screen.getByText('Confirm and generate pattern'));
-    await screen.findByText('Your pattern');
+    await heading('Pattern preview');
     expect(screen.getByText('Continue to fabric estimate').disabled).toBe(true);
     expect(screen.getAllByText(/outline self-intersects/).length).toBeGreaterThan(0);
     expect(exportAPI.estimates).not.toHaveBeenCalled();
@@ -213,7 +232,7 @@ describe('creation wizard — full workflow', () => {
     await reachStep4();
     fireEvent.click(screen.getByText('pick-poplin'));
     fireEvent.click(screen.getByText('Confirm and generate pattern'));
-    await screen.findByText('Your pattern');
+    await heading('Pattern preview');
     fireEvent.click(screen.getByText('Continue to fabric estimate'));
     expect((await screen.findAllByText(/wider than the fabric/)).length).toBeGreaterThan(0);
     expect(screen.getByTestId('estimate-row-45').textContent).toMatch(/Does not fit/);

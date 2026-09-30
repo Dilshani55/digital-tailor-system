@@ -3,23 +3,125 @@ import { useNavigate } from 'react-router-dom';
 import { Download, Eye, FileText, Plus, Search, Trash2 } from 'lucide-react';
 import { exportAPI } from '../services/api';
 import LoadingSpinner from '../components/LoadingSpinner';
+import GarmentIllustration from '../components/GarmentIllustration';
 
+const FILTERS = [
+  { id: 'all', label: 'All patterns' },
+  { id: 'blouse', label: 'Blouses' },
+  { id: 't-shirt', label: 'T-shirts' },
+  { id: 'crop-top', label: 'Crop tops' },
+];
+const label = (v) => (v ? String(v).replace(/-/g, ' ').replace(/^./, (c) => c.toUpperCase()) : null);
+
+/** Pattern library: every saved pattern that has a printable PDF, shown with stored values only. */
 export default function History() {
-  const navigate=useNavigate();
-  const [exports,setExports]=useState([]),[loading,setLoading]=useState(true),[query,setQuery]=useState(''),[loadError,setLoadError]=useState('');
-  const label=(v)=>v?String(v).replace(/-/g,' ').replace(/^./,c=>c.toUpperCase()):null;
-  useEffect(()=>{exportAPI.getAll().then(r=>setExports(r.data.exports||[])).catch(()=>{setExports([]);setLoadError('Could not load your pattern library. Please refresh and try again.')}).finally(()=>setLoading(false))},[]);
-  const download=async(id)=>{try{const r=await exportAPI.download(id);const url=URL.createObjectURL(new Blob([r.data]));const a=document.createElement('a');a.href=url;a.download=`drafting_guide_${id}.pdf`;a.click();URL.revokeObjectURL(url)}catch{alert('Download failed. Please try again.')}};
-  const remove=async(id)=>{if(!confirm('Delete this drafting guide from your history?'))return;try{await exportAPI.delete(id);setExports(v=>v.filter(e=>e.export_id!==id))}catch{alert('Unable to delete this item.')}};
-  if(loading)return <LoadingSpinner message="Loading your pattern library..."/>;
-  const rows=exports.filter(e=>(e.filename||'pattern').toLowerCase().includes(query.toLowerCase()));
-  return <div className="history-page">
-    <section className="page-heading"><div><span className="section-kicker">Your work</span><h1>Pattern library</h1><p>Find, download and manage every generated drafting guide.</p></div><button className="btn btn-primary btn-lg" onClick={()=>navigate('/upload')}><Plus size={17}/> New pattern</button></section>
-    {loadError&&<div role="alert" className="dashboard-error">{loadError}</div>}
-    <section className="library-toolbar"><div className="search-field"><Search size={17}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search pattern library"/></div><span>{rows.length} {rows.length===1?'guide':'guides'}</span></section>
-    <section className="ui-card library-card">
-      {rows.length===0?<div className="empty-state"><span><FileText size={28}/></span><h2>{query?'No matching patterns':'Your pattern library is empty'}</h2><p>{query?'Try another search term.':'Generate your first personalized pattern and its PDF guide will appear here.'}</p>{!query&&<button className="btn btn-primary" onClick={()=>navigate('/upload')}><Plus size={16}/> Create first pattern</button>}</div>:
-      <div className="table-wrap"><table className="hist-table"><thead><tr><th>Pattern</th><th>Garment details</th><th>Fabric plan</th><th>Efficiency</th><th>Created</th><th><span className="sr-only">Actions</span></th></tr></thead><tbody>{rows.map((e,i)=><tr key={e.export_id||i}><td><div className="file-cell"><span><FileText size={18}/></span><div><strong>{e.filename?.replace('.pdf','')||'Custom drafting guide'}</strong><small>PDF drafting guide</small></div></div></td><td><strong>{label(e.garment_type)||'Garment unavailable'}</strong><small>{[label(e.neckline_type),label(e.sleeve_length)].filter(Boolean).join(' · ')||'Design details unavailable'}</small></td><td><strong>{e.fabric_name||'Fabric unavailable'} · {e.yardage_metres!=null?`${e.yardage_metres} m`:'length not calculated'}</strong><small>{e.fabric_width_cm!=null?`${e.fabric_width_cm} cm fabric width`:'Fabric width unavailable'}</small></td><td>{e.utilisation_percent!=null?<span className="efficiency-badge">{e.utilisation_percent}% utilisation</span>:<span>Not calculated</span>}</td><td><strong>{e.exported_at?new Date(e.exported_at).toLocaleDateString('en-GB'):'Date unavailable'}</strong><small>Generated</small></td><td><div className="row-actions"><button aria-label="Download" onClick={()=>download(e.export_id)}><Download size={17}/></button><button className="delete" aria-label="Delete" onClick={()=>remove(e.export_id)}><Trash2 size={17}/></button><button aria-label="View pattern" onClick={()=>navigate(`/patterns/${e.pattern_id}`)}><Eye size={17}/></button></div></td></tr>)}</tbody></table></div>}
-    </section>
-  </div>;
+  const navigate = useNavigate();
+  const [exports, setExports] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [query, setQuery] = useState('');
+  const [filter, setFilter] = useState('all');
+  const [loadError, setLoadError] = useState('');
+  const [actionError, setActionError] = useState('');
+
+  useEffect(() => {
+    exportAPI.getAll()
+      .then((r) => setExports(r.data.exports || []))
+      .catch(() => { setExports([]); setLoadError('Could not load your pattern library. Please refresh and try again.'); })
+      .finally(() => setLoading(false));
+  }, []);
+
+  const download = async (e) => {
+    setActionError('');
+    try {
+      const r = await exportAPI.download(e.export_id);
+      const url = URL.createObjectURL(new Blob([r.data], { type: 'application/pdf' }));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `sewing_pattern_${e.pattern_id || e.export_id}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      setActionError('Download failed. Please try again.');
+    }
+  };
+
+  const remove = async (id) => {
+    if (!window.confirm('Delete this PDF guide from your library? The saved pattern itself is kept.')) return;
+    setActionError('');
+    try {
+      await exportAPI.delete(id);
+      setExports((v) => v.filter((e) => e.export_id !== id));
+    } catch {
+      setActionError('Unable to delete this item.');
+    }
+  };
+
+  if (loading) return <LoadingSpinner message="Loading your pattern library…" />;
+
+  const q = query.trim().toLowerCase();
+  const rows = exports.filter((e) => (filter === 'all' || e.garment_type === filter)
+    && [e.filename, e.garment_type, e.fabric_name, e.neckline_type, e.sleeve_length].filter(Boolean).join(' ').toLowerCase().includes(q));
+
+  return (
+    <div className="page">
+      <section className="page-heading">
+        <div>
+          <h1>Pattern library</h1>
+          <p>Browse, download and manage your printable pattern guides.</p>
+        </div>
+        <button className="btn btn-primary" onClick={() => navigate('/upload')}><Plus size={17} /> Create pattern</button>
+      </section>
+
+      {loadError && <div role="alert" className="alert error dashboard-error">{loadError}</div>}
+      {actionError && <div role="alert" className="alert error dashboard-error">{actionError}</div>}
+
+      <div className="toolbar">
+        <div className="filter-chips" role="group" aria-label="Filter by garment">
+          {FILTERS.map((f) => (
+            <button key={f.id} type="button" aria-pressed={filter === f.id} onClick={() => setFilter(f.id)}>{f.label}</button>
+          ))}
+        </div>
+        <div className="search-field" style={{ maxWidth: 360, marginLeft: 'auto' }}>
+          <Search size={17} aria-hidden="true" />
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search patterns…" aria-label="Search patterns" />
+        </div>
+      </div>
+
+      {rows.length === 0 ? (
+        <div className="ui-card empty-state">
+          <span><FileText size={26} /></span>
+          <h2>{query || filter !== 'all' ? 'No matching patterns' : 'Your pattern library is empty'}</h2>
+          <p>{query || filter !== 'all' ? 'Try another search term or filter.' : 'Generate your first personalised pattern and its PDF guide will appear here.'}</p>
+          {!query && filter === 'all' && <button className="btn btn-primary" onClick={() => navigate('/upload')}><Plus size={16} /> Create first pattern</button>}
+        </div>
+      ) : (
+        <div className="library-grid" data-testid="library-grid">
+          {rows.map((e, i) => (
+            <article className="library-item" key={e.export_id || i}>
+              <span className="garment-thumb"><GarmentIllustration type={e.garment_type} /></span>
+              <div className="library-item-body">
+                <h3>{label(e.garment_type) || 'Garment unavailable'}</h3>
+                <small>{[label(e.neckline_type), label(e.sleeve_length)].filter(Boolean).join(' · ') || 'Design details unavailable'}</small>
+                <small>{e.fabric_name || 'Fabric unavailable'} · {e.yardage_metres != null ? `${e.yardage_metres} m` : 'length not calculated'}</small>
+                <div className="library-item-tags">
+                  <span className="tag">{e.fabric_width_cm != null ? `${e.fabric_width_cm} cm fabric width` : 'Fabric width unavailable'}</span>
+                  {e.utilisation_percent != null
+                    ? <span className="tag">{e.utilisation_percent}% utilisation</span>
+                    : <span className="tag">Not calculated</span>}
+                </div>
+              </div>
+              <div className="library-item-foot">
+                <small>{e.exported_at ? `Created ${new Date(e.exported_at).toLocaleDateString('en-GB')}` : 'Date unavailable'}</small>
+                <div className="row-actions">
+                  <button aria-label="View pattern" title="View pattern" onClick={() => navigate(`/patterns/${e.pattern_id}`)}><Eye size={16} /></button>
+                  <button aria-label="Download" title="Download PDF" onClick={() => download(e)}><Download size={16} /></button>
+                  <button className="delete" aria-label="Delete" title="Delete PDF" onClick={() => remove(e.export_id)}><Trash2 size={16} /></button>
+                </div>
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }

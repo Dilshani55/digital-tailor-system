@@ -83,3 +83,16 @@ Each milestone records what changed, the commit and the tests that were actually
 * Real-stack E2E: the downloaded PDF (19 pages) contains the customer, the real M13 provenance, the embedded upload
   and the three widths.
 * Tests: backend 371 passed (PDF: never re-drafted, complete content incl. embedded image, entered values, footer).
+
+## Milestone 7 — polished end-to-end tailoring workflow (UI redesign)
+
+* New design system (`index.css`): dark-green sidebar, DM Sans, stat/recent cards, library grid with filter chips,
+  customers table with pagination, split sign-in/sign-up page. Old auth layout components removed.
+* Wizard is now 8 steps: Customer & design → Upload image → AI review → Measurements (figure + guide per field,
+  cm/in) → Fabric & fit → Pattern preview (validation banner, zoom/pan/full screen, legend) → Fabric estimate
+  (36"/45"/60" cards, comparison table, layout) → Download PDF (checklist, A4 tile preview, page count).
+* Unsaved-changes warning on navigation and page unload while a wizard is in progress; no invented data (missing
+  values are shown as unavailable / not calculated).
+* Phone width (390 px): no horizontal page scroll; the stepper shows only the active label.
+* Tests: frontend 121 passed · build OK · real-stack E2E 6 passed (register → PDF download → library).
+* Lint: no ESLint configuration exists in the repo, so no lint result is claimed.

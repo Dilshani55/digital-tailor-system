@@ -30,13 +30,13 @@ test('register -> upload -> AI review -> measurements -> fabric -> pattern -> es
 
   // 1. register through the UI
   await page.goto('/auth');
-  await page.getByRole('button', { name: 'Create Account' }).first().click();
+  await page.getByRole('button', { name: 'Sign up' }).click();
   await page.getByLabel('Full Name').fill('E2E Tester');
   await page.getByLabel('Email Address').fill(email);
   await page.locator('#reg-password').fill(password);
   await page.locator('#reg-confirmPassword').fill(password);
   await page.getByRole('checkbox').check();
-  await page.getByRole('button', { name: 'Create Account' }).last().click();
+  await page.getByRole('button', { name: 'Create account' }).click();
   await page.locator('#login-email').waitFor({ timeout: 30_000 });          // app returns to the sign-in tab
   await page.locator('#login-email').fill(email);
   await page.locator('#login-password').fill(password);
@@ -46,10 +46,12 @@ test('register -> upload -> AI review -> measurements -> fabric -> pattern -> es
 
   // 2. upload a real garment photo and let the real classifier analyse it
   await page.goto('/upload');
+  await page.getByLabel('Customer name').fill('E2E Customer');
+  await page.getByRole('button', { name: 'Continue to upload' }).click();
   await page.getByTestId('image-input').setInputFiles(IMAGE);
   await shot('01-upload');
   await page.getByRole('button', { name: 'Upload and analyse' }).click();
-  await expect(page.getByRole('heading', { name: 'Review the AI suggestion' })).toBeVisible({ timeout: 180_000 });
+  await expect(page.getByRole('heading', { name: 'Review the AI suggestions' })).toBeVisible({ timeout: 180_000 });
   await expect(page.getByTestId('head-card-garment_type')).toBeVisible();
   await expect(page.getByTestId('confidence-tag-garment_type')).toContainText('%');
   await shot('02-ai-review');
@@ -72,16 +74,15 @@ test('register -> upload -> AI review -> measurements -> fabric -> pattern -> es
   await expect(page.getByTestId('error-bust_cm')).toContainText(/plausible range/);
   await shot('03b-measurement-inline-error');
   for (const [k, v] of Object.entries(MEAS)) await page.locator(`#meas-${k}`).fill(String(v));
-  await page.getByLabel('Customer name').fill('E2E Customer');
   await page.getByRole('button', { name: 'Save and continue' }).click();
-  await expect(page.getByRole('heading', { name: 'Fabric and fit' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Choose fabric and fit' })).toBeVisible();
   await shot('04-fabric-and-fit');
   mark('measurements validated (inline error shown) and saved');
 
   // 5. recommended fabric with explanation, then generate
   await expect(page.getByText(/Cotton Poplin|Linen|Rayon|Jersey/).first()).toBeVisible({ timeout: 30_000 });
   await page.getByRole('button', { name: 'Confirm and generate pattern' }).click();
-  await expect(page.getByRole('heading', { name: 'Your pattern' })).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByRole('heading', { name: 'Pattern preview' })).toBeVisible({ timeout: 60_000 });
   await expect(page.getByText('Geometry validation passed')).toBeVisible();
   expect(await page.locator('[data-testid^="cutting-line-"]').count()).toBeGreaterThanOrEqual(3);
   expect(await page.locator('[data-testid^="notch-"]').count()).toBeGreaterThanOrEqual(3);
@@ -90,7 +91,7 @@ test('register -> upload -> AI review -> measurements -> fabric -> pattern -> es
 
   // 6. fabric estimate for each supported width
   await page.getByRole('button', { name: 'Continue to fabric estimate' }).click();
-  await expect(page.getByRole('heading', { name: 'Fabric estimate' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Fabric estimate', exact: true })).toBeVisible();
   // all three standard widths are calculated together from the stored pieces
   const table = page.getByTestId('width-comparison');
   await expect(table).toBeVisible({ timeout: 60_000 });
@@ -112,7 +113,7 @@ test('register -> upload -> AI review -> measurements -> fabric -> pattern -> es
   await shot('07-pdf-ready');
   const [download] = await Promise.all([
     page.waitForEvent('download'),
-    page.getByRole('button', { name: 'Download PDF' }).click(),
+    page.getByRole('button', { name: 'Download PDF', exact: true }).click(),
   ]);
   const out = path.join(process.env.E2E_OUT_DIR || os.tmpdir(), `e2e_pattern_${Date.now()}.pdf`);
   await download.saveAs(out);
@@ -127,7 +128,7 @@ test('register -> upload -> AI review -> measurements -> fabric -> pattern -> es
   await page.getByRole('button', { name: 'Send feedback' }).click();
   await expect(page.getByText(/Thank you/)).toBeVisible();
   await page.goto('/history');
-  await expect(page.locator('.hist-table tbody tr').first()).toBeVisible();
+  await expect(page.locator('.library-item').first()).toBeVisible();
   await page.getByRole('button', { name: 'View pattern' }).first().click();
   await expect(page.getByRole('heading', { name: /Blouse pattern/ })).toBeVisible();
   await expect(page.getByTestId('pattern-preview')).toBeVisible();
@@ -147,7 +148,9 @@ test('out-of-scope design cannot be confirmed through the UI', async ({ page, re
   await page.getByRole('button', { name: 'Sign In' }).click();
   await page.waitForURL('**/dashboard', { timeout: 30_000 });
   await page.goto('/upload');
-  await page.getByRole('button', { name: /choose the design manually/ }).click();
+  await page.getByLabel('Customer name').fill('E2E Customer');
+  await page.getByRole('button', { name: 'Continue to upload' }).click();
+  await page.getByRole('button', { name: /choose the design manually/i }).click();
   await page.getByTestId('select-garment_type').selectOption('t-shirt');
   // combinations the engine cannot draft are not selectable at all
   await expect(page.getByTestId('select-neckline_type').locator('option[value="square-neck"]')).toBeDisabled();

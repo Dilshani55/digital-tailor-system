@@ -24,7 +24,7 @@ export default function FabricSavings() {
   const pendingCount = patterns.length - layouts.length;
 
   return (
-    <div className="history-page">
+    <div className="page">
       <section className="page-heading">
         <div>
           <span className="section-kicker">Material reuse</span>
@@ -34,7 +34,7 @@ export default function FabricSavings() {
         <button className="btn btn-outline" onClick={() => navigate('/dashboard')}><ArrowLeft size={16}/> Dashboard</button>
       </section>
 
-      {error ? <div role="alert" className="dashboard-error">{error}</div> : (
+      {error ? <div role="alert" className="alert error dashboard-error">{error}</div> : (
         <>
           <section className="offcut-total ui-card">
             <span className="stat-icon mint"><Leaf size={20}/></span>

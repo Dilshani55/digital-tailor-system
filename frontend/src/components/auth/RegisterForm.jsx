@@ -1,234 +1,93 @@
 import { useState } from 'react';
-import { AlertCircle } from 'lucide-react';
+import { AlertCircle, Mail, User } from 'lucide-react';
 import PasswordInput from './PasswordInput';
 import PasswordStrength from './PasswordStrength';
-import GoogleLoginButton from './GoogleLoginButton';
+import GoogleLoginButton, { googleClientId } from './GoogleLoginButton';
 
 export default function RegisterForm({ onSubmit, loading, error, onSwitchTab, onGoogleSuccess, onGoogleFailure }) {
-  const [form, setForm] = useState({
-    fullName: '',
-    email: '',
-    password: '',
-    confirmPassword: ''
-  });
-  const [agreeTerms, setAgreeTerms] = useState(false);
-  const [validationErrors, setValidationErrors] = useState({});
+  const [form, setForm] = useState({ fullName: '', email: '', password: '', confirmPassword: '' });
+  const [agree, setAgree] = useState(false);
+  const [errors, setErrors] = useState({});
 
-  const handleChange = (e) => {
+  const change = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value });
-    if (validationErrors[e.target.name]) {
-      setValidationErrors({ ...validationErrors, [e.target.name]: '' });
-    }
+    if (errors[e.target.name]) setErrors({ ...errors, [e.target.name]: '' });
   };
 
-  const handleFormSubmit = (e) => {
+  const submit = (e) => {
     e.preventDefault();
-    const errors = {};
-
-    if (!form.fullName) {
-      errors.fullName = 'Please enter your name.';
-    } else if (form.fullName.length < 2) {
-      errors.fullName = 'Name must be at least 2 characters.';
-    }
-
-    if (!form.email) {
-      errors.email = 'Please enter your email address.';
-    } else if (!/\S+@\S+\.\S+/.test(form.email)) {
-      errors.email = 'Please enter a valid email address.';
-    }
-
-    if (!form.password) {
-      errors.password = 'Please enter a password.';
-    } else if (form.password.length < 8) {
-      errors.password = 'Password must meet the minimum requirements (at least 8 characters).';
-    }
-
-    if (!form.confirmPassword) {
-      errors.confirmPassword = 'Please confirm your password.';
-    } else if (form.password !== form.confirmPassword) {
-      errors.confirmPassword = 'Passwords do not match.';
-    }
-
-    if (!agreeTerms) {
-      errors.terms = 'You must agree to the Terms of Use and Privacy Policy.';
-    }
-
-    if (Object.keys(errors).length > 0) {
-      setValidationErrors(errors);
-      return;
-    }
-
-    onSubmit(form.fullName, form.email, form.password);
+    const next = {};
+    if (!form.fullName || form.fullName.trim().length < 2) next.fullName = 'Please enter your name (at least 2 characters).';
+    if (!form.email) next.email = 'Please enter your email address.';
+    else if (!/\S+@\S+\.\S+/.test(form.email)) next.email = 'Please enter a valid email address.';
+    if (!form.password || form.password.length < 8) next.password = 'Use at least 8 characters.';
+    if (form.password !== form.confirmPassword) next.confirmPassword = 'Passwords do not match.';
+    if (!agree) next.terms = 'Please agree to the terms to create an account.';
+    if (Object.keys(next).length) { setErrors(next); return; }
+    onSubmit(form.fullName.trim(), form.email, form.password);
   };
+
+  const err = (k) => errors[k] && <span className="field-error">{errors[k]}</span>;
 
   return (
     <div>
-      <div style={{ marginBottom: '24px' }}>
-        <h2 style={{ fontSize: '22px', fontWeight: '800', color: 'var(--text-primary)', fontFamily: "'Playfair Display', serif" }}>
-          Create Your Account
-        </h2>
-        <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-          Save your measurements and tailoring analyses in one place.
-        </p>
-      </div>
+      <span className="eyebrow">Create account</span>
+      <h1>Join TailorAI</h1>
+      <p>Save your customers, measurements and patterns in one place.</p>
 
-      {error && (
-        <div style={{
-          padding: '12px 14px', background: '#FEF2F2', border: '1px solid #FCA5A5',
-          borderRadius: '8px', color: '#991B1B', fontSize: '12px', marginBottom: '20px',
-          display: 'flex', alignItems: 'center', gap: '8px'
-        }}>
-          <AlertCircle size={16}/> {error}
+      {error && <div className="alert error" role="alert" style={{ marginBottom: 16 }}><AlertCircle size={17} /> {error}</div>}
+
+      <form onSubmit={submit} noValidate>
+        <div className="form-field">
+          <label className="form-label" htmlFor="reg-fullName">Full Name</label>
+          <div className="input-icon">
+            <User size={17} aria-hidden="true" />
+            <input id="reg-fullName" type="text" name="fullName" autoComplete="name" value={form.fullName} onChange={change}
+                   placeholder="Your full name" className="glass-input" aria-invalid={errors.fullName ? 'true' : 'false'} />
+          </div>
+          {err('fullName')}
         </div>
-      )}
-
-      <form onSubmit={handleFormSubmit} className="space-y-4">
-        <div>
-          <label className="block text-xs font-semibold text-slate-700 mb-1.5" htmlFor="reg-fullName">
-            Full Name
-          </label>
-          <input
-            id="reg-fullName" type="text"
-            name="fullName"
-            value={form.fullName}
-            onChange={handleChange}
-            placeholder="Enter your full name"
-            className="w-full glass-input rounded-xl px-4 py-3 text-sm focus:outline-none transition-all"
-          />
-          {validationErrors.fullName && (
-            <div style={{ color: '#EF4444', fontSize: '11px', marginTop: '4px' }}>
-              {validationErrors.fullName}
-            </div>
-          )}
+        <div className="form-field">
+          <label className="form-label" htmlFor="reg-email">Email Address</label>
+          <div className="input-icon">
+            <Mail size={17} aria-hidden="true" />
+            <input id="reg-email" type="email" name="email" autoComplete="email" value={form.email} onChange={change}
+                   placeholder="you@example.com" className="glass-input" aria-invalid={errors.email ? 'true' : 'false'} />
+          </div>
+          {err('email')}
         </div>
-
-        <div>
-          <label className="block text-xs font-semibold text-slate-700 mb-1.5" htmlFor="reg-email">
-            Email Address
-          </label>
-          <input
-            id="reg-email" type="email"
-            name="email"
-            value={form.email}
-            onChange={handleChange}
-            placeholder="Enter your email address"
-            className="w-full glass-input rounded-xl px-4 py-3 text-sm focus:outline-none transition-all"
-          />
-          {validationErrors.email && (
-            <div style={{ color: '#EF4444', fontSize: '11px', marginTop: '4px' }}>
-              {validationErrors.email}
-            </div>
-          )}
-        </div>
-
-        <div>
-          <label className="block text-xs font-semibold text-slate-700 mb-1.5" htmlFor="reg-password">
-            Password
-          </label>
-          <PasswordInput
-            id="reg-password" name="password"
-            value={form.password}
-            onChange={handleChange}
-            placeholder="Create a password"
-          />
-          <span style={{ display: 'block', fontSize: '11px', color: '#928B7F', marginTop: '4px' }}>
-            Use at least 8 characters.
-          </span>
+        <div className="form-field">
+          <label className="form-label" htmlFor="reg-password">Password</label>
+          <PasswordInput id="reg-password" name="password" value={form.password} onChange={change}
+                         placeholder="At least 8 characters" autoComplete="new-password" invalid={Boolean(errors.password)} />
           <PasswordStrength password={form.password} />
-          {validationErrors.password && (
-            <div style={{ color: '#EF4444', fontSize: '11px', marginTop: '4px' }}>
-              {validationErrors.password}
-            </div>
-          )}
+          {err('password')}
         </div>
-
-        <div>
-          <label className="block text-xs font-semibold text-slate-700 mb-1.5" htmlFor="reg-confirmPassword">
-            Confirm Password
-          </label>
-          <PasswordInput
-            id="reg-confirmPassword" name="confirmPassword"
-            value={form.confirmPassword}
-            onChange={handleChange}
-            placeholder="Confirm your password"
-          />
-          {validationErrors.confirmPassword && (
-            <div style={{ color: '#EF4444', fontSize: '11px', marginTop: '4px' }}>
-              {validationErrors.confirmPassword}
-            </div>
-          )}
+        <div className="form-field">
+          <label className="form-label" htmlFor="reg-confirmPassword">Confirm Password</label>
+          <PasswordInput id="reg-confirmPassword" name="confirmPassword" value={form.confirmPassword} onChange={change}
+                         placeholder="Repeat the password" autoComplete="new-password" invalid={Boolean(errors.confirmPassword)} />
+          {err('confirmPassword')}
         </div>
-
-        <div style={{ paddingTop: '4px' }}>
-          <label style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', fontSize: '12px', color: 'var(--text-secondary)', cursor: 'pointer' }}>
-            <input
-              type="checkbox"
-              checked={agreeTerms}
-              onChange={(e) => {
-                setAgreeTerms(e.target.checked);
-                if (validationErrors.terms) {
-                  setValidationErrors({ ...validationErrors, terms: '' });
-                }
-              }}
-              style={{ accentColor: 'var(--text-accent)', marginTop: '2px' }}
-            />
-            <span>
-              I agree to the{' '}
-              <button type="button" onClick={() => alert('Terms of Use')} style={{ background: 'none', border: 'none', color: 'var(--text-accent)', cursor: 'pointer', padding: 0, textDecoration: 'underline' }}>
-                Terms of Use
-              </button>{' '}
-              and{' '}
-              <button type="button" onClick={() => alert('Privacy Policy')} style={{ background: 'none', border: 'none', color: 'var(--text-accent)', cursor: 'pointer', padding: 0, textDecoration: 'underline' }}>
-                Privacy Policy
-              </button>.
-            </span>
-          </label>
-          {validationErrors.terms && (
-            <div style={{ color: '#EF4444', fontSize: '11px', marginTop: '4px' }}>
-              {validationErrors.terms}
-            </div>
-          )}
-        </div>
-
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full py-3 rounded-xl font-semibold text-sm text-white bg-gradient-to-r from-brand-600 to-indigo-500 hover:from-brand-500 hover:to-indigo-400 shadow-glow-indigo transition-all duration-200 disabled:opacity-50 flex items-center justify-center gap-2"
-          style={{ background: 'var(--text-accent)', cursor: 'pointer', height: '46px', marginTop: '16px' }}
-        >
-          {loading ? 'Creating account...' : 'Create Account'}
+        <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 14, color: 'var(--ink-2)', margin: '4px 0 18px', cursor: 'pointer' }}>
+          <input type="checkbox" checked={agree} onChange={(e) => { setAgree(e.target.checked); setErrors({ ...errors, terms: '' }); }}
+                 style={{ accentColor: 'var(--accent)', marginTop: 3 }} />
+          <span>I agree that my measurements and designs are stored to create my patterns.</span>
+        </label>
+        {err('terms')}
+        <button type="submit" className="btn btn-primary btn-lg btn-block" disabled={loading} style={{ marginTop: 6 }}>
+          {loading ? 'Creating account…' : 'Create account'}
         </button>
       </form>
 
-      {/* Separator line */}
-      <div style={{
-        display: 'flex', alignItems: 'center', margin: '20px 0',
-        fontSize: '11px', color: 'var(--text-muted)', fontWeight: '500'
-      }}>
-        <div style={{ flex: 1, height: '1px', background: 'var(--border)' }} division-line=""></div>
-        <span style={{ padding: '0 10px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>OR</span>
-        <div style={{ flex: 1, height: '1px', background: 'var(--border)' }} division-line=""></div>
-      </div>
+      {googleClientId() && (
+        <>
+          <div className="auth-divider">or</div>
+          <GoogleLoginButton onSuccess={onGoogleSuccess} onFailure={onGoogleFailure} parentLoading={loading} />
+        </>
+      )}
 
-      {/* Continue with Google button */}
-      <div style={{ marginBottom: '16px' }}>
-        <GoogleLoginButton
-          onSuccess={onGoogleSuccess}
-          onFailure={onGoogleFailure}
-          parentLoading={loading}
-        />
-      </div>
-
-      <p style={{ textAlign: 'center', fontSize: '12px', color: 'var(--text-secondary)', marginTop: '24px' }}>
-        Already have an account?{' '}
-        <button
-          type="button"
-          onClick={onSwitchTab}
-          style={{ background: 'none', border: 'none', color: 'var(--text-accent)', fontWeight: '700', cursor: 'pointer' }}
-        >
-          Sign In
-        </button>
-      </p>
+      <p className="auth-switch">Already have an account? <button type="button" onClick={onSwitchTab}>Sign in</button></p>
     </div>
   );
 }

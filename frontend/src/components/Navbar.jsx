@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Bell, ChevronDown, LogOut, Ruler, UserRound } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { patternsAPI, exportAPI } from '../services/api';
+import { confirmLeave } from '../utils/unsavedChanges';
 
 const label = (v) => (v ? String(v).replace(/-/g, ' ').replace(/^./, (c) => c.toUpperCase()) : 'Pattern');
 const when = (iso) => (iso ? new Date(iso).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' }) : '');
@@ -50,6 +51,7 @@ export default function Navbar() {
   }, []);
 
   const signOut = () => {
+    if (!confirmLeave()) return;
     logout();
     setOpen(false);
     navigate('/auth');
@@ -62,7 +64,7 @@ export default function Navbar() {
 
   return (
     <header className="app-header">
-      <Link to="/" className="app-brand" aria-label="TailorAI dashboard">
+      <Link to="/dashboard" className="app-brand" aria-label="TailorAI overview" onClick={(e) => { if (!confirmLeave()) e.preventDefault(); }}>
         <span className="app-brand-mark"><Ruler size={20} strokeWidth={1.8}/></span>
         <span><strong>TailorAI</strong><small>Digital pattern studio</small></span>
       </Link>
@@ -111,7 +113,7 @@ export default function Navbar() {
                 <span className="nav-avatar large">{initials}</span>
                 <div><strong>{user?.full_name || 'My account'}</strong><small>{user?.email || ''}</small></div>
               </div>
-              <button onClick={() => { setOpen(false); navigate('/measurements'); }}><UserRound size={16}/> My measurements</button>
+              <button onClick={() => { if (!confirmLeave()) return; setOpen(false); navigate('/measurements'); }}><UserRound size={16}/> My measurements</button>
               <button className="danger" onClick={signOut}><LogOut size={16}/> Sign out</button>
             </div>
           )}
