@@ -1,4 +1,4 @@
-# M41 — M40 + DeepFashion-MultiModal data (1 Oct 2026) — NOT deployed
+# M41 — documented experiment: M40 + DeepFashion-MultiModal data (1 Oct 2026) — not deployed, not a candidate
 
 **Result in one line:** on the unchanged M40 test set (`test_all`) with the detector crop the app uses, M41 is
 better than M40 for sleeve length (0.840 → 0.861), equal within noise for garment type (0.762 → 0.770, n = 126,
@@ -64,7 +64,7 @@ for other photo types. Sleeve design would have to stay forced to "uncertain" (n
 
 ## Decision and next steps
 
-* **Not deployed.** `DEPLOYED_MODEL_PATH` and M40's thresholds are unchanged.
+* **Not deployed and not recommended for deployment.** Both work streams agreed to keep M40 as the default; `DEPLOYED_MODEL_PATH` and M40's thresholds are unchanged. M41 is kept on disk only as a documented experiment.
 * What would most likely help: human review of the `candidate_dmm_lapel_needs_human_review` records (collared),
   human garment-type labels for DMM (instead of proxies), more square-neck / off-shoulder / bell-sleeve / regular-sleeve
   examples, a longer training schedule (M41 was still improving at its last epoch), thresholds chosen on a validation
