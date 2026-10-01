@@ -6,7 +6,6 @@ Each test guards against a previously discovered fake value or hidden fallback:
   2. unknown fabric_id silently became cotton-poplin
   3. an unplaceable piece was dropped and a hard-coded 50 cm "success" returned
   4. research API returned invented metrics (0.91, 0.93/0.90/0.91, 2.5 m baseline...)
-  5. multitask model_version was hard-coded regardless of checkpoint
 """
 
 import json
@@ -58,59 +57,6 @@ class AppTestCase(unittest.TestCase):
         cls.headers = {"Authorization": f"Bearer {token}"}
 
 
-# ── 1. Detector confidence ────────────────────────────────────────────────────
-class TestDetectorHasNoFakeConfidence(unittest.TestCase):
-    def setUp(self):
-        self.tmp = tempfile.mkdtemp()
-        self.img = os.path.join(self.tmp, "g.jpg")
-        Image.new("RGB", (200, 300), color=(180, 40, 60)).save(self.img)
-
-    def test_no_trained_detector_means_no_confidence(self):
-        from app.ai import yolo_detector
-        with patch.object(yolo_detector, "get_model", return_value=None):
-            features, conf = yolo_detector.detect_features(self.img)
-        self.assertIsNone(conf, "heuristic output must not carry an invented confidence")
-        self.assertIn(features["source"], ("cv_heuristic", "default_not_detected"))
-        self.assertNotIn("is_mock", features)
-
-    def test_unreadable_image_is_flagged_not_detected(self):
-        from app.ai import yolo_detector
-        with patch.object(yolo_detector, "get_model", return_value=None):
-            features, conf = yolo_detector.detect_features(os.path.join(self.tmp, "missing.jpg"))
-        self.assertIsNone(conf)
-        self.assertEqual(features["source"], "default_not_detected")
-
-    def test_detector_with_no_detections_has_no_confidence(self):
-        from app.ai import yolo_detector
-        stub_result = SimpleNamespace(boxes=[])
-        stub_model = MagicMock()
-        stub_model.predict.return_value = [stub_result]
-        with patch.object(yolo_detector, "get_model", return_value=stub_model):
-            _, conf = yolo_detector.detect_features(self.img)
-        self.assertIsNone(conf)
-
-    def test_features_are_native_types_so_mongodb_can_store_them(self):
-        """Regression: real photos produced np.bool_ which made /analyse fail with bson InvalidDocument."""
-        import numpy as np
-        import bson
-        from app.ai import yolo_detector
-        numpy_heavy = {"neckline": "round neck", "is_crop_top": np.bool_(True),
-                       "aspect": np.float32(0.8), "nested": {"flag": np.bool_(False)}, "n": np.int64(3)}
-        with patch.object(yolo_detector, "_heuristic_features", return_value=numpy_heavy),              patch.object(yolo_detector, "get_model", return_value=None):
-            features, conf = yolo_detector.detect_features(self.img)
-        bson.encode(features)                       # would raise InvalidDocument for numpy types
-        self.assertIs(type(features["is_crop_top"]), bool)
-        self.assertIs(type(features["nested"]["flag"]), bool)
-        self.assertIsNone(conf)
-
-    def test_no_invented_constants_in_source(self):
-        src = open(os.path.join(os.path.dirname(__file__), "..", "app", "ai", "yolo_detector.py"),
-                   encoding="utf-8").read()
-        for fake in ("return geom, 0.93", "0.91 + raw_best", ", 0.92", "is_mock"):
-            self.assertNotIn(fake, src)
-
-
-# ── 2. Fabric fallback ────────────────────────────────────────────────────────
 class TestFabricIdNotSilentlyReplaced(AppTestCase):
     def _post(self, payload):
         with patch("app.routes.patterns.User") as user_cls, \
@@ -291,22 +237,34 @@ class TestResearchDefaultsAndHelpers(unittest.TestCase):
             self.assertIsNone(getattr(r, field), field)
 
     def test_model_evaluation_missing_file(self):
-        result = load_model_evaluation(log_dir=os.path.join(tempfile.gettempdir(), "does-not-exist-xyz"))
+        result = load_model_evaluation(evaluation_file=os.path.join(tempfile.gettempdir(), "does-not-exist-xyz.json"))
         self.assertFalse(result["available"])
+        self.assertNotIn(tempfile.gettempdir(), json.dumps(result))          # no internal path in the answer
 
     def test_model_evaluation_read_from_file_not_invented(self):
         d = tempfile.mkdtemp()
-        with open(os.path.join(d, "test_metrics_final.json"), "w", encoding="utf-8") as f:
-            json.dump({"record_count": 10, "overall_supported_head_mean_macro_f1": 0.5,
-                       "metrics_by_head": {"garment_type": {
-                           "evaluated_count": 10, "accuracy": 0.6, "macro_precision": 0.61,
-                           "macro_recall": "N/A", "macro_f1": 0.62}}}, f)
-        result = load_model_evaluation(log_dir=d, eval_checkpoint=os.path.join(d, "a.pt"),
-                                       deployed_checkpoint=os.path.join(d, "b.pt"))
+        with open(os.path.join(d, "garment_mobilenetv3.pt"), "wb") as f:
+            f.write(b"weights")
+        import hashlib
+        sha = hashlib.sha256(b"weights").hexdigest()
+        path = os.path.join(d, "evaluation.json")
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump({"results": [
+                {"task": "garment", "head": "garment_type", "architecture": "MobileNetV3-Large", "model_file": "garment_mobilenetv3.pt",
+                 "model_sha256": sha, "sets": {"test": {"detector_crop": {
+                     "n": 82, "accuracy": 0.6, "macro_f1": 0.62, "majority_class_accuracy": "N/A",
+                     "auto_answer": {"threshold": None, "coverage": 0.0, "accuracy_when_answered": None}}}}},
+                {"task": "neckline", "head": "neckline_type", "architecture": "YOLOv8n-cls", "model_file": "neckline_yolov8.pt",
+                 "model_sha256": "x" * 64, "sets": {}}]}, f)
+        result = load_model_evaluation(evaluation_file=path, model_dir=d)
         head = result["per_head"]["garment_type"]
-        self.assertEqual(head["accuracy"], 0.6)
-        self.assertIsNone(head["macro_recall"])          # "N/A" stays null
-        self.assertIsNone(result["evaluates_deployed_checkpoint"])   # unverifiable -> not claimed
+        self.assertEqual((head["evaluated_count"], head["accuracy"], head["macro_f1"]), (82, 0.6, 0.62))
+        self.assertIsNone(head["majority_class_accuracy"])                    # "N/A" stays null
+        self.assertIsNone(head["answered_automatically"]["threshold"])
+        self.assertTrue(head["evaluates_model_in_use"])                       # same file as the one in the model folder
+        self.assertIsNone(result["per_head"]["neckline_type"]["evaluates_model_in_use"])   # file absent: not claimed
+        self.assertIsNone(result["per_head"]["neckline_type"]["accuracy"])
+        self.assertIsNone(result["evaluates_deployed_checkpoint"])            # cannot be verified for every model
 
     def test_feature_corrections_from_stored_predictions(self):
         preds = {"garment_type": {"label": "blouse"}, "neckline_type": {"label": "v-neck"},
@@ -321,24 +279,6 @@ class TestResearchDefaultsAndHelpers(unittest.TestCase):
     def test_mean_or_none(self):
         self.assertIsNone(mean_or_none([None, None]))
         self.assertEqual(mean_or_none([None, 2.0, 4.0]), 3.0)
-
-
-# ── 5. Model version derived from checkpoint ─────────────────────────────────
-class TestModelVersionIsDerived(unittest.TestCase):
-    def test_version_reflects_checkpoint_content(self):
-        from app.ai.multitask_classifier import build_model_version
-        a = build_model_version({"stage": "Stage_B", "epoch": 7}, "a" * 64)
-        b = build_model_version({"stage": "Stage_B", "epoch": 9}, "b" * 64)
-        self.assertNotEqual(a, b)
-        self.assertIn("epoch=7", a)
-        self.assertIn("sha256=" + "a" * 12, a)
-        self.assertNotIn("m14d", a)
-
-    def test_missing_fields_are_omitted_not_invented(self):
-        from app.ai.multitask_classifier import build_model_version
-        v = build_model_version({}, "c" * 64)
-        self.assertNotIn("epoch", v)
-        self.assertNotIn("stage", v)
 
 
 if __name__ == "__main__":

@@ -25,18 +25,23 @@ def _model_unavailable():
 def get_model_status():
     """Tells the client, truthfully, whether photo analysis is possible (no internal paths exposed)."""
     try:
-        from app.ai.multitask_classifier import model_status
-        status = model_status()
+        from app.ai.garment_models import models_status
+        status = models_status()
     except Exception as e:
-        current_app.logger.warning(f"Classifier code unavailable: {e}")
+        current_app.logger.warning(f"Model code unavailable: {e}")
         status = {"available": False}
     if not status.get("available"):
         return jsonify({"available": False, "message": MODEL_UNAVAILABLE_MESSAGE}), 200
     return jsonify({
         "available": True,
+        "complete": status.get("complete"),
         "model_type": status.get("model_type"),
         "model_version": status.get("model_version"),
         "checkpoint_sha256": status.get("checkpoint_sha256"),
+        # per feature: is its model there, which architecture, and is it ever answered automatically
+        "models": {head: {"available": m["available"], "architecture": m["architecture"], "sha256": m.get("sha256"),
+                          "answers_automatically": status["thresholds"].get(head) is not None}
+                   for head, m in status.get("models", {}).items()},
     }), 200
 
 
@@ -102,8 +107,8 @@ def upload_image():
 
 def _locate_garment(filepath):
     """
-    Finds the garment so the classifier sees a garment crop, as it did in training (whole photos are much less
-    accurate - docs/AI_EVIDENCE.md 7.1). Never raises: without a detector or a confident box the full image is used.
+    Finds the garment so the models see a garment crop, as they did in training (whole photos are less
+    accurate - docs/AI_EVIDENCE.md). Never raises: without a detector or a confident box the full image is used.
     """
     region = {"detector_available": False, "detected_class": None, "detector_score": None, "box_xyxy": None,
               "crop_box_xyxy": None, "used": "full_image", "supported_garment": None, "note": None}
@@ -121,7 +126,7 @@ def _locate_garment(filepath):
             region["supported_garment"] = d["class"] == gd.SUPPORTED_CLASS
             if not region["supported_garment"]:
                 region["note"] = (f"This photo looks like {'a dress' if d['class'] == 'dress' else 'outerwear (jacket/coat)'}. "
-                                  "Only blouses, T-shirts and crop tops can be drafted; the suggestions below may not apply.")
+                                  "Only blouses and T-shirts can be drafted; the suggestions below may not apply.")
     except Exception as e:  # noqa: BLE001 - detection is optional; the classifier still runs on the full image
         current_app.logger.warning(f"Garment detection skipped: {e}")
         region["note"] = "Garment detection unavailable; the whole photo was analysed."
@@ -154,53 +159,40 @@ def analyse_image(image_id):
     if not os.path.exists(filepath):
         return jsonify({"error": "Image file not found on server"}), 404
 
-    # 4. Locked workflow: M13 multi-task classifier is the primary AI path
-    #    (garment type, neckline, sleeve length, sleeve style only — no CAD drafting).
+    # 4. The four garment models suggest garment type, neckline, sleeve length and sleeve style. They only
+    #    suggest: the user confirms the design, and only the confirmed design reaches the pattern engine.
     garment_attributes = {}
     try:
-        from app.ai.multitask_classifier import (
-            MultiTaskModelError, get_multitask_classifier, predict_multitask_features,
-        )
+        from app.ai.garment_models import GarmentModelError, models_status, predict_attributes
     except Exception as e:  # torch/ultralytics not installed
-        current_app.logger.warning(f"Classifier code unavailable: {e}")
+        current_app.logger.warning(f"Model code unavailable: {e}")
         return _model_unavailable()
     try:
-        get_multitask_classifier()
+        if not models_status()["available"]:
+            return _model_unavailable()
     except Exception as e:
-        # Missing / corrupt / incompatible checkpoint: say so; the user can still choose the design.
-        current_app.logger.warning(f"Multi-task model unavailable: {e}")
+        current_app.logger.warning(f"Garment models unavailable: {e}")
         return _model_unavailable()
     try:
         t0 = time.perf_counter()
         garment_region = _locate_garment(filepath)
-        garment_attributes = predict_multitask_features(filepath, bbox=garment_region["crop_box_xyxy"])
+        garment_attributes = predict_attributes(filepath, bbox=garment_region["crop_box_xyxy"])
         garment_attributes["garment_region"] = garment_region
         analysis_time_sec = round(time.perf_counter() - t0, 4)
-        # Keep every genuine prediction; only ADD scope flags. A class outside the user-selectable
-        # taxonomy is never remapped to a similar one - the user must confirm the design manually.
+        # Keep every genuine prediction; only ADD scope flags.
         garment_attributes = feature_schema.annotate_predictions(garment_attributes)
-    except MultiTaskModelError as e:
+    except GarmentModelError as e:
         current_app.logger.warning(f"Image could not be analysed: {e}")
         return jsonify({
             "error": "This photo could not be analysed. Try another photo or choose the design manually.",
             "error_code": "IMAGE_NOT_ANALYSABLE",
         }), 422
     except Exception as e:
-        current_app.logger.warning(f"Multi-task classification failed: {e}")
+        current_app.logger.warning(f"Garment analysis failed: {e}")
         return jsonify({
             "error": "AI garment analysis failed. Please choose the design manually.",
             "error_code": "ANALYSIS_FAILED",
         }), 500
-
-    # Optional legacy CV heuristic — used only for auxiliary CAD hints (darts/seams)
-    # until the user confirms attributes. Its output is RULE-BASED (not an ML
-    # prediction) and carries no confidence; it does not drive the review UI.
-    legacy_features = {}
-    try:
-        from app.ai.yolo_detector import detect_features
-        legacy_features, _legacy_confidence = detect_features(filepath)  # confidence is None/heuristic
-    except Exception:
-        legacy_features = {}
 
     predictions = (garment_attributes or {}).get("predictions") or {}
     pred_confidence = 0.0
@@ -216,10 +208,9 @@ def analyse_image(image_id):
         (garment_attributes or {}).get("requires_user_confirmation", True)
     )
 
-    # Provisional CAD features from the legacy CV heuristic only — overwritten on
-    # confirm. If the heuristic produced nothing, these are neutral placeholders
-    # explicitly flagged as "not detected" (never presented as analysis results).
-    features = legacy_features or {
+    # Neutral placeholders until the user confirms the design (overwritten on confirm); explicitly
+    # flagged as "not detected" and never presented as analysis results.
+    features = {
         "source": "default_not_detected",
         "neckline": "round neck",
         "sleeves": "short sleeve",
@@ -234,8 +225,7 @@ def analyse_image(image_id):
     design_image.confirmed_attributes = {}
     design_image.design_spec = {}
     design_image.confirmed_at = None
-    # confidence_score = mean top-1 softmax confidence of the 4 classifier heads
-    # (a real model output). The CV heuristic contributes no confidence.
+    # confidence_score = mean top-1 score of the models that answered (a real model output).
     design_image.confidence_score = pred_confidence
     design_image.analysis_time_sec = analysis_time_sec
     design_image.save()
@@ -246,7 +236,7 @@ def analyse_image(image_id):
         "detected_features": features,
         "garment_attributes": garment_attributes,
         "confidence_score": design_image.confidence_score,
-        "confidence_score_definition": "mean top-1 softmax confidence over the four classifier heads",
+        "confidence_score_definition": "mean top-1 score over the garment models that answered",
         "detected_features_source": features.get("source", "unknown"),
         "requires_user_confirmation": requires_confirmation,
         "requires_user_verification": requires_confirmation,  # alias for older clients

@@ -23,13 +23,14 @@ const garmentAttributes = {
 };
 
 describe('designSchema', () => {
-  it('has the four classifier heads and the 15 active classes (3/5/3/4)', () => {
+  it('has the four features and their selectable classes (2 / 4 / 3 / 4); no crop top, no off-shoulder', () => {
     expect(HEADS).toEqual(['garment_type', 'neckline_type', 'sleeve_length', 'sleeve_style']);
     const total = HEADS.reduce((n, h) => n + DESIGN_SCHEMA[h].length, 0);
-    expect(total).toBe(15);
-    expect(HEADS.map((h) => DESIGN_SCHEMA[h].length)).toEqual([3, 5, 3, 4]);
+    expect(total).toBe(13);
+    expect(HEADS.map((h) => DESIGN_SCHEMA[h].length)).toEqual([2, 4, 3, 4]);
+    expect(ACTIVE_TAXONOMY_OPTIONS.garment_type.map((o) => o.value)).toEqual(['blouse', 't-shirt']);
     expect(ACTIVE_TAXONOMY_OPTIONS.neckline_type.map((o) => o.value))
-      .toEqual(['round-neck', 'v-neck', 'square-neck', 'collared-neck', 'off-shoulder']);
+      .toEqual(['round-neck', 'v-neck', 'square-neck', 'collared-neck']);
     expect(ACTIVE_TAXONOMY_OPTIONS.sleeve_length.map((o) => o.value)).toEqual(['sleeveless', 'short-sleeve', 'long-sleeve']);
     expect(ACTIVE_TAXONOMY_OPTIONS.sleeve_style.map((o) => o.value)).toEqual(['none', 'regular-sleeve', 'puff-sleeve', 'bell-sleeve']);
   });
@@ -107,7 +108,7 @@ describe('PredictionReview keeps user corrections', () => {
   it('blocks confirmation of a contradictory sleeveless + style selection', () => {
     const onConfirm = vi.fn();
     render(<PredictionReview garmentAttributes={garmentAttributes} onConfirm={onConfirm} />);
-    fireEvent.change(screen.getByTestId('select-garment_type'), { target: { value: 'crop-top' } });
+    fireEvent.change(screen.getByTestId('select-garment_type'), { target: { value: 'blouse' } });
     fireEvent.change(screen.getByTestId('select-sleeve_length'), { target: { value: 'sleeveless' } });
     expect(screen.getByTestId('consistency-error')).toBeTruthy();
     expect(screen.getByTestId('confirm-btn').disabled).toBe(true);
@@ -123,16 +124,15 @@ describe('project scope', () => {
     const ok = [
       sel('blouse', 'square-neck', 'long-sleeve', 'regular-sleeve'),
       sel('t-shirt', 'v-neck', 'short-sleeve', 'regular-sleeve'),
-      sel('crop-top', 'round-neck', 'sleeveless', 'none'),
+      sel('blouse', 'round-neck', 'sleeveless', 'none'),
     ];
     ok.forEach((s) => expect(supportReport(s).supported).toBe(true));
   });
   it('rejects out-of-scope combinations with a reason', () => {
     const bad = [
       sel('t-shirt', 'square-neck', 'short-sleeve', 'regular-sleeve'),
-      sel('blouse', 'round-neck', 'sleeveless', 'none'),
-      sel('crop-top', 'round-neck', 'long-sleeve', 'regular-sleeve'),
-      sel('blouse', 'round-neck', 'elbow-length', 'regular-sleeve'),
+      sel('t-shirt', 'round-neck', 'sleeveless', 'none'),
+      sel('t-shirt', 'round-neck', 'short-sleeve', 'puff-sleeve'),
     ];
     bad.forEach((s) => {
       const r = supportReport(s);

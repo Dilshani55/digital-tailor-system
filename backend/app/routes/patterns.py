@@ -178,7 +178,7 @@ def generate_pattern():
         return jsonify(ms.error_response_body(m_errors, code=m_code)), 422
 
     # 3c. The SELECTED fabric decides woven vs knit drafting (not a stale profile value), and it must be
-    #     compatible with the garment's block (T-shirt: knit; blouse: woven; crop-top: either).
+    #     compatible with the garment's block (T-shirt: knit; blouse: woven).
     from app.logic.fabric_selection import TRAITS, compatibility
     construction = TRAITS[selected_fabric_id][0]
     ok, why_not = compatibility(clean["garment_type"], construction)

@@ -101,19 +101,19 @@ class TestNecklineTransformations(unittest.TestCase):
             self.assertEqual(t["type"], f"{shape}_neckline")
             self.assertEqual(t["status"], "applied")
 
-    def test_necklines_outside_the_scope_are_refused_not_drawn_as_a_round_neck(self):
-        # the engine used to draw a round neckline for these and mark it "fallback"; a different design is never drafted now
-        for style in ("scoop-neck", "boat-neck", "sweetheart-neck", "high-neck"):
+    def test_necklines_outside_the_taxonomy_are_refused_not_drawn_as_a_round_neck(self):
+        # the engine used to draw a round neckline for these and mark it "fallback"; a different design is never drafted
+        for style in ("scoop-neck", "boat-neck", "sweetheart-neck", "high-neck", "halter-neck", "off-shoulder"):
             with self.assertRaises(DraftingError) as ctx:
                 final(neckline=style)
-            self.assertEqual(ctx.exception.code, "UNSUPPORTED_DESIGN", style)
-            self.assertIn("will not substitute", str(ctx.exception))
+            self.assertEqual(ctx.exception.code, "INVALID_DESIGN_ATTRIBUTES", style)
+            self.assertIn("neckline_type", ctx.exception.field_errors)
 
-    def test_unsupported_necklines_are_rejected(self):
-        for style in ("halter-neck", "collared-neck", "off-shoulder"):
-            with self.assertRaises(DraftingError) as ctx:
-                final(neckline=style)
-            self.assertEqual(ctx.exception.code, "UNSUPPORTED_DESIGN", style)
+    def test_a_collared_neck_is_rejected_as_unsupported(self):
+        with self.assertRaises(DraftingError) as ctx:
+            final(neckline="collared-neck")
+        self.assertEqual(ctx.exception.code, "UNSUPPORTED_DESIGN")
+        self.assertIn("will not substitute", str(ctx.exception))
 
 
 class TestSleeveTransformations(unittest.TestCase):
@@ -147,8 +147,7 @@ class TestSleeveTransformations(unittest.TestCase):
         self.assertIn("wrist_cm", ctx.exception.field_errors)
 
     def test_sleeveless_design_needs_no_sleeve_measurements(self):
-        f = final(garment_type="crop-top", length="sleeveless", style="none",
-                  over=dict(garment_length_cm=36, bicep_cm=None, sleeve_cm=None, wrist_cm=None))
+        f = final(length="sleeveless", style="none", over=dict(bicep_cm=None, sleeve_cm=None, wrist_cm=None))
         self.assertIsNone(f.sleeve)
         self.assertTrue(f.validation["passed"], f.validation["errors"])
 
@@ -165,18 +164,18 @@ class TestSleeveTransformations(unittest.TestCase):
     def test_sleeve_tapers_towards_the_wrist_with_length(self):
         widths = [piece(final(length=n), "Sleeve").meta["width_hem_cm"] for n in ("short-sleeve", "long-sleeve")]
         self.assertEqual(widths, sorted(widths, reverse=True))
-        for length in ("elbow-length", "three-quarter-sleeve"):            # outside the scope: refused, not approximated
+        for length in ("elbow-length", "three-quarter-sleeve", "cap-length"):   # not in the taxonomy: refused, not approximated
             with self.assertRaises(DraftingError) as ctx:
                 final(length=length)
-            self.assertEqual(ctx.exception.code, "UNSUPPORTED_DESIGN", length)
+            self.assertEqual(ctx.exception.code, "INVALID_DESIGN_ATTRIBUTES", length)
         self.assertAlmostEqual(widths[-1], 20.0, places=6)                      # wrist 16 + ease 4
 
     def test_sleeveless_has_no_sleeve_and_gets_armhole_facings(self):
-        f = final(garment_type="crop-top", length="sleeveless", style="none", over=dict(garment_length_cm=36))
+        f = final(length="sleeveless", style="none")                        # a sleeveless blouse
         self.assertIsNone(f.sleeve)
         self.assertFalse([p for p in f.pieces if p.piece_type == "sleeve"])
-        with self.assertRaises(DraftingError) as ctx:                       # a sleeveless blouse is outside the scope
-            final(length="sleeveless", style="none")
+        with self.assertRaises(DraftingError) as ctx:                       # a sleeveless T-shirt is outside the scope
+            final(garment_type="t-shirt", fabric="knit", length="sleeveless", style="none")
         self.assertEqual(ctx.exception.code, "UNSUPPORTED_DESIGN")
         facing = piece(f, "Facing")
         self.assertEqual(facing.cut_count, 2)
@@ -190,17 +189,11 @@ class TestSleeveTransformations(unittest.TestCase):
         self.assertEqual(ctx.exception.code, "INVALID_DESIGN_ATTRIBUTES")
         self.assertIn("sleeve_style", ctx.exception.field_errors)
 
-    def test_cap_length_sleeves_are_rejected_not_approximated(self):
-        with self.assertRaises(DraftingError) as ctx:
-            final(length="cap-length")
-        self.assertEqual(ctx.exception.code, "UNSUPPORTED_DESIGN")
-
-    def test_unsupported_styles_are_rejected_not_ignored(self):
-        # puff and bell have real geometry now (test_puff_bell_sleeves.py); these still have none
+    def test_sleeve_styles_outside_the_taxonomy_are_rejected_not_ignored(self):
         for style in ("bishop-sleeve", "flutter-sleeve", "raglan-sleeve", "dolman-sleeve", "kimono-sleeve"):
             with self.assertRaises(DraftingError) as ctx:
                 final(style=style)
-            self.assertEqual(ctx.exception.code, "UNSUPPORTED_DESIGN", style)
+            self.assertEqual(ctx.exception.code, "INVALID_DESIGN_ATTRIBUTES", style)
 
     def test_supported_styles_are_recorded_not_silently_ignored(self):
         f = final(style="regular-sleeve")
@@ -221,21 +214,11 @@ class TestSleeveTransformations(unittest.TestCase):
 
 
 class TestGarmentLengthTransformations(unittest.TestCase):
-    def test_crop_top_and_blouse_differ_and_never_silently_share_a_hem(self):
-        blouse = final(garment_type="blouse")                                  # garment length 65
-        crop = final(garment_type="crop-top", over=dict(garment_length_cm=38))
-        self.assertNotEqual(blouse.front.to_dict()["outline"], crop.front.to_dict()["outline"])
-        self.assertAlmostEqual(blouse.front.meta["hem_y_cm"], 65.0)
-        self.assertAlmostEqual(crop.front.meta["hem_y_cm"], 38.0)
-        self.assertLess(crop.front.meta["hem_y_cm"], crop.dv.waist_y)
-        self.assertGreaterEqual(blouse.front.meta["hem_y_cm"], blouse.dv.waist_y)
-
-    def test_crop_length_that_contradicts_the_design_is_reported(self):
+    def test_a_crop_top_is_no_longer_a_garment_type(self):
         with self.assertRaises(DraftingError) as ctx:
-            final(garment_type="crop-top")                                     # default garment length 65
-        self.assertEqual(ctx.exception.code, "DESIGN_MEASUREMENT_CONFLICT")
-        self.assertIn("garment_length_cm", ctx.exception.field_errors)
-        self.assertIn("crop", ctx.exception.message.lower())
+            final(garment_type="crop-top", over=dict(garment_length_cm=38))
+        self.assertEqual(ctx.exception.code, "INVALID_DESIGN_ATTRIBUTES")
+        self.assertIn("garment_type", ctx.exception.field_errors)
 
     def test_blouse_length_above_the_waist_contradicts_the_design(self):
         with self.assertRaises(DraftingError) as ctx:
@@ -248,27 +231,17 @@ class TestGarmentLengthTransformations(unittest.TestCase):
     def test_length_rule_boundaries(self):
         b = make_base()
         waist = b.dv.waist_y                                                    # 42.0
-        final(garment_type="crop-top", over=dict(garment_length_cm=waist - 2.0))      # exactly allowed
-        with self.assertRaises(DraftingError):
-            final(garment_type="crop-top", over=dict(garment_length_cm=waist - 1.9))
-        final(garment_type="crop-top", over=dict(garment_length_cm=b.dv.armhole_depth + 6.0))
-        with self.assertRaises(DraftingError):
-            final(garment_type="crop-top", over=dict(garment_length_cm=b.dv.armhole_depth + 5.9))
         final(garment_type="blouse", over=dict(garment_length_cm=waist))               # exactly at the waist
-        with self.assertRaises(DraftingError):
+        with self.assertRaises(DraftingError) as ctx:
             final(garment_type="blouse", over=dict(garment_length_cm=waist - 0.1))
+        self.assertNotIn("crop", ctx.exception.message.lower())                  # the message no longer offers a crop top
+        final(garment_type="t-shirt", fabric="knit", over=dict(garment_length_cm=waist))
 
     def test_hem_follows_the_measured_garment_length(self):
         for length in (50, 60, 75):
             f = final(over=dict(garment_length_cm=length))
             self.assertAlmostEqual(f.front.meta["hem_y_cm"], length)
             self.assertAlmostEqual(f.front.to_dict()["bounding_box"]["height_cm"], length, places=2)
-
-    def test_crop_has_no_waist_dart_and_absorbs_shaping_in_the_side_seam(self):
-        crop = final(garment_type="crop-top", over=dict(garment_length_cm=38))
-        self.assertEqual(crop.front.darts, [])
-        self.assertAlmostEqual(crop.front.meta["side_seam_suppression_cm"], crop.dv.suppression)
-        self.assertNotIn("WAIST_SIDE", crop.front.points)                        # hem is above the waist line
 
     def test_long_blouse_uses_closed_fish_darts_inside_the_outline(self):
         blouse = final()
@@ -303,20 +276,21 @@ class TestGarmentLengthTransformations(unittest.TestCase):
 class TestContradictoryOrInvalidDesigns(unittest.TestCase):
     def test_invalid_taxonomy_values_are_rejected(self):
         b = make_base()
-        for bad in (dict(design(), neckline_type="cowl-neck"), dict(design(), garment_type="dress"), {}, None):
+        for bad in (dict(design(), neckline_type="cowl-neck"), dict(design(), garment_type="dress"),
+                    dict(design(), neckline_type="halter-neck"), dict(design(), sleeve_style="bishop-sleeve"), {}, None):
             with self.assertRaises(DraftingError) as ctx:
                 apply_design(b, bad)
             self.assertEqual(ctx.exception.code, "INVALID_DESIGN_ATTRIBUTES")
 
     def test_unsupported_design_error_lists_the_features(self):
         with self.assertRaises(DraftingError) as ctx:
-            final(neckline="halter-neck", style="bishop-sleeve")
+            final(garment_type="t-shirt", fabric="knit", neckline="collared-neck", style="puff-sleeve")
         values = {u["value"] for u in ctx.exception.extra["unsupported_features"]}
-        self.assertEqual(values, {"halter-neck", "bishop-sleeve"})
+        self.assertEqual(values, {"collared-neck", "puff-sleeve"})
 
     def test_engine_never_returns_a_pattern_for_a_rejected_design(self):
         with self.assertRaises(DraftingError):
-            ParametricEngine(measurements(), None, design_spec={"attributes": design(neckline="halter-neck")}).generate()
+            ParametricEngine(measurements(), None, design_spec={"attributes": design(neckline="collared-neck")}).generate()
 
 
 class TestDeterminismAndMultiProfile(unittest.TestCase):
@@ -327,17 +301,12 @@ class TestDeterminismAndMultiProfile(unittest.TestCase):
             self.assertEqual(a["final_pattern"], b["final_pattern"])
             self.assertEqual(a["base_block"], b["base_block"])
 
-    def _crop_length(self, profile):
-        m = PROFILES[profile]
-        return m["back_waist_length_cm"] + A["back_neck_depth_cm"] - 4.0
-
     def test_three_realistic_profiles_all_designs_valid_and_simple(self):
         for profile in PROFILES:
             designs = [
                 (design(), {}),
                 (design(neckline="v-neck", length="long-sleeve"), {}),
-                (design(garment_type="crop-top", neckline="square-neck", length="sleeveless", style="none"),
-                 dict(garment_length_cm=self._crop_length(profile))),
+                (design(neckline="square-neck", length="sleeveless", style="none"), {}),
                 (design(neckline="square-neck", length="long-sleeve"), {}),
                 (design(garment_type="t-shirt", length="long-sleeve"), {}),
             ]
@@ -457,8 +426,7 @@ class TestGenerateRouteIntegration(unittest.TestCase):
             ("small", design(), {}),
             ("medium", design(neckline="v-neck", length="long-sleeve"), {}),
             ("large", design(neckline="square-neck", length="long-sleeve"), {}),
-            ("medium", design(garment_type="crop-top", neckline="square-neck", length="sleeveless", style="none"),
-             dict(garment_length_cm=36)),
+            ("medium", design(neckline="square-neck", length="sleeveless", style="none"), {}),
         ]
         for profile, attrs, over in cases:
             resp, pr = self._post(_profile(profile, **over), attrs)
@@ -473,8 +441,8 @@ class TestGenerateRouteIntegration(unittest.TestCase):
             self.assertEqual(saved["base_block"]["stage"], "base_block")
             self.assertEqual(saved["design_spec"]["attributes"], attrs)
 
-    def test_contradictory_crop_length_returns_422_with_field_error(self):
-        resp, pr = self._post(_profile("medium"), design(garment_type="crop-top"))
+    def test_a_length_above_the_waist_returns_422_with_field_error(self):
+        resp, pr = self._post(_profile("medium", garment_length_cm=36), design())
         self.assertEqual(resp.status_code, 422)
         body = resp.get_json()
         self.assertEqual(body["error_code"], "DESIGN_MEASUREMENT_CONFLICT")
@@ -502,26 +470,22 @@ class TestGenerateRouteIntegration(unittest.TestCase):
         self.assertEqual(resp.get_json()["error_code"], "FABRIC_NOT_COMPATIBLE")
         pr.assert_not_called()
 
-    def test_selected_fabric_decides_the_crop_top_block(self):
-        """A knit fabric drafts a knit crop-top even if the profile still says woven (and vice versa)."""
-        attrs = design(garment_type="crop-top")
-        prof = _profile("medium", fabric_type="woven", garment_length_cm=36)
-        resp, pr = self._post(prof, attrs, fabric_id="cotton-jersey-knit")
+    def test_the_selected_fabric_not_the_profile_decides_the_construction(self):
+        """A profile that still says knit drafts a woven blouse when a woven fabric is selected."""
+        resp, pr = self._post(_profile("medium", fabric_type="knit"), design(), fabric_id="cotton-poplin")
         self.assertEqual(resp.status_code, 201, resp.get_json())
-        self.assertEqual(pr.call_args.kwargs["measurements_snapshot"]["fabric_type"], "knit")
-        resp, pr = self._post(_profile("medium", fabric_type="knit", garment_length_cm=36), attrs, fabric_id="cotton-poplin")
         self.assertEqual(pr.call_args.kwargs["measurements_snapshot"]["fabric_type"], "woven")
 
 
 class TestSupportTableMatchesImplementation(unittest.TestCase):
-    def test_v_neck_and_crop_top_are_now_supported(self):
+    def test_support_levels_of_the_taxonomy(self):
         self.assertEqual(fs.support_of("neckline_type", "v-neck")[0], fs.IMPLEMENTED)
-        self.assertEqual(fs.support_of("garment_type", "crop-top")[0], fs.IMPLEMENTED)
+        self.assertEqual(fs.support_of("neckline_type", "collared-neck")[0], fs.UNSUPPORTED)
+        self.assertIsNone(fs.support_of("garment_type", "crop-top"))             # no longer in the taxonomy
+        self.assertIsNone(fs.support_of("neckline_type", "off-shoulder"))
 
     def test_every_implemented_design_actually_drafts(self):
-        b = {n: make_base(garment=n, fabric="knit" if n == "t-shirt" else "woven",
-                          garment_length_cm=36 if n == "crop-top" else 65)
-             for n in ("blouse", "t-shirt", "crop-top")}
+        b = {n: make_base(garment=n, fabric="knit" if n == "t-shirt" else "woven") for n in ("blouse", "t-shirt")}
         for head in ("neckline_type", "sleeve_length", "sleeve_style"):
             for value in fs.TAXONOMY[head]:
                 if fs.support_of(head, value)[0] == fs.UNSUPPORTED:

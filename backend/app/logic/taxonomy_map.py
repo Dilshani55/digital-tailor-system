@@ -12,7 +12,6 @@ NECKLINE_TO_CAD = {
     "halter-neck": "halter neck",
     "high-neck": "collar",
     "collared-neck": "collar",
-    "off-shoulder": "off-the-shoulder",
 }
 
 SLEEVE_LENGTH_TO_CAD = {
@@ -62,10 +61,7 @@ def confirmed_to_cad_features(confirmed):
     if garment_type == "blouse":
         darts = "bust dart"
         seams = "side seam"
-    elif garment_type == "t-shirt":
-        darts = "no dart"
-        seams = "side seam"
-    else:  # crop-top
+    else:  # t-shirt (knit block)
         darts = "no dart"
         seams = "side seam"
 

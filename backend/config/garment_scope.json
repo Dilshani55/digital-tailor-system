@@ -1,0 +1,146 @@
+{
+  "_comment": "SINGLE SOURCE OF TRUTH for the garment taxonomy the user can select, what the drafting engine supports, and which combinations can be drafted. Read by backend/app/logic/feature_schema.py and frontend/src/utils/designSchema.js. The AI models suggest these values (garment 2 classes, neckline 4, sleeve length 3, sleeve style 3; 'none' is not predicted - it follows from 'sleeveless'). Change it only together with the engine and its tests.",
+  "schema_version": 3,
+  "heads": [
+    "garment_type",
+    "neckline_type",
+    "sleeve_length",
+    "sleeve_style"
+  ],
+  "head_titles": {
+    "garment_type": "Garment Type",
+    "neckline_type": "Neckline Type",
+    "sleeve_length": "Sleeve Length",
+    "sleeve_style": "Sleeve Style"
+  },
+  "taxonomy": {
+    "garment_type": [
+      {
+        "value": "blouse",
+        "label": "Blouse",
+        "support": "implemented",
+        "note": "Woven bodice block with waist darts; hem must reach the waist line."
+      },
+      {
+        "value": "t-shirt",
+        "label": "T-Shirt",
+        "support": "implemented",
+        "note": "Knit bodice block, no darts, neckband piece; hem must reach the waist line."
+      }
+    ],
+    "neckline_type": [
+      {
+        "value": "round-neck",
+        "label": "Round Neck",
+        "support": "implemented",
+        "note": "Curved round neck."
+      },
+      {
+        "value": "v-neck",
+        "label": "V-Neck",
+        "support": "implemented",
+        "note": "True V: straight edges to a centre-front point."
+      },
+      {
+        "value": "square-neck",
+        "label": "Square Neck",
+        "support": "implemented",
+        "note": "Square front neck with straight edges."
+      },
+      {
+        "value": "collared-neck",
+        "label": "Collared Neck",
+        "support": "unsupported",
+        "note": "No collar piece is generated yet; the pattern cannot be drafted."
+      }
+    ],
+    "sleeve_length": [
+      {
+        "value": "sleeveless",
+        "label": "Sleeveless",
+        "support": "implemented",
+        "note": "No sleeve piece; armhole facing strips are generated."
+      },
+      {
+        "value": "short-sleeve",
+        "label": "Short Sleeve",
+        "support": "implemented",
+        "note": "The sleeve length you enter (shoulder tip to sleeve hem); straight, no taper."
+      },
+      {
+        "value": "long-sleeve",
+        "label": "Long Sleeve",
+        "support": "implemented",
+        "note": "The sleeve length you enter (shoulder tip to sleeve hem), tapering to the wrist."
+      }
+    ],
+    "sleeve_style": [
+      {
+        "value": "none",
+        "label": "None (Sleeveless)",
+        "support": "implemented",
+        "note": "Only with a sleeveless garment."
+      },
+      {
+        "value": "regular-sleeve",
+        "label": "Regular Sleeve",
+        "support": "implemented",
+        "note": "Plain set-in sleeve."
+      },
+      {
+        "value": "puff-sleeve",
+        "label": "Puff Sleeve",
+        "support": "implemented",
+        "note": "Cap spread to 1.5x and crown raised 2.5 cm; the extra cap length is gathered between the notches. Short: hem gathered into a sleeve band. Long: tapers to the wrist."
+      },
+      {
+        "value": "bell-sleeve",
+        "label": "Bell Sleeve",
+        "support": "implemented",
+        "note": "Fitted cap; flares from the underarm to a curved hem (short +60%, long +90% of the eased bicep width)."
+      }
+    ]
+  },
+  "scope": {
+    "blouse": {
+      "label": "Blouse",
+      "neckline_type": [
+        "round-neck",
+        "v-neck",
+        "square-neck"
+      ],
+      "sleeves": {
+        "sleeveless": [
+          "none"
+        ],
+        "short-sleeve": [
+          "regular-sleeve",
+          "puff-sleeve",
+          "bell-sleeve"
+        ],
+        "long-sleeve": [
+          "regular-sleeve",
+          "puff-sleeve",
+          "bell-sleeve"
+        ]
+      }
+    },
+    "t-shirt": {
+      "label": "T-shirt",
+      "neckline_type": [
+        "round-neck",
+        "v-neck"
+      ],
+      "sleeves": {
+        "short-sleeve": [
+          "regular-sleeve"
+        ],
+        "long-sleeve": [
+          "regular-sleeve"
+        ]
+      }
+    }
+  },
+  "outside_scope_message": "The detected feature is outside the supported pattern scope. Please confirm the design manually.",
+  "low_confidence_message": "Low confidence — please confirm this feature"
+}

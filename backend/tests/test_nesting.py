@@ -105,11 +105,10 @@ class TestGeometryAwareNesting(unittest.TestCase):
                 self.assertFalse(polygons_overlap(polys[a], polys[b]))
 
     def test_every_supported_design_nests_on_every_width(self):
-        cases = [("t-shirt", "v-neck", "long-sleeve", "knit"), ("crop-top", "square-neck", "sleeveless", "woven"),
-                 ("crop-top", "round-neck", "short-sleeve", "knit")]
+        cases = [("t-shirt", "v-neck", "long-sleeve", "knit"), ("blouse", "square-neck", "sleeveless", "woven"),
+                 ("blouse", "round-neck", "short-sleeve", "woven")]
         for garment, neck, sleeve, fabric in cases:
-            over = {"garment_length_cm": 36} if garment == "crop-top" else {}
-            pieces = _pattern(garment, neck, sleeve, fabric, **over)
+            pieces = _pattern(garment, neck, sleeve, fabric)
             for width in STANDARD_FABRIC_WIDTHS:
                 res = NestingAlgorithm(pieces, fabric_width_cm=width).run()
                 self.assertEqual(res["validation_checks"]["status"], "PASSED", (garment, width))

@@ -8,12 +8,11 @@ from app.logic.nesting_algorithm import estimate_fabric
 from app.logic.parametric_engine import ParametricEngine
 from tests.fixtures import measurements, design, SHORT_SLEEVE_CM
 
-CROP_LEN = {"small": 34, "medium": 36, "large": 38}
 WIDTHS_CM = (91.44, 114.3, 152.4)       # 36, 45 and 60 inches
 
 
 def _gen(garment, length, style, size="medium", fabric="woven", neck="round-neck"):
-    over = {"garment_length_cm": CROP_LEN[size]} if garment == "crop-top" else {}
+    over = {}
     if length == "short-sleeve":
         over["sleeve_cm"] = SHORT_SLEEVE_CM[size]           # the wanted short-sleeve length, not a full arm
     return ParametricEngine(measurements(size, fabric_type=fabric, **over),
@@ -84,7 +83,7 @@ class TestAllDraftableCombinations(unittest.TestCase):
     def test_every_scope_combination_drafts_and_validates_for_three_body_sizes(self):
         count = 0
         for garment, d in fs.SCOPE.items():
-            fabrics = {"blouse": ("woven",), "t-shirt": ("knit",), "crop-top": ("woven", "knit")}[garment]
+            fabrics = {"blouse": ("woven",), "t-shirt": ("knit",)}[garment]
             for length, styles in d["sleeves"].items():
                 for style in styles:
                     for neck in d["neckline_type"]:
@@ -93,7 +92,7 @@ class TestAllDraftableCombinations(unittest.TestCase):
                                 r = _gen(garment, length, style, size, fabric, neck)
                                 self.assertTrue(r["validation"]["final_pattern"]["passed"], (garment, length, style, neck, size))
                                 count += 1
-        self.assertGreaterEqual(count, 100)
+        self.assertEqual(count, 25 * 3)            # every draftable combination x three body sizes
 
 
 class TestNestingAtStandardWidths(unittest.TestCase):

@@ -18,8 +18,8 @@ def D(garment="blouse", neck="round-neck", length="short-sleeve", style="regular
 
 
 class TestRecommendation(unittest.TestCase):
-    def test_tshirt_only_knit_blouse_only_woven_crop_top_either(self):
-        for garment, allowed in (("t-shirt", {"knit"}), ("blouse", {"woven"}), ("crop-top", {"knit", "woven"})):
+    def test_tshirt_only_knit_blouse_only_woven(self):
+        for garment, allowed in (("t-shirt", {"knit"}), ("blouse", {"woven"})):
             r = recommend_for_design(D(garment=garment))
             got = {f["construction"] for f in r["fabrics"] if f["compatible"]}
             self.assertEqual(got, allowed, garment)
@@ -31,7 +31,7 @@ class TestRecommendation(unittest.TestCase):
 
     def test_two_to_four_compatible_fabrics_are_recommended_and_listed_first(self):
         for d in (D(), D(style="puff-sleeve"), D(length="long-sleeve", style="bell-sleeve"), D(garment="t-shirt"),
-                  D(garment="crop-top", length="sleeveless", style="none")):
+                  D(length="sleeveless", style="none")):
             r = recommend_for_design(d)
             rec = [f for f in r["fabrics"] if f["recommended"]]
             self.assertTrue(2 <= len(rec) <= 4, (d, len(rec)))

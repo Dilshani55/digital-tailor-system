@@ -3,7 +3,7 @@ garment_detector.py
 
 Finds the garment in an uploaded photo so the classifier sees a garment crop (what it was trained on) instead of
 the whole scene. Model: YOLOv8n object detector fine-tuned on DeepFashion2 boxes with three classes
-(top / outerwear / dress); training code in ai_training/scripts/v2/.
+(top / outerwear / dress); independent test: docs/AI_MODELS.md.
 
 `detect_garment()` never raises. When the model is missing or nothing is found with enough confidence it returns
 `box_xyxy=None` and the caller analyses the full image. Box coordinates refer to the EXIF-rotated image (the
@@ -17,8 +17,8 @@ import threading
 
 from PIL import Image, ImageOps
 
-DEFAULT_DETECTOR_PATH = os.path.join(os.path.dirname(__file__), "models", "garment_detector_v1.pt")
-MIN_SCORE = 0.35          # fixed before testing (not tuned); results: ai_training/runs_v2/detector/df2_top_outer_dress_v1/independent_test
+DEFAULT_DETECTOR_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "model", "garment_detector.pt"))
+MIN_SCORE = 0.35          # fixed before testing (not tuned); independent test: docs/AI_DETECTOR.md
 CROP_MARGIN = 0.10        # margin the CALLER adds before classifying (same as the classifier training crops)
 SUPPORTED_CLASS = "top"
 

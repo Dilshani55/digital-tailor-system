@@ -21,12 +21,10 @@ class TestBlockSelection(unittest.TestCase):
         self.assertTrue(b["add_neckband"])
         self.assertFalse(b["allow_darts"])
 
-    def test_crop_woven_vs_knit(self):
-        woven = select_drafting_block("crop-top", "woven")
-        knit = select_drafting_block("crop-top", "knit")
-        self.assertEqual(woven["block_id"], WOVEN_BODICE)
-        self.assertEqual(knit["block_id"], KNIT_BODICE)
-        self.assertTrue(woven["is_crop"])
+    def test_the_garment_decides_the_block_not_the_fabric(self):
+        self.assertEqual(select_drafting_block("blouse", "knit")["block_id"], WOVEN_BODICE)
+        self.assertEqual(select_drafting_block("t-shirt", "woven")["block_id"], KNIT_BODICE)
+        self.assertNotIn("is_crop", select_drafting_block("blouse", "woven"))
 
 
 class TestTaxonomyMap(unittest.TestCase):

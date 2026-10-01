@@ -7,13 +7,12 @@ describe('PredictionReview Component', () => {
     model_version: 'YOLOv8MultiTaskClassifier_v1.0',
     predictions: {
       garment_type: {
-        label: 'crop-top',
-        class_index: 2,
+        label: 'blouse',
+        class_index: 0,
         confidence: 0.9559,
         top_3: [
-          { class_name: 'crop-top', class_index: 2, confidence: 0.9559 },
-          { class_name: 't-shirt', class_index: 1, confidence: 0.0439 },
-          { class_name: 'blouse', class_index: 0, confidence: 0.0001 },
+          { class_name: 'blouse', class_index: 0, confidence: 0.9559 },
+          { class_name: 't-shirt', class_index: 1, confidence: 0.0441 },
         ],
         requires_user_confirmation: false,
         threshold_used: 0.7,
@@ -80,10 +79,10 @@ describe('PredictionReview Component', () => {
     render(<PredictionReview garmentAttributes={mockGarmentAttributes} />);
 
     const selectGarment = screen.getByTestId('select-garment_type');
-    expect(selectGarment.value).toBe('crop-top');
-
-    fireEvent.change(selectGarment, { target: { value: 'blouse' } });
     expect(selectGarment.value).toBe('blouse');
+
+    fireEvent.change(selectGarment, { target: { value: 't-shirt' } });
+    expect(selectGarment.value).toBe('t-shirt');
   });
 
   it('calls onConfirm callback with user selections when confirmed', () => {
@@ -91,7 +90,7 @@ describe('PredictionReview Component', () => {
     render(<PredictionReview garmentAttributes={mockGarmentAttributes} onConfirm={handleConfirm} />);
 
     // the model said three-quarter-sleeve (outside the selectable classes): not pre-selected, the user must
-    // choose; its bell-sleeve prediction is draftable for a crop-top and is kept
+    // choose; its bell-sleeve prediction is draftable for a blouse and is kept
     expect(screen.getByTestId('select-sleeve_length').value).toBe('');
     expect(screen.getByTestId('select-sleeve_style').value).toBe('bell-sleeve');
     fireEvent.change(screen.getByTestId('select-sleeve_length'), { target: { value: 'short-sleeve' } });
@@ -99,7 +98,7 @@ describe('PredictionReview Component', () => {
     fireEvent.click(confirmBtn);
 
     expect(handleConfirm).toHaveBeenCalledWith({
-      garment_type: 'crop-top',
+      garment_type: 'blouse',
       neckline_type: 'v-neck',
       sleeve_length: 'short-sleeve',
       sleeve_style: 'bell-sleeve',
@@ -192,10 +191,10 @@ describe('predictions outside the supported scope (deployed M13 model still pred
     });
   });
 
-  it('offers exactly the 15 active classes in the dropdowns', () => {
+  it('offers exactly the selectable classes in the dropdowns (2 / 4 / 3 / 4)', () => {
     render(<PredictionReview garmentAttributes={make()} />);
     const count = (head) => screen.getByTestId(`select-${head}`).querySelectorAll('option').length - 1;   // minus placeholder
-    expect([count('garment_type'), count('neckline_type'), count('sleeve_length'), count('sleeve_style')]).toEqual([3, 5, 3, 4]);
+    expect([count('garment_type'), count('neckline_type'), count('sleeve_length'), count('sleeve_style')]).toEqual([2, 4, 3, 4]);
     expect(ACTIVE_TAXONOMY_OPTIONS.sleeve_length.map((o) => o.value)).not.toContain('elbow-length');
   });
 });
@@ -243,9 +242,16 @@ describe('uncertain predictions and honest score wording', () => {
       garment_type: 'blouse', neckline_type: 'round-neck', sleeve_length: 'short-sleeve', sleeve_style: 'regular-sleeve' });
   });
 
-  it('explains that a crop top and a T-shirt need the user\'s confirmation', () => {
+  it('explains the difference between a blouse and a T-shirt', () => {
+    render(<PredictionReview garmentAttributes={make({ garment_type: p('t-shirt', 0.95, false) })} />);
+    expect(screen.getByTestId('garment-length-note').textContent).toMatch(/blouse is cut from woven fabric.*T-shirt from knit/);
+    expect(screen.getByTestId('select-garment_type').value).toBe('t-shirt');
+  });
+
+  it('a stored prediction of a class that no longer exists (crop top) is shown but never pre-selected', () => {
     render(<PredictionReview garmentAttributes={make({ garment_type: p('crop-top', 0.95, false) })} />);
-    expect(screen.getByTestId('garment-length-note').textContent).toMatch(/crop top and a T-shirt can look alike/);
-    expect(screen.getByTestId('select-garment_type').value).toBe('crop-top');
+    expect(screen.getByTestId('select-garment_type').value).toBe('');
+    expect(screen.getByTestId('outside-scope-garment_type').textContent).toMatch(/crop-top/);
+    expect(screen.getByTestId('confirm-btn').disabled).toBe(true);
   });
 });

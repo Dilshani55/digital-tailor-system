@@ -1,0 +1,5 @@
+# local data only (licences: no redistribution); code and READMEs are tracked
+data/
+datasets/
+runs/
+__pycache__/

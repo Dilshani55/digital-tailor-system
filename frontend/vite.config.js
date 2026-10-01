@@ -5,7 +5,7 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 3000,
-    // allow importing the shared canonical config (<repo>/config/garment_scope.json)
+    // allow importing the shared canonical config (backend/config/*.json)
     fs: { allow: ['..'] },
     proxy: {
       '/api': {

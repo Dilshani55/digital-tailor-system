@@ -8,17 +8,15 @@ from app.logic.parametric_engine import ParametricEngine
 from tests.fixtures import measurements, design
 
 SUPPORTED = (
-    [("blouse", n, s) for n in ("round-neck", "v-neck", "square-neck") for s in ("short-sleeve", "long-sleeve")]
+    [("blouse", n, s) for n in ("round-neck", "v-neck", "square-neck") for s in ("sleeveless", "short-sleeve", "long-sleeve")]
     + [("t-shirt", n, s) for n in ("round-neck", "v-neck") for s in ("short-sleeve", "long-sleeve")]
-    + [("crop-top", n, s) for n in ("round-neck", "v-neck", "square-neck") for s in ("sleeveless", "short-sleeve")]
 )
 
 
 def _gen(garment, neck, sleeve, profile="medium", fabric=None):
     fabric = fabric or ("knit" if garment == "t-shirt" else "woven")
     style = "none" if sleeve == "sleeveless" else "regular-sleeve"
-    over = {"garment_length_cm": 36} if garment == "crop-top" else {}
-    m = measurements(profile, fabric_type=fabric, **over)
+    m = measurements(profile, fabric_type=fabric)
     return ParametricEngine(m, design_spec={"attributes": design(garment, neck, sleeve, style)}).generate()
 
 
@@ -92,8 +90,8 @@ class TestFinalPatternSeamAllowance(unittest.TestCase):
         def types(out):
             return [p["piece_type"] for p in out["pattern_pieces"]]
         self.assertIn("neckband", types(_gen("t-shirt", "round-neck", "short-sleeve")))
-        self.assertIn("armhole_facing", types(_gen("crop-top", "round-neck", "sleeveless")))
-        self.assertNotIn("sleeve", types(_gen("crop-top", "round-neck", "sleeveless")))
+        self.assertIn("armhole_facing", types(_gen("blouse", "round-neck", "sleeveless")))
+        self.assertNotIn("sleeve", types(_gen("blouse", "round-neck", "sleeveless")))
         self.assertIn("sleeve", types(_gen("blouse", "round-neck", "long-sleeve")))
 
     def test_engine_notes_do_not_claim_missing_seam_allowance(self):
@@ -155,9 +153,8 @@ class TestProductScope(unittest.TestCase):
             self.assertTrue(self._report(garment, neck, sleeve)["supported"], (garment, neck, sleeve))
 
     def test_out_of_scope_combinations_rejected_with_reason(self):
-        cases = [("t-shirt", "square-neck", "short-sleeve"), ("blouse", "round-neck", "sleeveless"),
-                 ("crop-top", "round-neck", "long-sleeve"), ("blouse", "scoop-neck", "short-sleeve"),
-                 ("blouse", "round-neck", "elbow-length"), ("t-shirt", "round-neck", "three-quarter-sleeve")]
+        cases = [("t-shirt", "square-neck", "short-sleeve"), ("t-shirt", "round-neck", "sleeveless"),
+                 ("blouse", "collared-neck", "short-sleeve"), ("t-shirt", "collared-neck", "long-sleeve")]
         for garment, neck, sleeve in cases:
             r = self._report(garment, neck, sleeve)
             self.assertFalse(r["supported"], (garment, neck, sleeve))
@@ -167,20 +164,20 @@ class TestProductScope(unittest.TestCase):
         self.assertFalse(self._report("t-shirt", "round-neck", "short-sleeve", "puff-sleeve")["supported"])
         self.assertFalse(self._report("t-shirt", "round-neck", "long-sleeve", "bell-sleeve")["supported"])
         self.assertTrue(self._report("blouse", "round-neck", "short-sleeve", "puff-sleeve")["supported"])
-        self.assertTrue(self._report("crop-top", "square-neck", "short-sleeve", "bell-sleeve")["supported"])
+        self.assertTrue(self._report("blouse", "square-neck", "long-sleeve", "bell-sleeve")["supported"])
+        self.assertFalse(self._report("blouse", "round-neck", "sleeveless", "regular-sleeve")["supported"])
         self.assertFalse(self._report("blouse", "round-neck", "short-sleeve", "none")["supported"])
 
     def test_scope_matrix_is_exactly_the_specified_one(self):
-        self.assertEqual(set(fs.SCOPE), {"blouse", "t-shirt", "crop-top"})
+        self.assertEqual(set(fs.SCOPE), {"blouse", "t-shirt"})
         self.assertEqual(fs.SCOPE["t-shirt"]["neckline_type"], ("round-neck", "v-neck"))
-        self.assertEqual(fs.SCOPE["crop-top"]["sleeve_length"], ("sleeveless", "short-sleeve"))
+        self.assertEqual(fs.SCOPE["blouse"]["sleeve_length"], ("sleeveless", "short-sleeve", "long-sleeve"))
         s3 = ("regular-sleeve", "puff-sleeve", "bell-sleeve")
         self.assertEqual({g: {n: d["neckline_type"], "sleeves": d["sleeves"]} for g, d in fs.SCOPE.items() for n in ["n"]}, {
-            "blouse": {"n": ("round-neck", "v-neck", "square-neck"), "sleeves": {"short-sleeve": s3, "long-sleeve": s3}},
+            "blouse": {"n": ("round-neck", "v-neck", "square-neck"),
+                       "sleeves": {"sleeveless": ("none",), "short-sleeve": s3, "long-sleeve": s3}},
             "t-shirt": {"n": ("round-neck", "v-neck"),
                         "sleeves": {"short-sleeve": ("regular-sleeve",), "long-sleeve": ("regular-sleeve",)}},
-            "crop-top": {"n": ("round-neck", "v-neck", "square-neck"),
-                         "sleeves": {"sleeveless": ("none",), "short-sleeve": s3}},
         })
 
 

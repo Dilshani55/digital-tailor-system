@@ -186,8 +186,8 @@ export default function PredictionReview({
                 )}
                 {isEditing && headKey === 'garment_type' && (hasPredictions || selections.garment_type) && (
                   <div role="note" className="head-note info" data-testid="garment-length-note" style={{ marginTop: 0, marginBottom: 6 }}>
-                    A crop top and a T-shirt can look alike in a photo. Choose the garment you want to make: a crop top ends
-                    above the waist, a T-shirt reaches at least the waist. You set the finished length in the next step.
+                    A blouse is cut from woven fabric (with darts); a T-shirt from knit fabric. The hem of both reaches at
+                    least the waist; you set the finished length in the measurements step.
                   </div>
                 )}
                 <select id={`sel-${headKey}`} className="form-select" value={selections[headKey] || ''}

@@ -18,7 +18,7 @@ def get_recommendations():
     
     Request payload format (JSON):
     {
-        "garment_type": "crop-top",   # optional (defaults to 'blouse')
+        "garment_type": "t-shirt",    # optional (defaults to 'blouse')
         "neckline": "off-the-shoulder",# optional
         "sleeves": "short sleeve",   # optional
         "darts": "bust dart",        # optional

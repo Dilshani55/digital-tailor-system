@@ -1,10 +1,10 @@
 // Measurement rules for the React forms. The list of fields and WHICH ONES A DESIGN NEEDS come from
-// config/measurement_requirements.json - the same file the backend validation, the saved profile and the
+// backend/config/measurement_requirements.json - the same file the backend validation, the saved profile and the
 // drafting engine use (backend/app/logic/measurement_schema.py). The backend re-validates everything.
 //
 // Values are kept exactly as the user typed them, together with the unit they were typed in. Switching the
 // display unit never rewrites a typed value, so nothing is converted twice or rounded away.
-import REQ from '../../../config/measurement_requirements.json';
+import REQ from '../../../backend/config/measurement_requirements.json';
 
 export const CANONICAL_UNIT = 'cm';
 export const CM_PER_INCH = 2.54;

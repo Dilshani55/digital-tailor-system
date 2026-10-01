@@ -140,8 +140,8 @@ class TestPrintablePdf(unittest.TestCase):
 
     def test_every_supported_design_produces_a_pdf(self):
         for kw in (dict(garment="t-shirt", neck="v-neck", sleeve="long-sleeve", fabric="knit"),
-                   dict(garment="crop-top", neck="square-neck", sleeve="sleeveless", garment_length_cm=36),
-                   dict(garment="crop-top", neck="round-neck", sleeve="short-sleeve", fabric="knit", garment_length_cm=36)):
+                   dict(garment="blouse", neck="square-neck", sleeve="sleeveless"),
+                   dict(garment="blouse", neck="round-neck", sleeve="long-sleeve")):
             gen, _, _ = _generate(os.path.join(self.tmp, "x.pdf"), **kw)
             self.assertGreaterEqual(len(pymupdf.open(os.path.join(self.tmp, "x.pdf"))), 4)
 

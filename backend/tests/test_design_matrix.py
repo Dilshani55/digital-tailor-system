@@ -1,5 +1,6 @@
-"""Every one of the 180 selectable design combinations: the 34 supported ones are drafted correctly, the other
-146 are refused (never replaced by a different design); the same pieces are laid out on 36" / 45" / 60" fabric."""
+"""Every one of the 96 selectable design combinations (2 garments x 4 necklines x 3 sleeve lengths x 4 sleeve
+styles): the 25 supported ones are drafted correctly, the other 71 are refused (never replaced by a different design);
+the same pieces are laid out on 36" / 45" / 60" fabric."""
 import copy
 import itertools
 import math
@@ -16,7 +17,6 @@ from tests.fixtures import PROFILES, SHORT_SLEEVE_CM, measurements
 ALL = [dict(zip(fs.HEADS, combo)) for combo in itertools.product(*[fs.UI_TAXONOMY[h] for h in fs.HEADS])]
 SUPPORTED = [d for d in ALL if fs.is_draftable(d)]
 UNSUPPORTED = [d for d in ALL if not fs.is_draftable(d)]
-CROP_LENGTH_CM = {"small": 33, "medium": 36, "large": 38}
 NECK_TYPE = {"round-neck": "round_neckline", "v-neck": "v_neckline", "square-neck": "square_neckline"}
 SLEEVE_STYLE_TYPE = {"regular-sleeve": "plain_set_in", "puff-sleeve": "puff", "bell-sleeve": "bell_flare", "none": "none"}
 
@@ -27,8 +27,6 @@ def constructions(design):
 
 def body(design, profile="medium", construction="woven", fit="standard"):
     m = measurements(profile, fabric_type=construction, fit_preference=fit)
-    if design["garment_type"] == "crop-top":
-        m["garment_length_cm"] = CROP_LENGTH_CM[profile]
     if design["sleeve_length"] == "short-sleeve":
         m["sleeve_cm"] = SHORT_SLEEVE_CM[profile]
     return m
@@ -58,14 +56,34 @@ def label(design, *extra):
 
 
 class TestScopeMatrix(unittest.TestCase):
-    def test_the_matrix_is_180_combinations_of_which_34_are_supported(self):
-        self.assertEqual((len(ALL), len(SUPPORTED), len(UNSUPPORTED)), (180, 34, 146))
+    def test_the_matrix_is_96_combinations_of_which_25_are_supported(self):
+        self.assertEqual((len(ALL), len(SUPPORTED), len(UNSUPPORTED)), (96, 25, 71))
+        self.assertEqual({d["garment_type"] for d in ALL}, {"blouse", "t-shirt"})          # no crop top
+        self.assertEqual(sum(d["garment_type"] == "blouse" for d in SUPPORTED), 21)
+        self.assertEqual(sum(d["garment_type"] == "t-shirt" for d in SUPPORTED), 4)
 
-    def test_collared_and_off_shoulder_are_never_supported(self):
+    def test_a_collared_neck_is_never_supported(self):
         for d in SUPPORTED:
             self.assertIn(d["neckline_type"], NECK_TYPE, label(d))
-        for neck in ("collared-neck", "off-shoulder"):
-            self.assertEqual(fs.support_of("neckline_type", neck)[0], fs.UNSUPPORTED)
+        self.assertEqual(fs.support_of("neckline_type", "collared-neck")[0], fs.UNSUPPORTED)
+
+    def test_values_that_left_the_taxonomy_are_invalid_not_drafted(self):
+        for head, value in (("garment_type", "crop-top"), ("neckline_type", "off-shoulder"), ("neckline_type", "scoop-neck"),
+                            ("sleeve_length", "elbow-length"), ("sleeve_style", "kimono-sleeve")):
+            d = dict(SUPPORTED[0], **{head: value})
+            _, errors = fs.validate_attributes(d)
+            self.assertEqual(errors[head]["code"], "NOT_IN_TAXONOMY", (head, value))
+            with self.assertRaises(DraftingError) as ctx:
+                ParametricEngine(body(SUPPORTED[0]), design_spec={"attributes": d}).generate()
+            self.assertEqual(ctx.exception.code, "INVALID_DESIGN_ATTRIBUTES", (head, value))
+
+    def test_a_sleeveless_design_is_a_blouse_with_armhole_facings(self):
+        sleeveless = [d for d in SUPPORTED if d["sleeve_length"] == "sleeveless"]
+        self.assertEqual({d["garment_type"] for d in sleeveless}, {"blouse"})
+        self.assertEqual(len(sleeveless), 3)
+        types = [q["piece_type"] for q in draft(sleeveless[0])["pattern_pieces"]]
+        self.assertIn("armhole_facing", types)
+        self.assertNotIn("sleeve", types)
 
     def test_sleeve_style_agrees_with_sleeve_length(self):
         for d in SUPPORTED:
@@ -88,7 +106,7 @@ class TestScopeMatrix(unittest.TestCase):
 
 
 class TestEverySupportedDesign(unittest.TestCase):
-    """34 designs x the constructions their garment allows x three body sizes."""
+    """25 designs x the construction their garment allows x three body sizes."""
 
     @classmethod
     def setUpClass(cls):
@@ -160,12 +178,12 @@ class TestEverySupportedDesign(unittest.TestCase):
                     self.assertTrue(min(xs) < dart["apex"][0] < max(xs) and min(ys) < dart["apex"][1] < max(ys), tag)
 
     def test_woven_ease_is_larger_than_knit_ease_for_the_same_body(self):
-        for d in SUPPORTED:
-            if len(constructions(d)) < 2:
-                continue
-            woven = draft(d, "medium", "woven")["measurements_used"]["ease_profile"]
-            knit = draft(d, "medium", "knit")["measurements_used"]["ease_profile"]
-            self.assertGreater(woven["bust_cm"], knit["bust_cm"], label(d))
+        base = dict(neckline_type="round-neck", sleeve_length="short-sleeve", sleeve_style="regular-sleeve")
+        woven = draft(dict(base, garment_type="blouse"))["measurements_used"]["ease_profile"]
+        knit = draft(dict(base, garment_type="t-shirt"))["measurements_used"]["ease_profile"]
+        self.assertGreater(woven["bust_cm"], knit["bust_cm"])
+        for d in SUPPORTED:                                    # exactly one construction per garment
+            self.assertEqual(constructions(d), ["knit"] if d["garment_type"] == "t-shirt" else ["woven"], label(d))
 
     def test_fit_preference_orders_the_ease(self):
         d = next(x for x in SUPPORTED if x["garment_type"] == "blouse" and x["sleeve_length"] == "short-sleeve")
@@ -233,7 +251,7 @@ class TestEverySupportedDesign(unittest.TestCase):
             self.assertAlmostEqual(front["side_seam_length_cm"], back["side_seam_length_cm"], places=2, msg=tag)
 
     def test_neckline_shapes_differ(self):
-        base = dict(garment_type="crop-top", sleeve_length="sleeveless", sleeve_style="none")
+        base = dict(garment_type="blouse", sleeve_length="sleeveless", sleeve_style="none")
         lengths = {}
         for neck in NECK_TYPE:
             d = dict(base, neckline_type=neck)

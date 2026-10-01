@@ -81,9 +81,7 @@ def _score(fid, fabric, attrs, fit):
     garment = attrs.get("garment_type")
     if garment == "blouse" and 2 <= drape <= 4:
         rule(+5, "Blouse: medium drape suits a darted woven bodice.")
-    if garment == "crop-top" and construction == "woven" and drape <= 3:
-        rule(+5, "Woven crop-top: some body keeps the short hem and seams crisp.")
-    if garment in ("t-shirt", "crop-top") and construction == "knit":
+    if garment == "t-shirt" and construction == "knit":
         if weight == "Medium":
             rule(+10, "Knit top: medium-weight jersey is the usual T-shirt fabric.")
         elif weight == "Heavy":

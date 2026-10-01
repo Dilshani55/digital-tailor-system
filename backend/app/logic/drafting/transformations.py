@@ -8,7 +8,7 @@ same drafting values with the design parameters, and every change is recorded.
 Supported transformations (see feature_schema.py for the support table):
   neckline      round-neck, square-neck, v-neck  (sweetheart/scoop/boat/high-neck are drafted as
                 the base round neck and recorded as "not applied"; others rejected)
-  garment length crop-top / blouse / t-shirt hem rule against the measured garment length
+  garment length blouse / t-shirt hem rule against the measured garment length
   sleeve length sleeveless (armhole facings), short, elbow, three-quarter, long
   sleeve style  none / regular-sleeve (plain set-in). Other styles are rejected.
 """
@@ -56,30 +56,15 @@ def _conflict(field, message):
 def resolve_hem(dv, garment_type):
     """
     Garment-length rule (project rule, documented):
-      hem level y = measured garment_length_cm, measured down from the neck/shoulder-point level.
-      crop-top        hem must lie at least 6 cm below the underarm and at least 2 cm ABOVE the waist
-      blouse/t-shirt  hem must reach the waist line (regular length)
-    A measurement that contradicts the confirmed garment type is reported, never silently changed.
+      hem level y = measured garment_length_cm, measured down from the neck/shoulder-point level;
+      a blouse or T-shirt hem must reach the waist line.
+    A measurement that contradicts this is reported, never silently changed.
     """
     hem = dv.garment_length
-    if garment_type == "crop-top":
-        lo = dv.armhole_depth + A["crop_min_hem_below_underarm_cm"]
-        hi = dv.waist_y - A["crop_max_hem_above_waist_cm"]
-        if hem > hi:
-            raise _conflict("garment_length_cm",
-                            f"Garment length {hem:g} cm is not a crop length: a crop-top hem must be at most "
-                            f"{hi:.1f} cm (2 cm above the waist line at {dv.waist_y:.1f} cm). Enter a shorter length "
-                            "or confirm the design as a blouse / t-shirt.")
-        if hem < lo:
-            raise _conflict("garment_length_cm",
-                            f"Garment length {hem:g} cm is too short: the crop hem must be at least {lo:.1f} cm "
-                            "(6 cm below the underarm).")
-    else:
-        if hem < dv.waist_y:
-            raise _conflict("garment_length_cm",
-                            f"Garment length {hem:g} cm is shorter than the waist line ({dv.waist_y:.1f} cm), which "
-                            f"is a crop length. Confirm the design as a crop-top or enter a length of at least "
-                            f"{dv.waist_y:.1f} cm.")
+    if hem < dv.waist_y:
+        raise _conflict("garment_length_cm",
+                        f"Garment length {hem:g} cm is shorter than the waist line ({dv.waist_y:.1f} cm). "
+                        f"Enter a length of at least {dv.waist_y:.1f} cm: a blouse or T-shirt hem must reach the waist.")
     return hem
 
 
@@ -129,7 +114,7 @@ def apply_design(base, attributes):
         "id": "garment_length", "type": "hem_level", "design": clean["garment_type"],
         "measured_garment_length_cm": dv.garment_length, "waist_level_cm": round(dv.waist_y, 3),
         "hem_level_cm": round(hem_y, 3),
-        "rule": "hem = measured garment length from the neck/shoulder-point level; crop hem >= 2 cm above waist, "
+        "rule": "hem = measured garment length from the neck/shoulder-point level; "
                 "regular hem >= waist (project rule)",
         "status": "applied"})
 

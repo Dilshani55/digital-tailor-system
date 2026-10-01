@@ -18,8 +18,6 @@ module.exports = {
     'no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_', caughtErrors: 'none' }],
   },
   overrides: [
-    // react-three-fiber elements take three.js properties (position, args, intensity ...), not DOM attributes
-    { files: ['src/components/MannequinViewer3D.jsx'], rules: { 'react/no-unknown-property': 'off' } },
     { files: ['*.cjs', '*.config.js', 'playwright.config.js'], env: { node: true } },
     { files: ['e2e/**/*.js'], env: { node: true } },
     {

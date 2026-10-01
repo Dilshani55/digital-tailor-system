@@ -10,7 +10,6 @@ const FILTERS = [
   { id: 'all', label: 'All patterns' },
   { id: 'blouse', label: 'Blouses' },
   { id: 't-shirt', label: 'T-shirts' },
-  { id: 'crop-top', label: 'Crop tops' },
 ];
 const label = (v) => (v ? String(v).replace(/-/g, ' ').replace(/^./, (c) => c.toUpperCase()) : null);
 

@@ -14,6 +14,7 @@ const ALLOWANCES = [
   ['Neckband / facing strips', '1.0 cm', '0.7 cm'],
 ];
 
+const MODEL_LABEL = { garment_type: 'Garment type', neckline_type: 'Neckline', sleeve_length: 'Sleeve length', sleeve_style: 'Sleeve style' };
 const card = { padding: '24px' };
 const h2 = { fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' };
 const row = { display: 'flex', justifyContent: 'space-between', gap: '12px', fontSize: '13px', padding: '8px 0', borderBottom: '1px solid var(--border)' };
@@ -150,13 +151,19 @@ export default function Settings() {
         </section>
 
         <section className="ui-card" style={card} aria-labelledby="ai-h">
-          <h2 id="ai-h" style={h2}><Cpu size={16}/> AI garment model</h2>
+          <h2 id="ai-h" style={h2}><Cpu size={16}/> AI garment models</h2>
           <div data-testid="model-state" style={{ fontSize: '13px' }}>
             {model.state === 'loading' && 'Checking…'}
             {model.state === 'available' && (
               <>
                 <div style={row}><span style={{ color: 'var(--text-secondary)' }}>Status</span><strong style={{ color: 'var(--text-accent)' }}>Available</strong></div>
-                <div style={row}><span style={{ color: 'var(--text-secondary)' }}>Checkpoint SHA-256</span>
+                {Object.entries(model.models || {}).map(([head, m]) => (
+                  <div style={row} key={head} data-testid={`model-${head}`}>
+                    <span style={{ color: 'var(--text-secondary)' }}>{MODEL_LABEL[head] || head} · {m.architecture}</span>
+                    <strong>{!m.available ? 'Not installed' : m.answers_automatically ? 'Fills in when confident' : 'Suggests only — you select'}</strong>
+                  </div>
+                ))}
+                <div style={row}><span style={{ color: 'var(--text-secondary)' }}>Fingerprint (SHA-256)</span>
                   <code title={model.checkpoint_sha256}>{(model.checkpoint_sha256 || '').slice(0, 16)}…</code></div>
               </>
             )}
@@ -164,7 +171,7 @@ export default function Settings() {
             {model.state === 'unknown' && <p>The server could not be reached.</p>}
           </div>
           <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '12px', lineHeight: 1.5 }}>
-            The model only suggests the garment design. You confirm every feature, and the pattern itself is drafted by deterministic geometry.
+            Four separate models suggest the garment type, neckline, sleeve length and sleeve style. They only suggest: you confirm every feature, and the pattern itself is drafted by deterministic geometry.
           </p>
         </section>
       </div>

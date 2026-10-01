@@ -1,5 +1,5 @@
-"""Analyse route + garment detector: the classifier receives the detected garment crop (tight box + 10 % margin),
-falls back to the whole photo honestly, and flags garments that cannot be drafted."""
+"""Analyse route + garment detector: the models receive the detected garment crop (tight box + 10 % margin),
+fall back to the whole photo honestly, and garments that cannot be drafted are flagged."""
 import io
 import os
 import tempfile
@@ -40,10 +40,9 @@ class TestAnalyseWithGarmentCrop(unittest.TestCase):
         image.id = "img1"
         predict = MagicMock(return_value=dict(RAW))
         with patch("app.routes.images.DesignImage") as DI, \
-                patch("app.ai.multitask_classifier.get_multitask_classifier", return_value=(None, {})), \
-                patch("app.ai.multitask_classifier.predict_multitask_features", predict), \
-                patch("app.ai.garment_detector.detect_garment", return_value=detection), \
-                patch("app.ai.yolo_detector.detect_features", return_value=({"source": "cv_heuristic"}, None)):
+                patch("app.ai.garment_models.models_status", return_value={"available": True}), \
+                patch("app.ai.garment_models.predict_attributes", predict), \
+                patch("app.ai.garment_detector.detect_garment", return_value=detection):
             DI.objects.return_value.first.return_value = image
             r = self.app.test_client().post("/api/images/img1/analyse", headers=self.h)
         return r, predict
@@ -55,6 +54,7 @@ class TestAnalyseWithGarmentCrop(unittest.TestCase):
     def test_classifier_gets_the_padded_detector_box(self):
         r, predict = self._analyse(self._det([50, 100, 150, 200]))
         self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.get_json()["detected_features"]["source"], "default_not_detected")   # no invented analysis
         self.assertEqual(predict.call_args.kwargs["bbox"], [40.0, 90.0, 160.0, 210.0])
         region = r.get_json()["garment_region"]
         self.assertEqual(region["used"], "garment_crop")
@@ -78,7 +78,7 @@ class TestAnalyseWithGarmentCrop(unittest.TestCase):
         region = r.get_json()["garment_region"]
         self.assertFalse(region["supported_garment"])
         self.assertIn("a dress", region["note"])
-        self.assertIn("Only blouses, T-shirts and crop tops can be drafted", region["note"])
+        self.assertIn("Only blouses and T-shirts can be drafted", region["note"])
 
     def test_detector_crash_never_breaks_analysis(self):
         image = MagicMock()
@@ -86,10 +86,9 @@ class TestAnalyseWithGarmentCrop(unittest.TestCase):
         image.file_path = "x.png"
         predict = MagicMock(return_value=dict(RAW))
         with patch("app.routes.images.DesignImage") as DI, \
-                patch("app.ai.multitask_classifier.get_multitask_classifier", return_value=(None, {})), \
-                patch("app.ai.multitask_classifier.predict_multitask_features", predict), \
-                patch("app.ai.garment_detector.detect_garment", side_effect=RuntimeError("boom")), \
-                patch("app.ai.yolo_detector.detect_features", return_value=({}, None)):
+                patch("app.ai.garment_models.models_status", return_value={"available": True}), \
+                patch("app.ai.garment_models.predict_attributes", predict), \
+                patch("app.ai.garment_detector.detect_garment", side_effect=RuntimeError("boom")):
             DI.objects.return_value.first.return_value = image
             r = self.app.test_client().post("/api/images/img1/analyse", headers=self.h)
         self.assertEqual(r.status_code, 200)

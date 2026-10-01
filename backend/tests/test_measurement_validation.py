@@ -43,7 +43,7 @@ def _codes(errors, field):
     return [e["code"] for e in errors.get(field, [])]
 
 
-SLEEVELESS_CROP = {"garment_type": "crop-top", "neckline_type": "round-neck",
+SLEEVELESS_BLOUSE = {"garment_type": "blouse", "neckline_type": "round-neck",
                    "sleeve_length": "sleeveless", "sleeve_style": "none"}
 SHORT_BLOUSE = {"garment_type": "blouse", "neckline_type": "round-neck",
                 "sleeve_length": "short-sleeve", "sleeve_style": "regular-sleeve"}
@@ -78,8 +78,9 @@ class TestSchemaDefinition(unittest.TestCase):
 class TestRequiredForDesign(unittest.TestCase):
     """The design decides which measurements are needed - derived from what the drafting engine uses."""
 
-    def test_sleeveless_crop_top_needs_only_the_bodice(self):
-        self.assertEqual(ms.required_for_design(SLEEVELESS_CROP), BODICE)        # no hip, sleeve, wrist, height
+    def test_sleeveless_blouse_needs_the_bodice_and_hip_but_no_sleeve_measurements(self):
+        req = ms.required_for_design(SLEEVELESS_BLOUSE)
+        self.assertEqual(set(req), set(BODICE) | {"hip_cm"})                      # no bicep, sleeve, wrist, height
 
     def test_short_sleeve_needs_bicep_and_sleeve_length_but_not_wrist(self):
         req = ms.required_for_design(SHORT_BLOUSE)
@@ -95,7 +96,7 @@ class TestRequiredForDesign(unittest.TestCase):
 
     def test_height_is_never_required(self):
         import itertools
-        for gt, sl, ss in itertools.product(("blouse", "t-shirt", "crop-top"), ("sleeveless", "short-sleeve", "long-sleeve"),
+        for gt, sl, ss in itertools.product(("blouse", "t-shirt"), ("sleeveless", "short-sleeve", "long-sleeve"),
                                             ("none", "regular-sleeve", "puff-sleeve", "bell-sleeve")):
             self.assertNotIn("height_cm", ms.required_for_design(
                 {"garment_type": gt, "neckline_type": "round-neck", "sleeve_length": sl, "sleeve_style": ss}))
@@ -103,7 +104,7 @@ class TestRequiredForDesign(unittest.TestCase):
     def test_every_required_set_drafts_and_nothing_less_is_invented(self):
         """With exactly the required fields the engine drafts; the unrequired ones stay None."""
         from app.logic.parametric_engine import ParametricEngine
-        for design, length in ((SLEEVELESS_CROP, 36.0), (SHORT_BLOUSE, 62.0), (LONG_TSHIRT, 62.0), (LONG_BELL, 62.0)):
+        for design, length in ((SLEEVELESS_BLOUSE, 62.0), (SHORT_BLOUSE, 62.0), (LONG_TSHIRT, 62.0), (LONG_BELL, 62.0)):
             req = ms.required_for_design(design)
             m = {k: (VALID_CM[k] if k in req else None) for k in ms.FIELD_KEYS}
             m["garment_length_cm"] = length
@@ -238,9 +239,9 @@ class TestEngineMeasurements(unittest.TestCase):
 
     def test_measurements_the_design_does_not_need_may_be_missing(self):
         m, code, errors = ms.engine_measurements(
-            _profile(hip_cm=None, height_cm=None, bicep_cm=None, sleeve_cm=None, wrist_cm=None), SLEEVELESS_CROP)
+            _profile(height_cm=None, bicep_cm=None, sleeve_cm=None, wrist_cm=None), SLEEVELESS_BLOUSE)
         self.assertEqual((code, errors), (None, {}))
-        for key in ("hip_cm", "height_cm", "bicep_cm", "sleeve_cm", "wrist_cm"):
+        for key in ("height_cm", "bicep_cm", "sleeve_cm", "wrist_cm"):
             self.assertIsNone(m[key])                                  # passed as missing, never invented
 
     def test_armhole_falls_back_to_legacy_alias_only_if_present(self):
@@ -361,10 +362,11 @@ class TestMeasurementRoutes(unittest.TestCase):
         self.assertIsNone(p["neck_cm"])                     # nothing fabricated
 
     def test_with_a_design_exactly_its_measurements_are_required(self):
-        resp = self._post({"client_name": "X", "design": SLEEVELESS_CROP, "bust_cm": 88})
+        need = set(BODICE) | {"hip_cm"}
+        resp = self._post({"client_name": "X", "design": SLEEVELESS_BLOUSE, "bust_cm": 88})
         self.assertEqual(resp.status_code, 400)
-        self.assertEqual(set(resp.get_json()["field_errors"]), set(BODICE) - {"bust_cm"})   # no hip/sleeve/height
-        ok = self._post(dict({k: VALID_CM[k] for k in BODICE}, design=SLEEVELESS_CROP))
+        self.assertEqual(set(resp.get_json()["field_errors"]), need - {"bust_cm"})          # no sleeve/wrist/height
+        ok = self._post(dict({k: VALID_CM[k] for k in need}, design=SLEEVELESS_BLOUSE))
         self.assertEqual(ok.status_code, 201, ok.get_json())
 
     def test_short_sleeve_design_does_not_require_the_wrist(self):

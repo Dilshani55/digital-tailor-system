@@ -25,7 +25,7 @@ ENGINE_VERSION = "2.0"
 DISCLAIMER = ("Prototype custom pattern: mathematically generated from the measurements and documented "
               "drafting rules; geometry validated only — not professionally or fit validated.")
 
-_NECKLINE = {"collar": "collared-neck", "off-the-shoulder": "off-shoulder"}
+_NECKLINE = {"collar": "collared-neck"}
 _SLEEVE_LENGTH = {"elbow sleeve": "elbow-length", "three-quarter sleeve": "three-quarter-sleeve",
                   "cap sleeve": "cap-length"}
 

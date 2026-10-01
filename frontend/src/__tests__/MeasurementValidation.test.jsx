@@ -27,7 +27,7 @@ const VALID = {
 const BODICE = ['bust_cm', 'waist_cm', 'neck_cm', 'shoulder_cm', 'across_back_cm', 'back_waist_length_cm',
   'armhole_depth_cm', 'garment_length_cm'];
 const D = {
-  sleevelessCrop: { garment_type: 'crop-top', neckline_type: 'round-neck', sleeve_length: 'sleeveless', sleeve_style: 'none' },
+  sleevelessBlouse: { garment_type: 'blouse', neckline_type: 'round-neck', sleeve_length: 'sleeveless', sleeve_style: 'none' },
   shortBlouse: { garment_type: 'blouse', neckline_type: 'round-neck', sleeve_length: 'short-sleeve', sleeve_style: 'regular-sleeve' },
   longTshirt: { garment_type: 't-shirt', neckline_type: 'round-neck', sleeve_length: 'long-sleeve', sleeve_style: 'regular-sleeve' },
   longBell: { garment_type: 'blouse', neckline_type: 'v-neck', sleeve_length: 'long-sleeve', sleeve_style: 'bell-sleeve' },
@@ -41,7 +41,7 @@ describe('measurementSchema utils', () => {
   });
 
   it('requires exactly what the design needs (same rules as the backend)', () => {
-    expect(requiredFor(D.sleevelessCrop)).toEqual(BODICE);
+    expect(new Set(requiredFor(D.sleevelessBlouse))).toEqual(new Set([...BODICE, 'hip_cm']));   // no sleeve measurements
     const short = requiredFor(D.shortBlouse);
     expect(short).toEqual(expect.arrayContaining(['hip_cm', 'bicep_cm', 'sleeve_cm']));
     expect(short).not.toContain('wrist_cm');
@@ -161,8 +161,9 @@ describe('Measurement form in the Upload wizard', () => {
   });
 
   it('shows only the measurements the confirmed design needs', () => {
-    openMeasurementStep(D.sleevelessCrop);
-    expect(shown()).toEqual(BODICE);                                 // no hip, height, bicep, sleeve, wrist
+    openMeasurementStep(D.sleevelessBlouse);
+    expect(screen.queryByTestId('design-selector')).toBeNull();      // the design really was confirmed
+    expect(new Set(shown())).toEqual(new Set([...BODICE, 'hip_cm']));  // no height, bicep, sleeve, wrist
     expect(screen.queryByTestId('sleeve-guide-line')).toBeNull();     // no sleeve highlight for sleeveless
     expect(document.body.textContent).not.toMatch(/All 13 measurements/);
   });

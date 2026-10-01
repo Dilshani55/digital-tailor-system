@@ -13,7 +13,6 @@ vi.mock('../services/api', () => ({
   exportAPI: { yardage: vi.fn(), estimates: vi.fn(), pdf: vi.fn(), download: vi.fn() },
   researchAPI: { submitFeedback: vi.fn() },
 }));
-vi.mock('../components/MeasurementGuide', () => ({ default: () => <div data-testid="guide-stub" /> }));
 vi.mock('../components/FabricRecommendation', () => ({
   default: ({ onSelectFabric }) => (
     <button type="button" onClick={() => onSelectFabric('cotton-poplin', 'Cotton Poplin', 'woven')}>pick-poplin</button>

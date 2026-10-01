@@ -1,6 +1,6 @@
 """
 MEASUREMENT SCHEMA - the body measurements the drafting engine can use, their canonical unit and the
-validation rules. Which measurements a design NEEDS comes from config/measurement_requirements.json, the
+validation rules. Which measurements a design NEEDS comes from backend/config/measurement_requirements.json, the
 same file the frontend reads, so the form, this validation, the saved profile and the engine agree.
 
 Units
@@ -30,7 +30,7 @@ CM_PER_INCH = 2.54
 FABRIC_TYPES = ("woven", "knit", "stretch-knit")
 FIT_PREFERENCES = ("close", "standard", "loose")
 
-_REQ_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "config",
+_REQ_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "config",
                                          "measurement_requirements.json"))
 with open(_REQ_PATH, encoding="utf-8") as _f:
     REQUIREMENTS = json.load(_f)

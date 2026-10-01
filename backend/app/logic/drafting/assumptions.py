@@ -74,11 +74,6 @@ ASSUMPTIONS = {
     "square_neck_depth": dict(
         status=ASSUMPTION, value="same as base front neck depth",
         note="Square neck keeps the base neck width and depth; only the shape changes."),
-    "crop_min_hem_below_underarm_cm": dict(
-        status=ASSUMPTION, value=6.0, note="Crop hem must be at least 6 cm below the underarm level."),
-    "crop_max_hem_above_waist_cm": dict(
-        status=ASSUMPTION, value=2.0,
-        note="Crop-top hem must be at least 2 cm above the waist line; regular length must reach the waist."),
     "short_sleeve_hem_width": dict(
         status=ASSUMPTION, value="eased bicep width",
         note="A short plain sleeve keeps the eased bicep width down to its hem (no taper); a long sleeve tapers "

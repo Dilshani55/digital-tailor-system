@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 const API = process.env.E2E_API_URL || 'http://127.0.0.1:5055/api';
-const IMAGE = path.resolve(process.env.E2E_IMAGE || '../ai_training/data/eval_real_product_set/images/blouse_01.jpg');
+const IMAGE = path.resolve(process.env.E2E_IMAGE || '../backend/training/data/eval_real_product_set/images/blouse_01.jpg');
 const MEAS = {
   bust_cm: 88, waist_cm: 70, hip_cm: 94, height_cm: 162, neck_cm: 36, shoulder_cm: 12, across_back_cm: 34,
   back_waist_length_cm: 40, armhole_depth_cm: 20, garment_length_cm: 65, bicep_cm: 28, sleeve_cm: 24, wrist_cm: 16,

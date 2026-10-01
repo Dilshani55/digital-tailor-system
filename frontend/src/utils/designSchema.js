@@ -1,6 +1,6 @@
-// Design-feature schema used by the confirmation UI: the 15 ACTIVE classes the user may choose
+// Design-feature schema used by the confirmation UI: the classes the user may choose
 // (3 garment / 5 neckline / 3 sleeve length / 4 sleeve style), their drafting support and the
-// draftable combinations. Everything comes from the single canonical file <repo>/config/garment_scope.json,
+// draftable combinations. Everything comes from the single canonical file backend/config/garment_scope.json,
 // which the backend (app/logic/feature_schema.py) reads too — there is no second, hand-copied list.
 // The deployed classifier still predicts its original larger taxonomy (3/10/6/9); a prediction
 // outside this list is never remapped - see `predictionOutsideScope` below.
@@ -9,7 +9,7 @@
 //   implemented   – geometry reflects the value
 //   approximated  – accepted, but only part of the design is reflected
 //   unsupported   – cannot be drafted; pattern generation is rejected (never substituted)
-import CANON from '../../../config/garment_scope.json';
+import CANON from '../../../backend/config/garment_scope.json';
 
 export const IMPLEMENTED = 'implemented';
 export const APPROXIMATED = 'approximated';

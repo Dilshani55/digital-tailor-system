@@ -630,7 +630,7 @@ export default function Upload() {
         {!loading && step === S.UPLOAD && (
           <div className="wizard-body" id="wp2">
             <Title title="Upload a garment photo"
-                   help="Use a clear front-view photo of a blouse, T-shirt or crop-top. The AI suggests the design; you stay in control and confirm it." />
+                   help="Use a clear front-view photo of a blouse or a T-shirt. The AI suggests the design; you stay in control and confirm it." />
             {modelAvailable === false && (
               <div role="status" data-testid="model-unavailable" className="alert warn" style={{ marginBottom: 14 }}>
                 The AI garment model is not available on this server, so photos cannot be analysed right now.

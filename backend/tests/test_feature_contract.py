@@ -2,7 +2,7 @@
 Phase 1 — design-feature contract.
 
 Proves:
-  * one taxonomy shared by classifier config, backend schema and frontend schema
+  * one taxonomy shared by the AI models, the backend schema and the frontend schema
   * user-corrected attributes are what the pattern engine receives (not raw ML output)
   * provenance + model confidence/checkpoint metadata are preserved
   * unsupported / stale / invalid designs are rejected, never silently replaced
@@ -40,8 +40,8 @@ GOOD = {"garment_type": "blouse", "neckline_type": "round-neck",
         "sleeve_length": "short-sleeve", "sleeve_style": "regular-sleeve"}
 
 PREDICTIONS = {
-    "model_version": "YOLOv8MultiTaskClassifier|stage=Stage_B|epoch=7|sha256=3b69a470ed5d",
-    "model_type": "image-level multi-task classifier",
+    "model_version": "garment-models-v1",
+    "model_type": "four image classifiers",
     "checkpoint_sha256": "3b69a470ed5d" + "0" * 52,
     "predictions": {
         "garment_type": {"label": "blouse", "confidence": 0.91, "top_3": [], "requires_user_confirmation": False},
@@ -53,35 +53,32 @@ PREDICTIONS = {
 
 
 class TestTaxonomyParity(unittest.TestCase):
-    def test_backend_schema_matches_classifier_config(self):
-        with open(os.path.join(REPO_ROOT, "ai_training", "config", "classes.json"), encoding="utf-8") as f:
-            cfg = json.load(f)["outputs"]
-        for head in fs.HEADS:
-            # the deployed M13 classifier keeps its ORIGINAL taxonomy and order (3/10/6/9)
-            self.assertEqual(list(fs.MODEL_TAXONOMY[head]), cfg[head]["classes"], head)
-
-    def test_backend_schema_matches_model_head_sizes(self):
-        from app.ai.multitask_classifier import DEFAULT_HEAD_DIMS, HEADS
-        self.assertEqual(tuple(HEADS), fs.HEADS)
-        for head in fs.HEADS:
-            self.assertEqual(DEFAULT_HEAD_DIMS[head], len(fs.MODEL_TAXONOMY[head]), head)
-        self.assertEqual([DEFAULT_HEAD_DIMS[h] for h in fs.HEADS], [3, 10, 6, 9])
-
-    def test_active_ui_taxonomy_is_exactly_the_15_classes_in_order(self):
+    def test_the_taxonomy_is_two_garments_four_necklines_three_lengths_four_styles(self):
         self.assertEqual({h: list(v) for h, v in fs.TAXONOMY.items()}, {
-            "garment_type": ["blouse", "t-shirt", "crop-top"],
-            "neckline_type": ["round-neck", "v-neck", "square-neck", "collared-neck", "off-shoulder"],
+            "garment_type": ["blouse", "t-shirt"],
+            "neckline_type": ["round-neck", "v-neck", "square-neck", "collared-neck"],
             "sleeve_length": ["sleeveless", "short-sleeve", "long-sleeve"],
             "sleeve_style": ["none", "regular-sleeve", "puff-sleeve", "bell-sleeve"],
         })
-        self.assertEqual(sum(len(v) for v in fs.TAXONOMY.values()), 15)
-        for head in fs.HEADS:            # every active class exists in the model, in the same relative order
-            positions = [fs.MODEL_TAXONOMY[head].index(v) for v in fs.TAXONOMY[head]]
-            self.assertEqual(positions, sorted(positions), head)
+        self.assertIs(fs.MODEL_TAXONOMY, fs.UI_TAXONOMY)                     # one taxonomy, not a model one and a UI one
+
+    def test_every_model_class_is_a_selectable_value(self):
+        """What each AI model can answer (backend/training/common.py) is inside the taxonomy the user selects from."""
+        sys.path.insert(0, os.path.join(REPO_ROOT, "backend", "training"))
+        import common as training
+        from app.ai import garment_models as gm
+        head_of = {"garment": "garment_type", "neckline": "neckline_type", "sleeve_length": "sleeve_length", "sleeve_design": "sleeve_style"}
+        self.assertEqual(gm.HEADS, list(fs.HEADS))
+        for task, classes in training.TASKS.items():
+            self.assertTrue(set(classes) <= set(fs.TAXONOMY[head_of[task]]), task)
+            self.assertEqual(training.WEIGHTS[task], gm.FILES[head_of[task]])
+        self.assertEqual(training.TASKS["garment"], ["blouse", "t-shirt"])
+        # "none" is never predicted by the sleeve-design model: it follows from a sleeveless garment
+        self.assertEqual(set(fs.TAXONOMY["sleeve_style"]) - set(training.TASKS["sleeve_design"]), {"none"})
 
     def test_frontend_and_backend_read_the_same_canonical_file(self):
-        """One source of truth: config/garment_scope.json, imported by the frontend and loaded by the backend."""
-        canon_path = os.path.join(REPO_ROOT, "config", "garment_scope.json")
+        """One source of truth: backend/config/garment_scope.json, imported by the frontend and loaded by the backend."""
+        canon_path = os.path.join(REPO_ROOT, "backend", "config", "garment_scope.json")
         self.assertEqual(os.path.abspath(fs.SCOPE_FILE), canon_path)
         with open(canon_path, encoding="utf-8") as f:
             canon = json.load(f)
@@ -90,7 +87,7 @@ class TestTaxonomyParity(unittest.TestCase):
             for o in canon["taxonomy"][head]:
                 self.assertEqual(fs.support_of(head, o["value"])[0], o["support"], f"{head}={o['value']}")
         text = open(os.path.join(REPO_ROOT, "frontend", "src", "utils", "designSchema.js"), encoding="utf-8").read()
-        self.assertIn("from '../../../config/garment_scope.json'", text)
+        self.assertIn("from '../../../backend/config/garment_scope.json'", text)
         self.assertNotRegex(text, r"value: '(blouse|round-neck|sleeveless|puff-sleeve)'")   # no hand-copied list
 
     def test_scope_only_contains_active_supported_values(self):
@@ -114,7 +111,7 @@ class TestTaxonomyParity(unittest.TestCase):
 
 
 class TestOutsideScopePredictions(unittest.TestCase):
-    """The deployed M13 model still predicts 3/10/6/9 classes; those outside the 15 active ones are never remapped."""
+    """A stored prediction whose label is not selectable (for example from an older model) is never remapped."""
 
     def _ga(self, **labels):
         base = {"garment_type": "blouse", "neckline_type": "round-neck", "sleeve_length": "short-sleeve",
@@ -131,7 +128,8 @@ class TestOutsideScopePredictions(unittest.TestCase):
         self.assertTrue(all(p["supported_in_ui"] and p["suggested_label"] == p["label"] for p in out["predictions"].values()))
 
     def test_removed_classes_are_flagged_never_remapped_and_evidence_is_kept(self):
-        cases = {"neckline_type": ["boat-neck", "scoop-neck", "sweetheart-neck", "halter-neck", "high-neck"],
+        cases = {"garment_type": ["crop-top"],
+                 "neckline_type": ["boat-neck", "scoop-neck", "sweetheart-neck", "halter-neck", "high-neck", "off-shoulder"],
                  "sleeve_length": ["cap-length", "elbow-length", "three-quarter-sleeve"],
                  "sleeve_style": ["bishop-sleeve", "flutter-sleeve", "raglan-sleeve", "dolman-sleeve", "kimono-sleeve"]}
         for head, labels in cases.items():
@@ -155,19 +153,14 @@ class TestOutsideScopePredictions(unittest.TestCase):
         self.assertEqual(json.dumps(ga, sort_keys=True), snapshot)
         self.assertEqual(fs.annotate_predictions(None)["unsupported_heads"], [])
 
-    def test_api_validation_rejects_removed_classes_with_the_scope_message(self):
-        for head, value in (("neckline_type", "boat-neck"), ("sleeve_length", "elbow-length"), ("sleeve_style", "bishop-sleeve")):
-            clean, errors = fs.validate_attributes(dict(GOOD, **{head: value}))
-            self.assertEqual(clean, {})
-            self.assertEqual(errors[head]["code"], "OUTSIDE_SCOPE")
-            self.assertIn("outside the supported pattern scope", errors[head]["message"])
-        _, errors = fs.validate_attributes(dict(GOOD, neckline_type="nonsense"))
-        self.assertEqual(errors["neckline_type"]["code"], "NOT_IN_TAXONOMY")
-
-    def test_engine_internals_still_use_the_full_model_taxonomy(self):
-        clean, errors = fs.validate_attributes(dict(GOOD, sleeve_length="elbow-length"), scope="model")
-        self.assertEqual(errors, {})
-        self.assertEqual(clean["sleeve_length"], "elbow-length")
+    def test_api_validation_rejects_removed_classes(self):
+        for head, value in (("garment_type", "crop-top"), ("neckline_type", "off-shoulder"), ("neckline_type", "boat-neck"),
+                            ("sleeve_length", "elbow-length"), ("sleeve_style", "bishop-sleeve")):
+            for scope in ("ui", "model"):
+                clean, errors = fs.validate_attributes(dict(GOOD, **{head: value}), scope=scope)
+                self.assertEqual(clean, {})
+                self.assertEqual(errors[head]["code"], "NOT_IN_TAXONOMY", (head, value))
+                self.assertIn(fs.TAXONOMY[head][0], errors[head]["message"])       # the message lists what can be chosen
 
 
 class TestValidation(unittest.TestCase):
@@ -219,10 +212,13 @@ class TestValidation(unittest.TestCase):
         from app.logic.parametric_engine import ParametricEngine
         from app.logic.drafting.ease import DraftingError
         from tests.fixtures import measurements
-        for style in ("bishop-sleeve",):          # puff and bell now have real geometry
-            with self.assertRaises(DraftingError) as ctx:
-                ParametricEngine(measurements(), confirmed_to_cad_features(dict(GOOD, sleeve_style=style))).generate()
-            self.assertEqual(ctx.exception.code, "UNSUPPORTED_DESIGN", style)
+        with self.assertRaises(DraftingError) as ctx:
+            ParametricEngine(measurements(), confirmed_to_cad_features(dict(GOOD, sleeve_style="bishop-sleeve"))).generate()
+        self.assertEqual(ctx.exception.code, "INVALID_DESIGN_ATTRIBUTES")
+        with self.assertRaises(DraftingError) as ctx:                               # in the taxonomy, outside the scope
+            ParametricEngine(measurements(fabric_type="knit"), None, design_spec={"attributes": dict(
+                GOOD, garment_type="t-shirt", sleeve_style="puff-sleeve")}).generate()
+        self.assertEqual(ctx.exception.code, "UNSUPPORTED_DESIGN")
 
 
 class TestDesignSpec(unittest.TestCase):

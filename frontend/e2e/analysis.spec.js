@@ -4,7 +4,7 @@ import { test, expect } from '@playwright/test';
 import path from 'node:path';
 
 const API = process.env.E2E_API_URL || 'http://127.0.0.1:5055/api';
-const IMG = (n) => path.resolve('../ai_training/data/eval_real_product_set/images', n);
+const IMG = (n) => path.resolve('../backend/training/data/eval_real_product_set/images', n);
 const HEADS = ['garment_type', 'neckline_type', 'sleeve_length', 'sleeve_style'];
 
 async function signIn(page, request) {

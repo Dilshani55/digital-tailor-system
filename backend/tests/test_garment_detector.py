@@ -112,7 +112,7 @@ if __name__ == "__main__":
 
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-BENCH = os.path.join(ROOT, "ai_training", "data", "eval_real_product_set", "images")
+BENCH = os.path.join(ROOT, "backend", "training", "data", "eval_real_product_set", "images")
 
 
 @unittest.skipUnless(os.path.exists(gd.DEFAULT_DETECTOR_PATH),
