@@ -1,7 +1,7 @@
 # DeepFashion2 garment-detection subset (top / outerwear / dress)
 
 Built by `ai_training/scripts/v2/build_df2_detector_dataset.py` from the **local** DeepFashion2 copy
-(`Dataset/archive/DeepFashion2`, Kaggle mirror *deepfashion2-original-with-dataframes*, named in the approved
+(`ai_training/datasets/archive/DeepFashion2`, moved from `Dataset/archive/`; Kaggle mirror *deepfashion2-original-with-dataframes*, named in the approved
 proposal §4.3.2). No download.
 
 * **Licence:** DeepFashion2 is released for **non-commercial research use** only. Images are hard-linked (not

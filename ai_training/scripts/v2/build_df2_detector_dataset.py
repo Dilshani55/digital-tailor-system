@@ -1,6 +1,6 @@
 """Build a YOLO detection dataset (top / outerwear / dress) from the local DeepFashion2 copy.
 
-Source: Dataset/archive/DeepFashion2 (Kaggle mirror "deepfashion2-original-with-dataframes", named in the approved
+Source: ai_training/datasets/archive/DeepFashion2 (moved from Dataset/archive; Kaggle mirror "deepfashion2-original-with-dataframes", named in the approved
 proposal). Licence: DeepFashion2 is for non-commercial research only - images are hard-linked (not copied or
 redistributed) into ai_training/datasets/deepfashion2_det/, which is git-ignored.
 
@@ -17,7 +17,7 @@ import random
 
 import pandas as pd
 
-SRC = "Dataset/archive/DeepFashion2"
+SRC = "ai_training/datasets/archive/DeepFashion2"
 OUT = "ai_training/datasets/deepfashion2_det"
 CLASSES = ["top", "outerwear", "dress"]
 CAT = {

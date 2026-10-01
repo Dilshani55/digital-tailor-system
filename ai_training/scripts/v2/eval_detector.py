@@ -22,7 +22,7 @@ from PIL import Image
 sys.path.insert(0, "backend")
 from app.ai import garment_detector as gd  # noqa: E402
 
-DF2 = "Dataset/archive/DeepFashion2"
+DF2 = "ai_training/datasets/archive/DeepFashion2"
 DET_VAL = "ai_training/datasets/deepfashion2_det/images/val"
 DMM_SEGM = "ai_training/datasets/deepfashion_multimodal/raw/segm/segm"
 DMM_IMG = "ai_training/datasets/deepfashion_multimodal/raw/images"
