@@ -5,7 +5,7 @@ the right size, that a garment fits a person, that the fabric estimate matches w
 people find the system easy. Those need people. This page gives the procedure and an empty record sheet for each
 check.
 
-**Status of every check below: Pending human validation.** Nothing here has been carried out. Do not fill a sheet
+**Status of checks 1-4: Pending human validation.** None of them has been carried out (check 5 was done by one reviewer). Do not fill a sheet
 with estimated, remembered or invented values: write only what was measured, and leave the rest blank. A sheet
 without a name, a date and a signature is not evidence.
 
@@ -15,7 +15,7 @@ without a name, a date and a signature is not evidence.
 | 2 | Muslin fit trial | a person who sews + the wearer | Pending human validation |
 | 3 | Fabric consumption against a tailor's estimate and the cloth really used | a tailor | Pending human validation |
 | 4 | Usability | 5 or more participants who have not used the system | Pending human validation |
-| 5 | AI label review (collared neck, regular sleeve) | the project owner or a tailor | Pending human validation (0 of 725 photos) |
+| 5 | AI label review (collared neck, regular sleeve) | the project owner or a tailor | Done by one reviewer (725 photos); second-reviewer check pending |
 
 Before any of them: participants agree in writing to take part; record no names in the system or in the thesis
 (use P1, P2 ... and T1, T2 ...); body measurements are personal data and stay on this computer.
@@ -164,24 +164,20 @@ about 10 participants report counts, not percentages.
 
 ## 5. AI label review
 
-Purpose: two classes (collared neck, regular sleeve) have no trusted label in any dataset, so the classifier can
-neither learn nor be tested on them. A person must look at candidate photos.
+Purpose: two classes (collared neck, regular sleeve) had no trusted label in any dataset, so a person had to look at
+candidate photos.
 
-```powershell
-backend\venv\Scripts\python ai_training\scripts\v2\build_review_queue_m42.py      # only if the queue does not exist yet
-backend\venv\Scripts\python ai_training\tools\review_labels.py --reviewer "your name"
-```
+**Done on 1 Oct 2026**: 725 of 725 candidate photos answered by one reviewer (the project owner) in 24 minutes with
+a local review screen. Answers: neckline - collared 278, other 62, unclear 49, off-shoulder 1; sleeve - regular 288,
+other 18, unclear 16, puff 9, bell 4. The answers are stored in `backend/training/data/label_queue_m42/decisions.jsonl`
+and are part of the training data of the neckline and sleeve-design models.
 
-Open http://127.0.0.1:5090. For each photo press the number of the answer you **see** (definitions are on the
-screen). Use "unclear" when the feature is hidden and "other" when it is none of the classes. Answers are saved one
-by one in `ai_training/data/label_queue_m42/decisions.jsonl`; you can stop and continue later.
+Still pending: a second reviewer. One fast reviewer gives labels with some noise (a later look at a sample found a
+few jackets and coats among the answers), so the results for these two classes should be read with that in mind.
 
 | Field | Record |
 |---|---|
-| Reviewer (name, signature) | |
-| Dates of the review sessions | |
-| Photos answered (of 725) | |
-| Answers "unclear" / "other" | |
-| Second reviewer for a sample of 50 (name) and number of disagreements | |
+| Second reviewer for a sample of 50 (name, signature, date) | |
+| Number of the 50 where the two reviewers disagree | |
 
-What happens next and the fixed acceptance targets are in [AI_DATA_AUDIT.md](AI_DATA_AUDIT.md).
+How the labels are used and what the models achieve: [AI_MODELS.md](AI_MODELS.md).

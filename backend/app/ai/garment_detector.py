@@ -18,7 +18,7 @@ import threading
 from PIL import Image, ImageOps
 
 DEFAULT_DETECTOR_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "model", "garment_detector.pt"))
-MIN_SCORE = 0.35          # fixed before testing (not tuned); independent test: docs/AI_DETECTOR.md
+MIN_SCORE = 0.35          # fixed before testing (not tuned); independent test: docs/AI_MODELS.md
 CROP_MARGIN = 0.10        # margin the CALLER adds before classifying (same as the classifier training crops)
 SUPPORTED_CLASS = "top"
 

@@ -2,7 +2,7 @@
 """
 generate_evidence.py - reproducible pattern / nesting / PDF evidence (no database, no server needed).
 
-For representative blouse, T-shirt and crop-top designs (medium measurements) it writes to --out:
+For representative blouse and T-shirt designs (medium measurements) it writes to --out:
   <case>.pdf                  the printable 1:1 tiled PDF (114 cm fabric, best layout)
   <case>_page<N>.png          renders of the first pages (visual inspection)
   evidence.json               validation reports, nesting results for 90/114/150 cm, PDF facts
@@ -27,8 +27,8 @@ CASES = [
     ("blouse_v_long_woven", "blouse", "v-neck", "long-sleeve", "regular-sleeve", "woven", {}),
     ("tshirt_round_short_knit", "t-shirt", "round-neck", "short-sleeve", "regular-sleeve", "knit", {}),
     ("tshirt_v_long_knit", "t-shirt", "v-neck", "long-sleeve", "regular-sleeve", "knit", {}),
-    ("croptop_square_sleeveless_woven", "crop-top", "square-neck", "sleeveless", "none", "woven", {"garment_length_cm": 36}),
-    ("croptop_round_short_knit", "crop-top", "round-neck", "short-sleeve", "regular-sleeve", "knit", {"garment_length_cm": 36}),
+    ("blouse_square_sleeveless_woven", "blouse", "square-neck", "sleeveless", "none", "woven", {}),
+    ("blouse_round_short_puff_woven", "blouse", "round-neck", "short-sleeve", "puff-sleeve", "woven", {}),
 ]
 
 

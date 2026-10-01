@@ -1,0 +1,7 @@
+{
+  "garment_type": 0.5567432641983032,
+  "neckline_type": 0.9553759694099426,
+  "sleeve_length": 0.42383432388305664,
+  "sleeve_style": null,
+  "_note": "Score at or above which a suggestion is filled in automatically; null = always 'please select'. Chosen on validation photos with the garment detector's crop (backend/training/evaluate_models.py)."
+}

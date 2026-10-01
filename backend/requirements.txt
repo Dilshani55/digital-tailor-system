@@ -23,7 +23,7 @@ pillow==12.3.0
 numpy==2.5.1
 opencv-python==5.0.0.93
 
-# AI inference (multitask garment classifier, YOLOv8n-cls backbone)
+# AI inference (garment detector, MobileNetV3 and YOLOv8n-cls classifiers)
 torch==2.13.0
 torchvision==0.28.0
 ultralytics==8.4.102

@@ -108,7 +108,7 @@ def upload_image():
 def _locate_garment(filepath):
     """
     Finds the garment so the models see a garment crop, as they did in training (whole photos are less
-    accurate - docs/AI_EVIDENCE.md). Never raises: without a detector or a confident box the full image is used.
+    accurate - docs/AI_MODELS.md). Never raises: without a detector or a confident box the full image is used.
     """
     region = {"detector_available": False, "detected_class": None, "detector_score": None, "box_xyxy": None,
               "crop_box_xyxy": None, "used": "full_image", "supported_garment": None, "note": None}

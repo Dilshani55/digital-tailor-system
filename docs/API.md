@@ -33,7 +33,7 @@ Errors are always JSON and never contain stack traces or file paths:
 
 ## Measurements `/api/measurements` 🔒
 
-* `GET /schema` – the 13 fields, canonical unit (cm), the inch factor (2.54) and the requirement rules (which fields a design needs; `config/measurement_requirements.json`).
+* `GET /schema` – the 13 fields, canonical unit (cm), the inch factor (2.54) and the requirement rules (which fields a design needs; `backend/config/measurement_requirements.json`).
 * `POST /` – create a customer profile. Send numbers with a `unit` (`"cm"` default or `"in"`) and optionally `units` ({field: unit}) when values were typed in different units; inches are converted once, exactly (× 2.54). Every value must be a finite number > 0 (decimals fine); there are **no plausibility ranges** and values are never clamped. With `design` (the confirmed {garment_type, neckline_type, sleeve_length, sleeve_style}) exactly the measurements that design needs are required (e.g. sleeveless: no sleeve fields; short sleeve: no wrist; height: never); without `design` nothing is required. Optional: `client_name`, `fabric_type` (`woven`/`knit`), `fit_preference` (`close`/`standard`/`loose`). Response includes `measurement_id` and `entered_fields`.
 * `GET /`, `GET /{id}`, `PUT /{id}` (partial update, merged and re-validated), `DELETE /{id}`.
 
@@ -43,24 +43,23 @@ Fields (cm): `bust_cm, waist_cm, hip_cm, height_cm, neck_cm, shoulder_cm, across
 
 * `POST /upload` – the camera's EXIF rotation is applied before the photo is stored and analysed.
 * `POST /upload` – multipart field `image` (JPG/PNG/WEBP, ≤ 16 MB). The **content** is decoded and checked; the stored name is random. → `image_id`.
-* `POST /{image_id}/analyse` – runs the deployed 4-head classifier (M13, 3/10/6/9 outputs) → `garment_attributes.predictions.{garment_type,neckline_type,sleeve_length,sleeve_style}` each with the **genuine** `label`, `confidence`, `top_3`, `requires_user_confirmation`, plus model version/checksum. Every head also carries `uncertain` (true when the score is below that head's threshold, or the head has no reliable threshold: the UI shows the guess but does **not** pre-select it and asks the user to select), and `supported_in_ui` / `suggested_label` (the label if it is one of the 15 selectable classes, otherwise `null` — a prediction is **never** replaced by a similar class). If any head predicted a class outside the selectable list the response has `unsupported_heads` and `unsupported_message` = *"The detected feature is outside the supported pattern scope. Please confirm the design manually."*; nothing is auto-confirmed.
+* `POST /{image_id}/analyse` – finds the garment with the detector, then asks the four garment models (garment type: MobileNetV3-Large; neckline, sleeve length, sleeve style: YOLOv8n-cls) → `garment_attributes.predictions.{garment_type,neckline_type,sleeve_length,sleeve_style}`, each with the **genuine** `label`, `confidence`, `top_3`, `threshold_used`, plus a fingerprint of the model files. Every feature carries `uncertain` (true when the score is below that model's validation-chosen threshold, or the model has no threshold): the UI shows the guess but does **not** pre-select it. For a sleeveless garment `sleeve_style` is `none` with `derived_from: "sleeve_length"` (the sleeve-design model is not asked). A feature whose model file is missing is left out (`heads_without_a_model`). `garment_region` says whether the garment crop or the whole photo was analysed. Nothing is auto-confirmed.
   Failures are reported honestly and nothing is stored: model checkpoint missing/corrupt → `503 MODEL_UNAVAILABLE` ("choose the design manually"); unreadable photo → `422 IMAGE_NOT_ANALYSABLE`. The measured inference time is stored (`analysis_time_sec`).
-* `GET /model-status` – `{available: true, model_type, model_version, checkpoint_sha256}` after a real load of the checkpoint, or `{available: false, message}` (no file paths).
-* `POST /{image_id}/confirm-attributes` – body `{garment_type, neckline_type, sleeve_length, sleeve_style}`, each one of the 15 selectable classes. A model-only class (for example `boat-neck`, `elbow-length`, `bishop-sleeve`) is rejected with `400 OUTSIDE_SCOPE`. Stores the **user-confirmed** design (`design_spec`, with provenance ML-confirmed / user-corrected / manual). Only this confirmed design reaches the pattern engine.
-* `GET /design-schema` – the 15 selectable classes (3 / 5 / 3 / 4) with per-value drafting support, the sizes of the untouched model taxonomy (`model_class_counts` 3/10/6/9) and the project scope matrix.
+* `GET /model-status` – `{available, complete, model_type, model_version, checkpoint_sha256, models: {feature: {available, architecture, sha256, answers_automatically}}}` after really loading the model files, or `{available: false, message}` (no file paths).
+* `POST /{image_id}/confirm-attributes` – body `{garment_type, neckline_type, sleeve_length, sleeve_style}`, each one of the selectable classes; any other value (for example `crop-top`, `off-shoulder`, `boat-neck`) is rejected with `400 INVALID_DESIGN_ATTRIBUTES`. Stores the **user-confirmed** design (`design_spec`, with provenance ML-confirmed / user-corrected / manual). Only this confirmed design reaches the pattern engine.
+* `GET /design-schema` – the selectable classes (2 / 4 / 3 / 4) with per-value drafting support and the project scope matrix.
 * `GET /`, `GET /{id}`, `DELETE /{id}`, `GET /view/{filename}`.
 
-### Selectable classes (active taxonomy, 15)
+### Selectable classes
 
-garment_type: blouse, t-shirt, crop-top · neckline_type: round-neck, v-neck, square-neck, collared-neck, off-shoulder · sleeve_length: sleeveless, short-sleeve, long-sleeve · sleeve_style: none, regular-sleeve, puff-sleeve, bell-sleeve. `collared-neck`, `off-shoulder`, `puff-sleeve` and `bell-sleeve` can be selected and stored but the pattern engine cannot draft them yet (`422 UNSUPPORTED_DESIGN` at generation).
+garment_type: blouse, t-shirt · neckline_type: round-neck, v-neck, square-neck, collared-neck · sleeve_length: sleeveless, short-sleeve, long-sleeve · sleeve_style: none (only with sleeveless), regular-sleeve, puff-sleeve, bell-sleeve. `collared-neck` can be selected and stored but the pattern engine cannot draft it (`422 UNSUPPORTED_DESIGN` at generation). One file defines all of this for the backend and the frontend: `backend/config/garment_scope.json`.
 
-### Supported scope (what can actually be drafted)
+### Supported scope (what can actually be drafted: 25 of the 96 combinations)
 
-| Garment | Necklines | Sleeves (style must be `regular-sleeve`; `none` when sleeveless) |
+| Garment | Necklines | Sleeve length → sleeve styles |
 |---|---|---|
-| blouse | round, v, square | short, long |
-| t-shirt | round, v | short, long |
-| crop-top | round, v, square | sleeveless, short |
+| blouse | round, v, square | sleeveless → none · short → regular, puff, bell · long → regular, puff, bell |
+| t-shirt | round, v | short → regular · long → regular |
 
 Anything else returns `422 UNSUPPORTED_DESIGN` with an explanation; the system never substitutes another design.
 
@@ -73,7 +72,7 @@ Anything else returns `422 UNSUPPORTED_DESIGN` with an explanation; the system n
 
 ## Fabric `/api/fabric` 🔒
 
-* `POST /recommend` – **rule-based** recommendation (not machine-learned). Send `{confirmed_attributes: {garment_type, neckline_type, sleeve_length, sleeve_style}, fit_preference}`: every catalogue fabric comes back with `compatible` (the drafting-block rule: T-shirt → knit only, blouse → woven only, crop-top → either, the fabric decides the block), `incompatible_reason`, `recommendation_score` with `score_reasons` (each rule and its delta), `warnings` (e.g. sheer → lining needed), `gsm_range` (from the catalogue text), and `recommended` for the 2–4 best compatible fabrics (`recommended_ids`). No price, stock or availability exists or is returned. The legacy feature-string request is still accepted.
+* `POST /recommend` – **rule-based** recommendation (not machine-learned). Send `{confirmed_attributes: {garment_type, neckline_type, sleeve_length, sleeve_style}, fit_preference}`: every catalogue fabric comes back with `compatible` (the drafting-block rule: T-shirt → knit only, blouse → woven only), `incompatible_reason`, `recommendation_score` with `score_reasons` (each rule and its delta), `warnings` (e.g. sheer → lining needed), `gsm_range` (from the catalogue text), and `recommended` for the 2–4 best compatible fabrics (`recommended_ids`). No price, stock or availability exists or is returned. The legacy feature-string request is still accepted.
 * `GET /catalog`, `GET /{fabric_id}` – Cotton Poplin, Linen Blend, Rayon, Cotton Jersey Knit, … (ids are lower-case hyphenated).
 
 ## Estimate and PDF `/api/export` 🔒
