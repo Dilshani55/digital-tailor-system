@@ -1,0 +1,21 @@
+{
+  "train": {
+    "box_top": 10109,
+    "no_box": 1156,
+    "box_dress": 1827,
+    "box_outerwear": 642
+  },
+  "val": {
+    "box_top": 2065,
+    "box_outerwear": 104,
+    "no_box": 227,
+    "box_dress": 399
+  },
+  "test": {
+    "box_top": 2272,
+    "no_box": 252,
+    "box_outerwear": 149,
+    "box_dress": 417
+  },
+  "detector_sha256": "98e6e790a15b0a86472002324d40e888dabf4249ca20912c3bc2a8a37a29a077"
+}
