@@ -25,20 +25,59 @@ export function requiredFor(design) {
   return FIELD_KEYS.filter((k) => need.has(k));
 }
 
+// What may be typed: digits with at most one decimal point ("88", "88.5", ".5", "12."). A decimal comma
+// ("88,5", as phone keypads in some languages type it) means the same as a point. Anything else - a minus
+// sign, "1e2", "1,234.5", letters - is reported, never guessed at or silently changed.
+const PLAIN_DECIMAL = /^(\d+[.,]?\d*|[.,]\d+)$/;
+
 /** Parse what a user typed. Returns { value } | { error } | { missing: true }. Decimals are fine. */
 export function parseEntry(raw) {
   if (raw === null || raw === undefined) return { missing: true };
   if (typeof raw === 'string' && raw.trim() === '') return { missing: true };
   if (typeof raw === 'boolean') return { error: 'Must be a number.' };
-  const value = typeof raw === 'number' ? raw : Number(String(raw).trim());
+  let value = raw;
+  if (typeof raw !== 'number') {
+    const text = String(raw).trim();
+    if (/^-/.test(text) && PLAIN_DECIMAL.test(text.slice(1))) return { error: 'Must be greater than 0.' };
+    if (!PLAIN_DECIMAL.test(text)) return { error: `'${text}' is not a number. Use digits only, for example 88.5.` };
+    value = Number(text.replace(',', '.'));
+  }
   if (Number.isNaN(value)) return { error: `'${raw}' is not a number.` };
   if (!Number.isFinite(value)) return { error: 'Must be a finite number.' };
   if (value <= 0) return { error: 'Must be greater than 0.' };
   return { value };
 }
 
+/**
+ * A saved profile as form values: each measurement exactly as the user entered it, in the unit it was
+ * entered in (`original_values`), so that opening and saving a profile never rewrites a value. Falls back to
+ * the stored centimetres when no original is recorded (or it no longer matches the stored value).
+ * Returns { values: {key: text}, units: {key: 'cm'|'in'} }.
+ */
+export function storedEntries(profile) {
+  const values = {};
+  const units = {};
+  const originals = profile?.original_values || {};
+  FIELD_KEYS.forEach((key) => {
+    const cm = profile?.[key] ?? (key === 'armhole_depth_cm' ? profile?.armhole_cm : null);
+    if (cm === null || cm === undefined || cm === '') { values[key] = ''; return; }
+    const o = originals[key];
+    const same = o && UNITS.includes(o.unit) && Number.isFinite(Number(o.value))
+      && Math.abs(toCm(Number(o.value), o.unit) - Number(cm)) < 1e-6;
+    if (same && o.unit !== CANONICAL_UNIT) {
+      values[key] = String(o.value);
+      units[key] = o.unit;
+    } else {
+      values[key] = String(cm);
+    }
+  });
+  return { values, units };
+}
+
 /** Exact conversion to cm (1 in = 2.54 cm), no rounding. */
-export const toCm = (value, unit) => (unit === 'in' ? value * CM_PER_INCH : value);
+export function toCm(value, unit) {
+  return unit === 'in' ? value * CM_PER_INCH : value;
+}
 
 /**
  * What to show in an input for a value typed in `typedUnit` while the page shows `unit`.
@@ -47,7 +86,7 @@ export const toCm = (value, unit) => (unit === 'in' ? value * CM_PER_INCH : valu
  */
 export function displayValue(raw, typedUnit, unit) {
   const parsed = parseEntry(raw);
-  if (parsed.value === undefined || (typedUnit || unit) === unit) return raw ?? '';
+  if (parsed.value === undefined || (typedUnit || unit) === unit) return raw === null || raw === undefined ? '' : String(raw);
   const cm = toCm(parsed.value, typedUnit);
   const shown = unit === 'in' ? cm / CM_PER_INCH : cm;
   return String(Number(shown.toFixed(2)));

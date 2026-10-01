@@ -86,10 +86,28 @@ describe('FabricRecommendation (rule-based, design-aware)', () => {
     expect(screen.queryByTestId('fabric-cotton-jersey-knit')).toBeNull();   // not offered as a selectable card
   });
 
-  it('replaces an incompatible previous choice with the top recommendation', async () => {
+  it('never swaps a chosen fabric silently: an incompatible choice is cleared and explained', async () => {
     const onSelect = vi.fn();
     renderIt({ onSelectFabric: onSelect, selectedFabricId: 'cotton-jersey-knit' });
-    await waitFor(() => expect(onSelect).toHaveBeenCalledWith('cotton-poplin', 'Cotton Poplin', 'woven'));
+    expect((await screen.findByTestId('fabric-replaced')).textContent).toMatch(/cannot be used for this design.*choose another fabric/i);
+    expect(onSelect).toHaveBeenCalledWith('', '', undefined);
+    expect(onSelect).not.toHaveBeenCalledWith('cotton-poplin', 'Cotton Poplin', 'woven');
+  });
+
+  it('without a confirmed design it lists the whole catalogue, says recommendations are pending and lets a fabric be chosen', async () => {
+    const onSelect = vi.fn();
+    fabricAPI.getCatalog.mockResolvedValue({ data: { fabrics: [
+      { id: 'cotton-poplin', name: 'Cotton Poplin', construction: 'woven', stretch: 'No Stretch', breathability: 'High', weight: 'Light', simple_description: 'Crisp cotton.' },
+      { id: 'cotton-jersey-knit', name: 'Cotton Jersey Knit', construction: 'knit', stretch: 'Stretchable', breathability: 'High', weight: 'Light', simple_description: 'Soft knit.' },
+    ] } });
+    renderIt({ confirmedAttributes: null, onSelectFabric: onSelect });
+    expect(await screen.findByTestId('fabric-pending')).toHaveTextContent(/Recommendations pending/);
+    expect(screen.getByTestId('catalogue-fabrics').querySelectorAll('article')).toHaveLength(2);
+    expect(screen.queryByTestId('recommended-fabrics')).toBeNull();          // nothing is called "recommended" yet
+    expect(fabricAPI.getRecommendations).not.toHaveBeenCalled();
+    expect(onSelect).not.toHaveBeenCalled();                                // nothing is pre-selected
+    fireEvent.click(screen.getByTestId('fabric-cotton-jersey-knit').querySelector('button'));
+    expect(onSelect).toHaveBeenCalledWith('cotton-jersey-knit', 'Cotton Jersey Knit', 'knit');
   });
 
   it('shows the validation message and a retry on load failure', async () => {

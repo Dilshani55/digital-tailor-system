@@ -3,7 +3,7 @@ import { useLocation } from 'react-router-dom';
 import { measurementsAPI } from '../services/api';
 import LoadingSpinner from '../components/LoadingSpinner';
 import {
-  MEASUREMENT_FIELDS, FIELD_KEYS, validateMeasurements, displayValue, parseFieldErrors, buildPayload,
+  MEASUREMENT_FIELDS, FIELD_KEYS, validateMeasurements, displayValue, parseFieldErrors, buildPayload, storedEntries,
 } from '../utils/measurementSchema';
 import { GUIDES } from '../utils/measurementGuides';
 import { friendlyError } from '../utils/friendlyError';
@@ -25,7 +25,7 @@ const EMPTY = { client_name: '', fabric_type: 'woven', ...Object.fromEntries(FIE
 const fromProfile = (p) => ({
   client_name: p.client_name || '',
   fabric_type: p.fabric_type || 'woven',
-  ...Object.fromEntries(FIELD_KEYS.map((k) => [k, p[k] ?? (k === 'armhole_depth_cm' ? p.armhole_cm : null) ?? ''])),
+  ...storedEntries(p).values,
 });
 
 export default function Measurements() {
@@ -45,7 +45,7 @@ export default function Measurements() {
 
   const loadProfile = (p) => {
     setFormData(p ? fromProfile(p) : EMPTY);
-    setTypedUnits({});             // stored profile values are canonical centimetres
+    setTypedUnits(p ? storedEntries(p).units : {});   // each value keeps the unit it was entered in
     setUnit('cm');
     setFieldErrors({});
     setError('');
@@ -117,8 +117,12 @@ export default function Measurements() {
         if (res.data?.measurement_id) setSelectedProfileId(res.data.measurement_id);
         setSuccess('New measurement profile saved.');
       }
-      const updated = await measurementsAPI.getAll();
-      setProfiles(updated.data.measurements || []);
+      try {
+        const updated = await measurementsAPI.getAll();
+        setProfiles(updated.data.measurements || []);
+      } catch {
+        // the save itself succeeded; the list is refreshed the next time the page opens
+      }
       setTimeout(() => setSuccess(''), 3000);
     } catch (err) {
       const parsed = parseFieldErrors(err);
@@ -144,7 +148,7 @@ export default function Measurements() {
   const missing = MEASUREMENT_FIELDS.filter((f) => formData[f.key] === '' || formData[f.key] === null).length;
 
   return (
-    <div style={{ padding: '24px', maxWidth: '1400px', margin: '0 auto' }}>
+    <div style={{ padding: 'clamp(12px, 3vw, 24px)', maxWidth: '1400px', margin: '0 auto' }}>
       <div style={{ marginBottom: '24px' }}>
         <h1 style={{ fontSize: '22px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '4px' }}>Body measurements</h1>
         <p style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
@@ -181,13 +185,13 @@ export default function Measurements() {
         <div role="status" style={{ padding: '12px 16px', background: 'rgba(21, 128, 61, 0.1)', border: '1px solid var(--text-accent)', borderRadius: '8px', color: 'var(--text-accent)', fontSize: '13px', marginBottom: '20px' }}>{success}</div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '24px', alignItems: 'start' }}>
-        <form className="ui-card" style={{ padding: '24px' }} onSubmit={handleSave} noValidate>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(340px, 100%), 1fr))', gap: '24px', alignItems: 'start' }}>
+        <form className="ui-card" style={{ padding: 'clamp(14px, 4vw, 24px)', minWidth: 0 }} onSubmit={handleSave} noValidate>
           <h2 style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '18px', borderBottom: '1px solid var(--border)', paddingBottom: '12px' }}>
             Measurement details {missing > 0 && <small style={{ fontWeight: 400, color: 'var(--text-muted)' }}>· {missing} not measured yet</small>}
           </h2>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px 18px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(150px, 100%), 1fr))', gap: '14px 18px' }}>
             <div className="form-field" style={{ gridColumn: '1 / -1' }}>
               <label className="form-label" htmlFor="profile-name">Customer name</label>
               <input id="profile-name" type="text" className="form-input" value={formData.client_name}
@@ -205,7 +209,7 @@ export default function Measurements() {
                   </label>
                   <input
                     id={`profile-${key}`} ref={(el) => { inputs.current[key] = el; }}
-                    type="number" step="any" inputMode="decimal" className="form-input"
+                    type="text" inputMode="decimal" autoComplete="off" className="form-input"
                     value={displayValue(formData[key], typedUnits[key] || 'cm', unit)} aria-invalid={message ? 'true' : 'false'}
                     style={message ? { borderColor: '#B23B3B' } : undefined}
                     onFocus={() => setActiveField(key)} onChange={(e) => setField(key, e.target.value)}
@@ -231,7 +235,7 @@ export default function Measurements() {
           </div>
         </form>
 
-        <div className="ui-card" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px', position: 'sticky', top: 0 }}>
+        <div className="ui-card" style={{ padding: 'clamp(14px, 4vw, 24px)', minWidth: 0, display: 'flex', flexDirection: 'column', gap: '20px', position: 'sticky', top: 0 }}>
           <h2 style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)', margin: 0, borderBottom: '1px solid var(--border)', paddingBottom: '12px' }}>
             How to measure
           </h2>

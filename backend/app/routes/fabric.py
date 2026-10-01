@@ -86,7 +86,9 @@ def get_recommendations():
 @fabric_bp.route("/catalog", methods=["GET"])
 def get_catalog():
     """Returns the full fabric catalog/knowledge base."""
-    fabrics = get_all_fabrics()
+    # construction (woven / knit) and the GSM range are included so a fabric can be chosen before a design is confirmed
+    from app.logic.fabric_selection import TRAITS, _gsm
+    fabrics = [dict(f, construction=TRAITS[f["id"]][0], gsm_range=_gsm(f)) for f in get_all_fabrics()]
     return jsonify({
         "total": len(fabrics),
         "fabrics": fabrics

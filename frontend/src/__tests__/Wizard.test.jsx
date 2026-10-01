@@ -156,20 +156,91 @@ describe('creation wizard — full workflow', () => {
     await screen.findByText(/Thank you/);
   });
 
-  it('opens any step at any time with an honest empty state and real pending statuses', async () => {
+  it('opens any step at any time and shows that step\'s real controls, with no invented results', async () => {
     render(<MemoryRouter><Upload /></MemoryRouter>);
     ['Upload image', 'AI review', 'Measurements', 'Fabric & fit', 'Pattern preview', 'Fabric estimate', 'Download PDF'].forEach((label) => {
       expect(stepButton(label).disabled).toBe(false);
       expect(stepButton(label).getAttribute('aria-label')).toMatch(/\(Pending\)/);
     });
-    const cases = [['AI review', /No design yet/], ['Measurements', /Confirm the design first/], ['Fabric & fit', /Confirm the design first/],
-      ['Pattern preview', /No pattern yet/], ['Fabric estimate', /No current pattern/], ['Download PDF', /No pattern to export yet/]];
-    for (const [label, text] of cases) {
-      fireEvent.click(stepButton(label));
-      expect((await screen.findByTestId('step-empty')).textContent).toMatch(text);
-    }
+
+    fireEvent.click(stepButton('AI review'));                          // manual feature selection, no photo needed
+    expect(screen.getByTestId('fallback-notice')).toBeTruthy();
+    ['garment_type', 'neckline_type', 'sleeve_length', 'sleeve_style'].forEach((h) => expect(screen.getByTestId(`select-${h}`).disabled).toBe(false));
+    expect(screen.getByText(/Upload a photo for AI suggestions/)).toBeTruthy();
+
+    fireEvent.click(stepButton('Measurements'));                       // design selector + unit toggle + fields
+    expect(screen.getByTestId('design-selector')).toBeTruthy();
+    expect(screen.getByTestId('unit-toggle')).toBeTruthy();
+    expect(document.querySelector('#meas-bust_cm')).toBeTruthy();
+
+    fireEvent.click(stepButton('Fabric & fit'));                       // fit choices + fabric list, recommendations pending
+    expect(screen.getByTestId('step-empty').textContent).toMatch(/recommendations pending/i);
+    expect(screen.getByTestId('fit-standard').getAttribute('aria-pressed')).toBe('true');
+    fireEvent.click(screen.getByTestId('fit-loose'));
+    expect(screen.getByTestId('fit-loose').getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByText('pick-poplin')).toBeTruthy();
+
+    fireEvent.click(stepButton('Pattern preview'));                    // frame + what is still needed
+    expect(screen.getByTestId('step-empty').textContent).toMatch(/No pattern yet/);
+    expect(screen.getByTestId('pattern-placeholder')).toBeTruthy();
+    expect([...screen.getByTestId('readiness').querySelectorAll('li')].map((li) => li.dataset.done)).toEqual(['no', 'no', 'no']);
+    expect(screen.queryByTestId('pattern-preview')).toBeNull();
+
+    fireEvent.click(stepButton('Fabric estimate'));                    // layout control + the three widths, no numbers
+    expect(screen.getByTestId('step-empty').textContent).toMatch(/No current pattern/);
+    expect(screen.getByLabelText('Cutting layout').disabled).toBe(false);
+    const widths = screen.getByTestId('width-choices');
+    ['36" · 91.44 cm', '45" · 114.3 cm', '60" · 152.4 cm'].forEach((t) => expect(widths.textContent).toContain(t));
+    fireEvent.click(screen.getByTestId('width-choice-60'));
+    expect(screen.getByTestId('width-choice-60').getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByTestId('estimate-results').textContent).not.toMatch(/\d/);     // "Not calculated", never a number
+    expect(screen.queryByTestId('width-comparison')).toBeNull();
+
+    fireEvent.click(stepButton('Download PDF'));                       // PDF contents + the create button explains
+    expect(screen.getByTestId('step-empty').textContent).toMatch(/No pattern to export yet/);
+    expect(screen.getByText(/Calibration square 5 × 5 cm/)).toBeTruthy();
+    expect(screen.getByTestId('pdf-placeholder')).toBeTruthy();
+    expect(screen.getByTestId('readiness').querySelectorAll('li')).toHaveLength(5);
+    fireEvent.click(screen.getByText('Create printable PDF'));
+    expect(screen.getByRole('alert').textContent).toMatch(/Generate the pattern first/);
+
+    fireEvent.click(stepButton('Fabric & fit'));                       // the fit chosen earlier is still there
+    expect(screen.getByTestId('fit-loose').getAttribute('aria-pressed')).toBe('true');
+    fireEvent.click(screen.getByText('Confirm and generate pattern'));
+    expect(screen.getByRole('alert').textContent).toMatch(/confirm a supported design/i);
+
     expect(patternsAPI.generate).not.toHaveBeenCalled();
     expect(exportAPI.estimates).not.toHaveBeenCalled();
+    expect(exportAPI.pdf).not.toHaveBeenCalled();
+  });
+
+  it('a checklist button takes the user to the step that is still missing', async () => {
+    render(<MemoryRouter><Upload /></MemoryRouter>);
+    fireEvent.click(stepButton('Pattern preview'));
+    fireEvent.click(screen.getByText('Go to measurements'));
+    await heading('Body measurements');
+    fireEvent.click(stepButton('Pattern preview'));
+    fireEvent.click(screen.getByText('Generate pattern'));
+    expect(screen.getByRole('alert').textContent).toMatch(/confirm a supported design/i);
+    expect(patternsAPI.generate).not.toHaveBeenCalled();
+  });
+
+  it('the design can be chosen in the AI review step without a photo and is used for the pattern', async () => {
+    render(<MemoryRouter><Upload /></MemoryRouter>);
+    fireEvent.change(screen.getByLabelText('Customer name'), { target: { value: 'Test Customer' } });
+    fireEvent.click(stepButton('AI review'));
+    chooseDesign();
+    expect(imagesAPI.confirmAttributes).not.toHaveBeenCalled();        // no photo: nothing to confirm on the server yet
+    expect(stepButton('AI review').getAttribute('data-status')).toBe('done');
+    expect(stepButton('Upload image').getAttribute('data-status')).toBe('done');
+    fireEvent.click(screen.getByText('Continue to measurements'));
+    fill();
+    fireEvent.click(screen.getByText('Save and continue'));
+    await heading('Choose fabric and fit');
+    fireEvent.click(screen.getByText('pick-poplin'));
+    fireEvent.click(screen.getByText('Confirm and generate pattern'));
+    await heading('Pattern preview');
+    expect(patternsAPI.generate.mock.calls[0][0]).toMatchObject({ image_id: 'manual', confirmed_attributes: CONFIRMED });
   });
 
   it('keeps entered data when jumping between steps', async () => {
@@ -325,7 +396,10 @@ describe('creation wizard — full workflow', () => {
     expect(screen.getByTestId('width-45').disabled).toBe(true);
     expect(screen.getAllByText('Calculation failed').length).toBeGreaterThan(0);
     fireEvent.click(screen.getByText('Continue to PDF export'));
-    expect(screen.getByText('Create printable PDF').disabled).toBe(true);        // no PDF without an estimate
+    expect(screen.getByTestId('pdf-needs').textContent).toMatch(/fabric estimate/);
+    fireEvent.click(screen.getByText('Create printable PDF'));                   // no PDF without an estimate
+    expect(screen.getAllByRole('alert').some((a) => /Calculate the fabric estimate/.test(a.textContent))).toBe(true);
+    expect(exportAPI.pdf).not.toHaveBeenCalled();
   });
 });
 

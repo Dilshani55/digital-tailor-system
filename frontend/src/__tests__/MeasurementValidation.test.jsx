@@ -8,7 +8,7 @@ import Upload from '../pages/Upload';
 import { measurementsAPI } from '../services/api';
 import {
   FIELD_KEYS, LABELS, requiredFor, validateMeasurements, displayValue, canonicalCm, parseFieldErrors,
-  buildPayload, parseEntry, toCm, MEASUREMENT_FIELDS,
+  buildPayload, parseEntry, toCm, MEASUREMENT_FIELDS, storedEntries,
 } from '../utils/measurementSchema';
 import { sleeveEnd } from '../components/MeasureFigure';
 
@@ -82,6 +82,37 @@ describe('measurementSchema utils', () => {
     expect(payload).toEqual({ unit: 'cm', units: { bust_cm: 'in', neck_cm: 'cm' }, bust_cm: 34.5, neck_cm: 36.2 });
     expect(buildPayload({ bust_cm: 88, wrist_cm: 16 }, {}, 'cm', ['bust_cm'])).toEqual({ unit: 'cm', units: { bust_cm: 'cm' }, bust_cm: 88 });
     expect(parseEntry('   ')).toEqual({ missing: true });
+  });
+
+  it('reads only plain decimals: a comma is a decimal point, anything else is reported and never guessed', () => {
+    expect(parseEntry('88.5')).toEqual({ value: 88.5 });
+    expect(parseEntry(' 88.50 ')).toEqual({ value: 88.5 });
+    expect(parseEntry('12.')).toEqual({ value: 12 });
+    expect(parseEntry('.5')).toEqual({ value: 0.5 });
+    expect(parseEntry('90,5')).toEqual({ value: 90.5 });            // phone keypads in some languages type a comma
+    expect(parseEntry('034')).toEqual({ value: 34 });
+    expect(parseEntry(88.5)).toEqual({ value: 88.5 });
+    for (const bad of ['1e2', '1,234.5', '88cm', '8 8', '+5', '0x10', '.', ',', '1.2.3']) {
+      expect(parseEntry(bad).error, bad).toMatch(/not a number/);
+    }
+    expect(parseEntry('-5').error).toMatch(/greater than 0/);
+    expect(parseEntry('0').error).toMatch(/greater than 0/);
+    expect(parseEntry('0.0').error).toMatch(/greater than 0/);
+  });
+
+  it('opens a saved profile with every value as it was entered, in the unit it was entered in', () => {
+    const p = { bust_cm: 84.58200000000001, waist_cm: 70, hip_cm: null, neck_cm: 36.5, armhole_cm: 20,
+      original_values: { bust_cm: { value: 33.3, unit: 'in' }, waist_cm: { value: 70, unit: 'cm' },
+        neck_cm: { value: 99, unit: 'in' } } };                     // stale original (does not match the stored cm)
+    const { values, units } = storedEntries(p);
+    expect(values.bust_cm).toBe('33.3');
+    expect(units).toEqual({ bust_cm: 'in' });
+    expect(values.waist_cm).toBe('70');
+    expect(values.neck_cm).toBe('36.5');                             // falls back to the stored centimetres
+    expect(values.hip_cm).toBe('');
+    expect(values.armhole_depth_cm).toBe('20');                      // legacy field name
+    expect(canonicalCm(values, units).bust_cm).toBeCloseTo(84.582, 10);
+    expect(storedEntries(null).values.bust_cm).toBe('');
   });
 
   it('flattens structured backend errors', () => {
@@ -256,11 +287,45 @@ describe('Measurement form in the Upload wizard', () => {
     expect(screen.queryByTestId('error-bust_cm')).toBeNull();
   });
 
-  it('an unsupported or unconfirmed design shows no measurement fields and saves nothing', () => {
-    openMeasurementStep({ ...D.shortBlouse, neckline_type: 'halter-neck' });
-    expect(input('bust_cm')).toBeNull();
-    expect(screen.getByTestId('step-empty').textContent).toMatch(/Confirm the design first/);
-    expect(screen.getByText('Save and continue').disabled).toBe(true);
+  it('with no confirmed design the step shows a design selector and the base fields; saving explains, nothing is sent', () => {
+    openMeasurementStep({ ...D.shortBlouse, neckline_type: 'halter-neck' });   // not selectable -> never confirmed
+    expect(screen.getByTestId('design-selector')).toBeTruthy();
+    expect(shown()).toEqual(BODICE);                                  // what every design needs; no sleeve / hip yet
+    expect(screen.getByTestId('base-fields-note').textContent).toMatch(/Every design needs these 8/);
+    fireEvent.change(input('bust_cm'), { target: { value: '88.5' } });
+    expect(screen.getByText('Save and continue').disabled).toBe(false);       // navigation / saving is never a dead button
+    save();
+    expect(screen.getByRole('alert').textContent).toMatch(/confirm the design first/i);
     expect(measurementsAPI.save).not.toHaveBeenCalled();
+    expect(input('bust_cm').value).toBe('88.5');                      // the typed value is kept
+  });
+
+  it('confirming the design inside the measurement step adds the fields it needs and keeps typed values', () => {
+    render(<MemoryRouter><Upload /></MemoryRouter>);
+    fireEvent.change(screen.getByLabelText('Customer name'), { target: { value: 'Test Customer' } });
+    fireEvent.click(screen.getByRole('button', { name: /^Step 4: Measurements/ }));
+    fireEvent.change(input('bust_cm'), { target: { value: '34.5' } });
+    expect(input('sleeve_cm')).toBeNull();
+    Object.entries(D.longTshirt).forEach(([k, v]) => fireEvent.change(screen.getByTestId(`select-${k}`), { target: { value: v } }));
+    fireEvent.click(screen.getByTestId('confirm-btn'));
+    expect(screen.queryByTestId('design-selector')).toBeNull();
+    expect(shown()).toEqual(expect.arrayContaining(['hip_cm', 'bicep_cm', 'sleeve_cm', 'wrist_cm']));
+    expect(input('bust_cm').value).toBe('34.5');
+  });
+
+  it('uses text inputs so nothing typed is dropped, and reports a mistyped value beside its field', async () => {
+    openMeasurementStep();
+    expect(document.querySelectorAll('input[type="number"]').length).toBe(0);
+    fillAll(VALID);
+    fireEvent.change(input('bust_cm'), { target: { value: '1e2' } });
+    expect(input('bust_cm').value).toBe('1e2');
+    save();
+    expect((await screen.findByTestId('error-bust_cm')).textContent).toMatch(/not a number/);
+    expect(input('waist_cm').value).toBe('70');                       // other inputs preserved
+    expect(measurementsAPI.save).not.toHaveBeenCalled();
+    fireEvent.change(input('bust_cm'), { target: { value: '88,5' } });
+    save();
+    await waitFor(() => expect(measurementsAPI.save).toHaveBeenCalled());
+    expect(measurementsAPI.save.mock.calls[0][0].bust_cm).toBe(88.5);
   });
 });

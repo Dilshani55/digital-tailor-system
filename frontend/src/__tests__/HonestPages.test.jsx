@@ -143,11 +143,56 @@ describe('Measurements page', () => {
     render(<MemoryRouter><Measurements /></MemoryRouter>);
     expect(await screen.findByLabelText(/Shoulder length \(cm\)/)).toBeTruthy();
     expect(screen.queryByText(/Shoulder width/)).toBeNull();
-    expect(document.querySelectorAll('input[id^="profile-"][type="number"]').length).toBe(13);
+    expect(document.querySelectorAll('input[id^="profile-"][inputmode="decimal"]').length).toBe(13);
+    expect(document.querySelectorAll('input[type="number"]').length).toBe(0);      // number inputs silently drop "," and accept "1e2"
     fireEvent.focus(screen.getByLabelText(/Shoulder length \(cm\)/));
     expect(screen.getByTestId('measure-guide').textContent).toMatch(/\(neck point\) to the shoulder tip/);
     expect(document.body.textContent).not.toMatch(/Accepted range|plausible range|All 13 measurements/);
-    expect(screen.getByLabelText(/^1\. Bust \(cm\)/)).toHaveValue(88);
+    expect(screen.getByLabelText(/^1\. Bust \(cm\)/)).toHaveValue('88');
+  });
+
+  it('keeps exactly what is typed, reports a mistyped value beside its field and keeps the other inputs', async () => {
+    measurementsAPI.getAll.mockResolvedValue({ data: { measurements: [PROFILE] } });
+    render(<MemoryRouter><Measurements /></MemoryRouter>);
+    const bust = await screen.findByLabelText(/^1\. Bust \(cm\)/);
+    for (const text of ['12.', '0.5', '.5', '88.50', '90,5']) {
+      fireEvent.change(bust, { target: { value: text } });
+      expect(bust).toHaveValue(text);                                       // never rewritten while typing
+    }
+    fireEvent.change(bust, { target: { value: '1e2' } });
+    fireEvent.change(screen.getByLabelText(/^2\. Waist \(cm\)/), { target: { value: '71.25' } });
+    fireEvent.click(screen.getByText('Save measurements'));
+    expect((await screen.findByTestId('profile-error-bust_cm')).textContent).toMatch(/not a number/);
+    expect(measurementsAPI.update).not.toHaveBeenCalled();
+    expect(bust).toHaveValue('1e2');                                         // the wrong value stays for the user to fix
+    expect(screen.getByLabelText(/^2\. Waist \(cm\)/)).toHaveValue('71.25');  // other inputs are kept
+  });
+
+  it('a decimal comma means a decimal point; nothing is multiplied by ten', async () => {
+    measurementsAPI.getAll.mockResolvedValue({ data: { measurements: [PROFILE] } });
+    measurementsAPI.update.mockResolvedValue({ data: {} });
+    render(<MemoryRouter><Measurements /></MemoryRouter>);
+    fireEvent.change(await screen.findByLabelText(/^1\. Bust \(cm\)/), { target: { value: '90,5' } });
+    fireEvent.click(screen.getByText('Save measurements'));
+    await waitFor(() => expect(measurementsAPI.update).toHaveBeenCalled());
+    expect(measurementsAPI.update.mock.calls[0][1].bust_cm).toBe(90.5);
+  });
+
+  it('re-opening a profile shows each value as it was entered and saving again does not rewrite it', async () => {
+    const inches = { ...PROFILE, bust_cm: 84.58200000000001, original_values: { bust_cm: { value: 33.3, unit: 'in' } } };
+    measurementsAPI.getAll.mockResolvedValue({ data: { measurements: [inches] } });
+    measurementsAPI.update.mockResolvedValue({ data: {} });
+    render(<MemoryRouter><Measurements /></MemoryRouter>);
+    expect(await screen.findByLabelText(/^1\. Bust \(cm\)/)).toHaveValue('84.58');      // shown in cm, no float noise
+    fireEvent.click(screen.getByTestId('page-unit-in'));
+    expect(screen.getByLabelText(/^1\. Bust \(in\)/)).toHaveValue('33.3');             // exactly as entered
+    fireEvent.click(screen.getByText('Save measurements'));
+    await waitFor(() => expect(measurementsAPI.update).toHaveBeenCalled());
+    const body = measurementsAPI.update.mock.calls[0][1];
+    expect(body.bust_cm).toBe(33.3);
+    expect(body.units.bust_cm).toBe('in');
+    expect(body).toMatchObject({ waist_cm: 70 });
+    expect(body.units.waist_cm).toBe('cm');
   });
 
   it('shows the server’s field error next to the field', async () => {
@@ -163,7 +208,7 @@ describe('Measurements page', () => {
     measurementsAPI.update.mockResolvedValue({ data: {} });
     render(<MemoryRouter><Measurements /></MemoryRouter>);
     fireEvent.click(await screen.findByTestId('page-unit-in'));
-    expect(screen.getByLabelText(/^1\. Bust \(in\)/)).toHaveValue(34.65);          // 88 cm shown in inches
+    expect(screen.getByLabelText(/^1\. Bust \(in\)/)).toHaveValue('34.65');        // 88 cm shown in inches
     fireEvent.change(screen.getByLabelText(/^2\. Waist \(in\)/), { target: { value: '27.5' } });
     fireEvent.click(screen.getByText('Save measurements'));
     await waitFor(() => expect(measurementsAPI.update).toHaveBeenCalled());

@@ -183,6 +183,14 @@ test('out-of-scope design cannot be confirmed through the UI', async ({ page, re
   await expect(page.getByTestId('select-sleeve_style').locator('option[value="puff-sleeve"]')).toBeDisabled();
   await expect(page.getByTestId('confirm-btn')).toBeDisabled();            // style still missing
   await page.getByRole('button', { name: 'Continue to measurements' }).click();       // navigation is free ...
-  await expect(page.getByTestId('step-empty')).toContainText(/Confirm the design first/);   // ... but nothing is drafted
-  await expect(page.locator('#meas-bust_cm')).toHaveCount(0);
+  await expect(page.getByTestId('design-selector')).toBeVisible();                    // ... the step asks for the design
+  await expect(page.getByTestId('design-selector').getByTestId('confirm-btn')).toBeDisabled();
+  await expect(page.locator('#meas-sleeve_cm')).toHaveCount(0);                       // no design-specific fields yet
+  await page.locator('#meas-bust_cm').fill('88');
+  await page.getByRole('button', { name: 'Save and continue' }).click();
+  await expect(page.getByRole('alert')).toContainText(/confirm the design first/i);   // ... and nothing is saved or drafted
+  await page.getByRole('button', { name: /^Step 5:/ }).click();
+  await page.getByRole('button', { name: /generate pattern/i }).click();
+  await expect(page.getByRole('alert').first()).toContainText(/confirm a supported design/i);
+  await expect(page.getByTestId('pattern-preview')).toHaveCount(0);
 });

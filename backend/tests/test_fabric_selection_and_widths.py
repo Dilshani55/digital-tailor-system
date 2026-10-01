@@ -67,6 +67,20 @@ class TestRecommendation(unittest.TestCase):
         bad = c.post("/api/fabric/recommend", json={"confirmed_attributes": D(garment="dress")})
         self.assertEqual(bad.status_code, 400)
 
+    def test_catalogue_lists_every_fabric_with_its_construction_and_no_recommendation(self):
+        """Used by the fabric step before a design is confirmed: a plain list, nothing ranked or invented."""
+        app = create_app()
+        app.config["TESTING"] = True
+        body = app.test_client().get("/api/fabric/catalog").get_json()
+        self.assertEqual(body["total"], 10)
+        self.assertEqual({f["construction"] for f in body["fabrics"]}, {"woven", "knit"})
+        by_id = {f["id"]: f for f in body["fabrics"]}
+        self.assertEqual(by_id["cotton-jersey-knit"]["construction"], "knit")
+        self.assertEqual(by_id["cotton-poplin"]["construction"], "woven")
+        for f in body["fabrics"]:
+            for absent in ("recommended", "recommendation_score", "price", "stock"):
+                self.assertNotIn(absent, f)
+
 
 def _pieces(style="regular-sleeve", length="short-sleeve"):
     return ParametricEngine(measurements("medium"), design_spec={"attributes": design("blouse", "round-neck", length, style)}).generate()["pattern_pieces"]

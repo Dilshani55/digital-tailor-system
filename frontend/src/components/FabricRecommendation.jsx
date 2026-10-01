@@ -19,30 +19,42 @@ export default function FabricRecommendation({ confirmedAttributes, fitPreferenc
   const [modalFabric, setModalFabric] = useState(null);
   const [showOthers, setShowOthers] = useState(false);
   const [failedImages, setFailedImages] = useState({});
+  const [replaced, setReplaced] = useState('');         // a chosen fabric the confirmed design cannot use
+  const pending = !confirmedAttributes;                 // no confirmed design yet: plain catalogue, no ranking
 
-  const pick = (f) => onSelectFabric(f.id, f.name, f.construction);
+  const pick = (f) => { setReplaced(''); onSelectFabric(f.id, f.name, f.construction); };
 
   const load = async () => {
     setLoading(true);
     setError('');
     try {
+      if (pending) {
+        const res = await fabricAPI.getCatalog();
+        setData({ fabrics: (res.data.fabrics || []).map((f) => ({ ...f, compatible: true, recommended: false, explanation: f.simple_description })) });
+        return;
+      }
       const res = await fabricAPI.getRecommendations({ confirmed_attributes: confirmedAttributes, fit_preference: fitPreference });
       setData(res.data);
       const fabrics = res.data.fabrics || res.data.recommendations || [];
       const current = fabrics.find((f) => f.id === selectedFabricId);
-      if (!current || !current.compatible) {                     // keep a compatible choice, else take the top recommendation
+      if (current && !current.compatible) {
+        // never swap the user's fabric silently: clear it and say why
+        setReplaced(`${current.name} cannot be used for this design${current.incompatible_reason ? ` (${current.incompatible_reason})` : ''}. Please choose another fabric.`);
+        onSelectFabric('', '', undefined);
+      } else if (!current) {                                     // nothing chosen yet: start from the top recommendation
         const top = fabrics.find((f) => f.recommended);
         if (top) pick(top);
       }
     } catch {
-      setError('Fabric recommendations could not be loaded. Please check the connection and try again.');
+      setError(pending ? 'The fabric list could not be loaded. Please check the connection and try again.'
+        : 'Fabric recommendations could not be loaded. Please check the connection and try again.');
     } finally {
       setLoading(false);
     }
   };
 
   const designKey = JSON.stringify(confirmedAttributes || {});
-  useEffect(() => { if (confirmedAttributes) load(); }, [designKey, fitPreference]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { load(); }, [designKey, fitPreference]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fabrics = data?.fabrics || data?.recommendations || [];
   const recommended = fabrics.filter((f) => f.recommended);
@@ -82,14 +94,21 @@ export default function FabricRecommendation({ confirmedAttributes, fitPreferenc
     <section className="fabric-recommendation" aria-labelledby="fabric-h">
       <div className="section-head">
         <div>
-          <h3 id="fabric-h">Recommended fabrics</h3>
-          <p>Chosen by fixed, explainable rules from your confirmed design and fit — not by AI.</p>
+          <h3 id="fabric-h">{pending ? 'Fabrics' : 'Recommended fabrics'}</h3>
+          <p>{pending ? 'All fabrics in the catalogue. Recommendations for your design are worked out once the design is confirmed.'
+            : 'Chosen by fixed, explainable rules from your confirmed design and fit — not by AI.'}</p>
         </div>
         <span className="method-badge">Rule-Based Fabric Recommendation</span>
       </div>
 
+      {pending && (
+        <div role="status" className="inline-alert" data-testid="fabric-pending">
+          <Info size={15} /> Recommendations pending: no design is confirmed yet. You can already pick a fabric; it is checked against the design when you confirm it.
+        </div>
+      )}
+      {replaced && <div className="inline-alert error" role="alert" data-testid="fabric-replaced"><AlertTriangle size={15} /> {replaced}</div>}
       {validationError && <div className="inline-alert error" role="alert"><AlertTriangle size={15} /> {validationError}</div>}
-      {loading && !data && <p className="muted">Ranking fabrics for this design…</p>}
+      {loading && !data && <p className="muted">{pending ? 'Loading the fabric list…' : 'Ranking fabrics for this design…'}</p>}
       {error && (
         <div className="inline-alert error" role="alert">
           {error}
@@ -99,7 +118,9 @@ export default function FabricRecommendation({ confirmedAttributes, fitPreferenc
 
       {recommended.length > 0 && <div className="fabric-grid" data-testid="recommended-fabrics">{recommended.map(card)}</div>}
 
-      {others.length > 0 && (
+      {pending && others.length > 0 && <div className="fabric-grid compact" data-testid="catalogue-fabrics">{others.map(card)}</div>}
+
+      {!pending && others.length > 0 && (
         <div className="fabric-more">
           <button type="button" className="text-btn" aria-expanded={showOthers} onClick={() => setShowOthers((v) => !v)}>
             <ChevronDown size={15} className={showOthers ? 'rotate' : ''} /> Other compatible fabrics ({others.length})
