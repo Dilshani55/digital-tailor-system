@@ -137,6 +137,24 @@ class TestApp(unittest.TestCase):
         with open(os.path.join(os.path.dirname(__file__), "..", ".env.example"), encoding="utf-8") as f:
             self.assertNotIn("jwt-digital-tailor-secret-key-2026", f.read())
 
+    def test_env_file_gives_stable_secrets_but_never_overrides_the_real_environment(self):
+        import tempfile
+        from unittest.mock import patch
+        import config
+        fd, path = tempfile.mkstemp(suffix=".env")
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write('# comment\n\nAUDIT_A=from-file\nAUDIT_B="quoted value"\nAUDIT_EMPTY=\nnot a setting\n')
+        with patch.dict(os.environ, {"AUDIT_A": "from-environment"}, clear=False):
+            for key in ("AUDIT_B", "AUDIT_EMPTY"):
+                os.environ.pop(key, None)
+            config._load_env_file(path)
+            self.assertEqual(os.environ["AUDIT_A"], "from-environment")      # deployment/test settings win
+            self.assertEqual(os.environ["AUDIT_B"], "quoted value")
+            self.assertNotIn("AUDIT_EMPTY", os.environ)                       # empty values are not settings
+            os.environ.pop("AUDIT_B", None)
+        config._load_env_file(path + ".missing")                              # a missing file is not an error
+        os.remove(path)
+
     def test_cors_only_for_configured_origins(self):
         c = self.app.test_client()
         ok = c.options("/api/auth/login", headers={"Origin": "http://localhost:3000", "Access-Control-Request-Method": "POST"})

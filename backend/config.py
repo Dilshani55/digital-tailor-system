@@ -2,6 +2,30 @@ import os
 import secrets
 
 
+def _load_env_file(path):
+    """
+    Reads backend/.env (KEY=VALUE lines, # comments) into the environment without any extra package.
+    Real environment variables win, so a test or deployment can still override any value.
+    Without stable secrets every restart would sign users out.
+    """
+    if not os.path.isfile(path):
+        return
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            key, value = key.strip(), value.strip()
+            if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+                value = value[1:-1]
+            if key and value:
+                os.environ.setdefault(key, value)
+
+
+_load_env_file(os.path.join(os.path.abspath(os.path.dirname(__file__)), ".env"))
+
+
 def _secret(name):
     """Secret from the environment; if absent, a random per-process value (never a shared constant)."""
     return os.environ.get(name) or secrets.token_hex(32)
