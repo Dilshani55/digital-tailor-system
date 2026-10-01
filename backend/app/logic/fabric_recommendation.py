@@ -450,7 +450,7 @@ def recommend_fabrics(garment_type, neckline=None, sleeves=None, darts=None, sea
         if is_sleeveless or garment_type_norm in ["crop top", "blouse"]:
             if fabric["breathability"].startswith("High") or fabric["breathability"].startswith("Very High"):
                 score += 5
-                reasons.append("Highly breathable material optimized for warm Sri Lankan climate")
+                reasons.append("Highly breathable material suited to the warm Sri Lankan climate")
         
         # Cap score between 30 and 98
         score = max(30, min(98, score))

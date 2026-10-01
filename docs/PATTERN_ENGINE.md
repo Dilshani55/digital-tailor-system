@@ -14,6 +14,10 @@ validated measurements ─► ease profile ─► drafting values ─► base bl
 
 The structure follows conventional metric bodice/sleeve drafting (fitted bodice with waist darts, a sleeve cap constructed to fit the armhole, ease added to body measurements). **No equation has been traced to, or verified against, Winifred Aldrich's *Metric Pattern Cutting*** — the book is not in this repository — so the code does **not** call itself Aldrich-based. Every constant that is not derived from the person's measurements is registered in `assumptions.py` as a `project_assumption` (about 25 values, e.g. shoulder slope 18°, back-neck depth 2 cm, waist-to-hip 20 cm, ease values). Those assumptions have **not** been validated by fitting trials.
 
+## Which designs are drafted
+
+Of the 180 combinations the form can express (3 garments x 5 necklines x 3 sleeve lengths x 4 sleeve styles), **34 are drafted**; the scope is one file, `config/garment_taxonomy.json`, read by the API, the UI and the engine. The other 146 (collared and off-shoulder necklines, a sleeveless blouse, a puff-sleeve T-shirt, ...) are **refused with the reason** - by the form, by the API (`422 UNSUPPORTED_DESIGN`) and by the engine itself. Nothing is ever replaced by a similar design: the engine no longer draws a round neckline for a neckline it cannot draft. Stretch-knit (negative ease) is refused too. `backend/tests/test_design_matrix.py` drafts all 34 for three body sizes and every fabric construction the garment allows and checks pieces, quantities, ease, darts, sleeve cap against armhole, sleeve length, seam allowance, grainline, fold line and notches, then lays each out on 36", 45" and 60" fabric.
+
 ## Stages
 
 | Stage | File | What it does |

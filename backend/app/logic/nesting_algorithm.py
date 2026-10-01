@@ -180,7 +180,7 @@ class NestingAlgorithm:
 
     STANDARD_FABRIC_WIDTHS = list(STANDARD_FABRIC_WIDTHS)
 
-    def __init__(self, pattern_pieces, fabric_width_cm=114, fabric_type="woven",
+    def __init__(self, pattern_pieces, fabric_width_cm=114.3, fabric_type="woven",
                  cutting_mode="folded", allow_rotation=None):
         try:
             self.fabric_width = float(fabric_width_cm)
@@ -443,7 +443,7 @@ class NestingAlgorithm:
         }
 
 
-def estimate_fabric(pieces, fabric_width_cm=114, cutting_mode="auto", fabric_type="woven"):
+def estimate_fabric(pieces, fabric_width_cm=114.3, cutting_mode="auto", fabric_type="woven"):
     """
     Fabric requirement for validated pattern pieces. cutting_mode 'auto' lays the pattern out both
     folded and open and keeps the layout that needs the shorter purchase length (ties -> folded).

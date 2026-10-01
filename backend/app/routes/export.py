@@ -191,7 +191,7 @@ def calculate_yardage(pattern_id):
         }), 422
 
     data         = request.get_json() or {}
-    fabric_width = data.get("fabric_width_cm", 114)
+    fabric_width = data.get("fabric_width_cm", 114.3)        # 45 in
     cutting_mode = data.get("cutting_mode", "auto")
     fabric_type  = (getattr(pattern, "measurements_snapshot", None) or {}).get("fabric_type", "woven")
 
@@ -271,7 +271,7 @@ def generate_pdf(pattern_id):
     snapshot = getattr(pattern, "measurements_snapshot", None) or {}
     fabric_type = snapshot.get("fabric_type", "woven")
 
-    # Fabric layout: reuse the width / mode the user estimated with; otherwise estimate now (114 cm, auto).
+    # Fabric layout: reuse the width / mode the user estimated with; otherwise estimate now (45 in = 114.3 cm, auto).
     summary = getattr(pattern, "nesting_summary", None) or {}
     width = summary.get("fabric_width_cm") or 114.3
     mode = summary.get("cutting_mode") or "auto"

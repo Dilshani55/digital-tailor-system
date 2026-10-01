@@ -37,7 +37,7 @@
 * The system **refuses instead of guessing**: unsupported combinations, contradictory garment length, missing (for the design) or non-positive measurements, measurements that cannot be drafted, invalid geometry and pieces wider than the fabric all produce explicit errors.
 * Seam allowance is real offset geometry (woven and knit differ), with notches, grainlines, fold lines, darts and cut quantities on every piece; 66–90 automatic geometric checks pass for each of the six representative designs (evidence.json).
 * Printing: the PDF is genuine 1:1 A4 tiles with overlap, crop marks and a 5 cm calibration square; scale was verified by reading the PDF vector data.
-* Fabric estimates for 90, 114 and 150 cm cloth are produced from the actual cutting-line polygons, with exact overlap/bounds/fold/grain verification and a documented purchase allowance.
+* Fabric estimates for 36", 45" and 60" cloth (91.44, 114.3, 152.4 cm) are produced from the actual cutting-line polygons, with exact overlap/bounds/fold/grain verification and a documented purchase allowance.
 * Reported AI metrics are those in AI_EVIDENCE.md, computed by the scripts in `ai_training/`; a new model is deployed only if it beats the deployed one on the locked benchmark **and** a clean test split (acceptance gate); the newer experimental models did not, so the earlier checkpoint stays.
 * Security and privacy measures: verified Google sign-in, hashed passwords, JWT with ownership checks, content-checked uploads, researcher-only pseudonymised study data, no internal error details in API responses.
 * The system is honest about the AI being unavailable (HTTP 503, "choose the design manually"), and the manual path drafts the same pattern.
@@ -61,7 +61,7 @@
 3. **Measurements.** Type an impossible bust (5 cm) to show the inline error; switch cm ↔ in; enter the valid set (bust 88, waist 70, hip 94, height 162, neck 36, shoulder 12, across-back 34, back-waist 40, armhole 20, length 65, bicep 28, sleeve 55, wrist 16).
 4. **Fabric and fit.** Show the fabric explanations; choose Cotton Poplin (woven) — mention that a T-shirt automatically uses the knit block.
 5. **Pattern preview.** Point at the solid cutting line vs dashed sewing line, notches, darts, fold and grain; open the validation panel ("Geometry validation passed", armhole vs sleeve-cap numbers).
-6. **Fabric estimate.** Click 90, 114, 150 cm; show the layout drawing and the "how this was calculated" assumptions. Say plainly it is a heuristic, not optimal.
+6. **Fabric estimate.** Select 36", 45" and 60" (91.44 / 114.3 / 152.4 cm); show the layout drawing and the "how this was calculated" assumptions. Say plainly it is a heuristic, not optimal.
 7. **PDF.** Create and download; open it; show the 5 cm calibration square, instructions and a tile page; hold a ruler to the square if printing.
 8. **Evidence.** Show `docs/AI_EVIDENCE.md` (metrics, dataset audit, why the new models were *not* deployed) and the green test suites.
 9. **Close with the limitations** (no fit test yet; assumptions registry; small dataset) and the future work: muslin trials with 3–5 tailors/testers, more sleeveless/regular-sleeve data, Aldrich verification.

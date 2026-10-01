@@ -351,7 +351,7 @@ def export_research_csv():
     # Blank cell == not measured (or a legacy record whose value cannot be trusted).
     cw.writerow([
         "Record ID", "Participant (anonymous id)", "Garment Type", "Baseline Yardage (m)",
-        "Optimized Yardage (m)", "Fabric Savings (m)", "Layout Efficiency (%)",
+        "System Estimate (m)", "Fabric Savings (m)", "Layout Efficiency (%)",
         "AI Feature Correction Rate (%)", "Processing Time (s)",
         "Feedback Usability Score", "Feedback Comment", "Date Created"
     ])

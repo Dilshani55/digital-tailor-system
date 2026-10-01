@@ -12,7 +12,7 @@ const features=[
   {icon:ScanLine,title:'Design feature analysis',text:'Computer vision identifies visible garment details that affect sizing and construction.'},
   {icon:Ruler,title:'Personalized measurements',text:'Body measurements and design details are combined into a made-to-measure size chart.'},
   {icon:Scissors,title:'Pattern and fabric planning',text:'Parametric calculations estimate pattern dimensions and required fabric length.'},
-  {icon:Leaf,title:'Waste-aware production',text:'Optimized planning helps reduce unnecessary fabric before the cutting stage.'}
+  {icon:Leaf,title:'Waste-aware production',text:'See how the pieces lay out on 36", 45" and 60" fabric before you buy or cut. The layout is a heuristic, not a guaranteed minimum.'}
 ];
 
 export default function Home(){

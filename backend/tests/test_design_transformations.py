@@ -101,14 +101,13 @@ class TestNecklineTransformations(unittest.TestCase):
             self.assertEqual(t["type"], f"{shape}_neckline")
             self.assertEqual(t["status"], "applied")
 
-    def test_styles_that_are_not_implemented_fall_back_visibly(self):
-        base_round = self.round.front.to_dict()["outline"]
+    def test_necklines_outside_the_scope_are_refused_not_drawn_as_a_round_neck(self):
+        # the engine used to draw a round neckline for these and mark it "fallback"; a different design is never drafted now
         for style in ("scoop-neck", "boat-neck", "sweetheart-neck", "high-neck"):
-            f = final(neckline=style)
-            self.assertEqual(f.front.to_dict()["outline"], base_round, style)      # same as base round
-            t = next(t for t in f.transformations if t["id"] == "neckline")
-            self.assertEqual(t["status"], "not_applied_fallback_round", style)
-            self.assertIn("NOT applied", t["note"])
+            with self.assertRaises(DraftingError) as ctx:
+                final(neckline=style)
+            self.assertEqual(ctx.exception.code, "UNSUPPORTED_DESIGN", style)
+            self.assertIn("will not substitute", str(ctx.exception))
 
     def test_unsupported_necklines_are_rejected(self):
         for style in ("halter-neck", "collared-neck", "off-shoulder"):
@@ -148,13 +147,14 @@ class TestSleeveTransformations(unittest.TestCase):
         self.assertIn("wrist_cm", ctx.exception.field_errors)
 
     def test_sleeveless_design_needs_no_sleeve_measurements(self):
-        f = final(length="sleeveless", style="none", over=dict(bicep_cm=None, sleeve_cm=None, wrist_cm=None))
+        f = final(garment_type="crop-top", length="sleeveless", style="none",
+                  over=dict(garment_length_cm=36, bicep_cm=None, sleeve_cm=None, wrist_cm=None))
         self.assertIsNone(f.sleeve)
         self.assertTrue(f.validation["passed"], f.validation["errors"])
 
     def test_sleeve_cap_is_identical_for_every_length_and_matches_the_armhole(self):
         caps = set()
-        for length in ("short-sleeve", "elbow-length", "three-quarter-sleeve", "long-sleeve"):
+        for length in ("short-sleeve", "long-sleeve"):
             f = final(length=length)
             s = piece(f, "Sleeve")
             caps.add(round(s.meta["cap_length_cm"], 6))
@@ -163,15 +163,21 @@ class TestSleeveTransformations(unittest.TestCase):
         self.assertEqual(len(caps), 1)
 
     def test_sleeve_tapers_towards_the_wrist_with_length(self):
-        widths = [piece(final(length=n), "Sleeve").meta["width_hem_cm"]
-                  for n in ("short-sleeve", "elbow-length", "three-quarter-sleeve", "long-sleeve")]
+        widths = [piece(final(length=n), "Sleeve").meta["width_hem_cm"] for n in ("short-sleeve", "long-sleeve")]
         self.assertEqual(widths, sorted(widths, reverse=True))
+        for length in ("elbow-length", "three-quarter-sleeve"):            # outside the scope: refused, not approximated
+            with self.assertRaises(DraftingError) as ctx:
+                final(length=length)
+            self.assertEqual(ctx.exception.code, "UNSUPPORTED_DESIGN", length)
         self.assertAlmostEqual(widths[-1], 20.0, places=6)                      # wrist 16 + ease 4
 
     def test_sleeveless_has_no_sleeve_and_gets_armhole_facings(self):
-        f = final(length="sleeveless", style="none")
+        f = final(garment_type="crop-top", length="sleeveless", style="none", over=dict(garment_length_cm=36))
         self.assertIsNone(f.sleeve)
         self.assertFalse([p for p in f.pieces if p.piece_type == "sleeve"])
+        with self.assertRaises(DraftingError) as ctx:                       # a sleeveless blouse is outside the scope
+            final(length="sleeveless", style="none")
+        self.assertEqual(ctx.exception.code, "UNSUPPORTED_DESIGN")
         facing = piece(f, "Facing")
         self.assertEqual(facing.cut_count, 2)
         self.assertAlmostEqual(facing.meta["length_cm"], f.base.armhole["total_armhole_seam_cm"], places=6)
@@ -197,12 +203,14 @@ class TestSleeveTransformations(unittest.TestCase):
             self.assertEqual(ctx.exception.code, "UNSUPPORTED_DESIGN", style)
 
     def test_supported_styles_are_recorded_not_silently_ignored(self):
-        for style in ("none", "regular-sleeve"):
-            f = final(style=style)
-            t = next(t for t in f.transformations if t["id"] == "sleeve_style")
-            self.assertEqual(t["design"], style)
-            self.assertEqual(t["status"], "applied")
-            self.assertIn("sleeve_length", piece(f, "Sleeve").transformations)
+        f = final(style="regular-sleeve")
+        t = next(t for t in f.transformations if t["id"] == "sleeve_style")
+        self.assertEqual(t["design"], "regular-sleeve")
+        self.assertEqual(t["status"], "applied")
+        self.assertIn("sleeve_length", piece(f, "Sleeve").transformations)
+        with self.assertRaises(DraftingError) as ctx:                       # a sleeve with style "none" is not drawn as a plain sleeve
+            final(style="none")
+        self.assertEqual(ctx.exception.code, "UNSUPPORTED_DESIGN")
 
     def test_too_short_a_sleeve_for_the_cap_is_a_structured_error(self):
         b = make_base()
@@ -518,11 +526,16 @@ class TestSupportTableMatchesImplementation(unittest.TestCase):
             for value in fs.TAXONOMY[head]:
                 if fs.support_of(head, value)[0] == fs.UNSUPPORTED:
                     continue
-                attrs = design()
-                attrs[head] = value
-                if head == "sleeve_length" and value == "sleeveless":
-                    attrs["sleeve_style"] = "none"
-                apply_design(b["blouse"], attrs)                      # must not raise
+                drafted = 0
+                for garment in b:                                     # every garment whose scope includes the value
+                    attrs = design(garment_type=garment)
+                    attrs[head] = value
+                    if attrs["sleeve_length"] == "sleeveless" or value == "none":
+                        attrs.update(sleeve_length="sleeveless", sleeve_style="none")
+                    if fs.is_draftable(attrs):
+                        apply_design(b[garment], attrs)               # must not raise
+                        drafted += 1
+                self.assertGreater(drafted, 0, f"{head}={value} is marked implemented but no garment can use it")
 
     def test_every_unsupported_value_is_actually_rejected(self):
         b = make_base()

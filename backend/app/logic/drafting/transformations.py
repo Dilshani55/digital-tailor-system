@@ -112,7 +112,9 @@ def apply_design(base, attributes):
         first = next(iter(errors.values()))
         raise DraftingError(first["message"], code="INVALID_DESIGN_ATTRIBUTES",
                             field_errors={k: [v] for k, v in errors.items()})
-    report = fs.support_report(clean)
+    # The same scope the API and the UI use: a combination outside it is refused here too, so the engine can
+    # never draft "something similar" (for example a plain sleeve for a sleeve style of "none").
+    report = fs.support_report(clean, with_scope=True)
     if not report["supported"]:
         raise DraftingError(fs.unsupported_message(report), code="UNSUPPORTED_DESIGN",
                             unsupported_features=report["unsupported"])
