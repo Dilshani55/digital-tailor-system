@@ -256,7 +256,7 @@ def audit(with_hashes=True, workers=4):
                         flag("DMM sleeve value does not map to the stored sleeve length", r)
                     neck = r["labels"].get("neckline_type")
                     want = DMM_NECK.get(raw[9]) if m.group(5) != "3" else None
-                    if neck != want:
+                    if neck != want and r["provenance"].get("neckline_type") != "human_verified":   # a person's review overrides the source value
                         flag("DMM neckline value does not map to the stored neckline", r)
                     garment = "crop-top" if raw[11] == 0 else DMM_CATS.get(m.group(2))
                     deliberately_masked = bool((r.get("masked_reason") or {}).get("garment_type"))

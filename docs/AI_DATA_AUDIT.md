@@ -89,7 +89,23 @@ Labels that are correct but describe a garment the engine cannot draft (informat
 | Sleeve style (regular-sleeve candidates) | DeepFashion2 short / long sleeved tops | 60 | 20 | 30 |
 
 The reviewer answers the class they see, or `other` / `unclear`. Class definitions:
-[LABEL_GUIDE_15class.md](../ai_training/datasets/LABEL_GUIDE_15class.md). **Status: not reviewed yet (0 of 725).**
+[LABEL_GUIDE_15class.md](../ai_training/datasets/LABEL_GUIDE_15class.md).
+
+**Review done on 1 Oct 2026: 725 of 725 answered by one reviewer (the project owner).**
+
+| Question | Answers |
+|---|---|
+| Neckline (390) | collared-neck 278, other 62, unclear 49, off-shoulder 1 |
+| Sleeve style (335) | regular-sleeve 288, other 18, unclear 16, puff-sleeve 9, bell-sleeve 4 |
+
+Labels this gives (after the near-duplicate filter): collared-neck 166 train / 47 validation / 64 test;
+regular-sleeve 169 train / 52 validation / 66 test. No answer contradicted a trusted label.
+
+How far these labels can be trusted, stated plainly: the review took 24 minutes (median about one second per
+photo), by one person, with no second reviewer. A sample of 24 "collared-neck" and 24 "regular-sleeve" answers was
+looked at afterwards: most are right, but a few jackets and coats were labelled (the candidate photos contain
+them). The labels are therefore human labels with some noise, not a verified gold standard, and results on
+`test_reviewed` (64 and 66 photos) should be read with that in mind.
 
 ```powershell
 backend\venv\Scripts\python ai_training\tools\review_labels.py --reviewer "your name"     # then open http://127.0.0.1:5090
@@ -119,7 +135,7 @@ M40 itself does not pass this gate (garment type and neckline), so a candidate h
 
 ## Training status
 
-**No M42 training run has been started.** Order of work once the review is done:
+One M42 training run was started on 1 Oct 2026 after the review (see the result section when it has finished). Order of work:
 
 ```powershell
 backend\venv\Scripts\python ai_training\scripts\v2\build_m42_manifests.py                 # applies the fixes + the reviewed labels
