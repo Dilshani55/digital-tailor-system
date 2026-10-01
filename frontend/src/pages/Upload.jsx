@@ -5,7 +5,6 @@ import {
 } from 'lucide-react';
 import StepIndicator from '../components/StepIndicator';
 import LoadingSpinner from '../components/LoadingSpinner';
-import MeasurementGuide from '../components/MeasurementGuide';
 import MeasureFigure from '../components/MeasureFigure';
 import FabricRecommendation from '../components/FabricRecommendation';
 import PredictionReview from '../components/PredictionReview';
@@ -15,7 +14,7 @@ import TilePreview from '../components/TilePreview';
 import GarmentIllustration from '../components/GarmentIllustration';
 import { supportReport, labelOf } from '../utils/designSchema';
 import {
-  MEASUREMENT_FIELDS, validateMeasurements, convertDisplayValues, parseFieldErrors, buildPayload, rangeText,
+  MEASUREMENT_FIELDS, LABELS, requiredFor, validateMeasurements, displayValue, canonicalCm, parseFieldErrors, buildPayload,
 } from '../utils/measurementSchema';
 import { GUIDES } from '../utils/measurementGuides';
 import { formatResult } from '../utils/results';
@@ -53,6 +52,14 @@ const profileToMeas = (p) => ({
   fit_preference: p.fit_preference || 'standard',
 });
 
+const EmptyState = ({ title, children, action, onAction }) => (
+  <div className="section-card empty-step" role="status" data-testid="step-empty">
+    <h3>{title}</h3>
+    <p className="form-hint">{children}</p>
+    {action && <button type="button" className="btn btn-outline" onClick={onAction}>{action}</button>}
+  </div>
+);
+
 const Title = ({ title, help }) => (
   <div className="wizard-title">
     <h2>{title}</h2>
@@ -68,7 +75,7 @@ export default function Upload() {
 
   // ── wizard state ──────────────────────────────────────────────────────────
   const [step, setStep] = useState(S.CUSTOMER);
-  const [maxStep, setMaxStep] = useState(S.CUSTOMER);
+  const [started, setStarted] = useState(false);          // the user has begun (drives the unsaved-changes guard)
   const [loading, setLoading] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState('');
   const [error, setError] = useState('');
@@ -95,8 +102,10 @@ export default function Upload() {
   const [meas, setMeas] = useState({ ...emptyMeas });
   const [unit, setUnit] = useState(() => getPreferences().unit);
   const [fieldErrors, setFieldErrors] = useState({});
+  const [measUnits, setMeasUnits] = useState({});         // unit each value was typed in (missing = cm)
+  const [savedMeasKey, setSavedMeasKey] = useState(null); // measurement values as last saved for this design
   const [activeField, setActiveField] = useState('bust_cm');
-  const [show3d, setShow3d] = useState(false);
+  const [manualDesign, setManualDesign] = useState(false);
 
   // fabric & fit
   const [selectedFabricId, setSelectedFabricId] = useState('');
@@ -106,6 +115,7 @@ export default function Upload() {
   // pattern
   const [patternId, setPatternId] = useState(null);
   const [patternData, setPatternData] = useState(null);
+  const [patternKey, setPatternKey] = useState(null);     // inputs the current pattern was generated from
 
   // estimate
   const [fabricWidth, setFabricWidth] = useState(() => getPreferences().fabricWidth);
@@ -126,13 +136,13 @@ export default function Upload() {
   const go = (n) => {
     setError('');
     setStep(n);
-    setMaxStep((m) => Math.max(m, n));
+    if (n !== S.CUSTOMER) setStarted(true);
   };
 
   // unsaved-changes guard: active once the user has started, cleared when the PDF has been downloaded
   useEffect(() => {
-    setUnsaved(maxStep > S.CUSTOMER && !pdfDownloaded);
-  }, [maxStep, pdfDownloaded]);
+    setUnsaved(started && !pdfDownloaded);
+  }, [started, pdfDownloaded]);
   useEffect(() => {
     window.addEventListener('beforeunload', beforeUnloadHandler);
     return () => { window.removeEventListener('beforeunload', beforeUnloadHandler); setUnsaved(false); };
@@ -149,6 +159,7 @@ export default function Upload() {
     if (location.state?.selectedProfile) {
       const p = location.state.selectedProfile;
       setMeas(profileToMeas(p));
+      setMeasUnits({});
       setCustomerContact(p.email || '');
       setUnit('cm');
       setFieldErrors({});
@@ -169,10 +180,25 @@ export default function Upload() {
   const design = supportReport(confirmedAttributes || {});
   const designReady = isAttributesConfirmed && !!confirmedAttributes && design.supported;
 
+  // which measurements the confirmed design needs (same rules as the backend and the drafting engine)
+  const requiredKeys = useMemo(() => (confirmedAttributes ? requiredFor(confirmedAttributes) : []), [confirmedAttributes]);
+  const cmValues = useMemo(() => canonicalCm(meas, measUnits), [meas, measUnits]);
+  const measKey = useMemo(() => JSON.stringify(requiredKeys.map((k) => [k, cmValues[k] ?? null])), [requiredKeys, cmValues]);
+  const measurementsSaved = Boolean(measurementId) && savedMeasKey !== null && savedMeasKey === measKey;
+  // everything the pattern depends on: when any of it changes, the old pattern, estimate and PDF are out of date
+  const inputsKey = JSON.stringify([confirmedAttributes, measKey, selectedFabricId, meas.fit_preference, imageId]);
+  const patternStale = Boolean(patternData) && patternKey !== inputsKey;
+  const patternCurrent = Boolean(patternData) && !patternStale;
+  useEffect(() => {
+    if (requiredKeys.length && !requiredKeys.includes(activeField)) setActiveField(requiredKeys[0]);
+  }, [requiredKeys, activeField]);
+
   // ── 1: customer & design ──────────────────────────────────────────────────
   const handleSelectSavedClient = (profileId) => {
     if (!profileId) {
       setMeas({ ...emptyMeas, fabric_type: meas.fabric_type, fit_preference: meas.fit_preference });
+      setMeasUnits({});
+      setSavedMeasKey(null);
       setCustomerContact('');
       setFieldErrors({});
       setMeasurementId(null);
@@ -181,6 +207,8 @@ export default function Upload() {
     const found = savedProfiles.find((p) => p.measurement_id === profileId);
     if (found) {
       setMeas(profileToMeas(found));
+      setMeasUnits({});
+      setSavedMeasKey(null);
       setCustomerContact(found.email || '');
       setUnit('cm');
       setFieldErrors({});
@@ -189,10 +217,6 @@ export default function Upload() {
   };
 
   const continueFromCustomer = () => {
-    if (!measurementId && !meas.client_name.trim()) {
-      setError('Please enter the customer name or choose a saved customer.');
-      return;
-    }
     if (customerContact.trim().length > 120 || projectName.trim().length > 80) {
       setError('The contact is limited to 120 characters and the project name to 80.');
       return;
@@ -229,6 +253,7 @@ export default function Upload() {
       const uploadRes = await imagesAPI.upload(formData);
       const newImageId = uploadRes.data.image_id;
       setImageId(newImageId);
+      setManualDesign(false);
       const analyseRes = await imagesAPI.analyse(newImageId);
       setGarmentAttributes(analyseRes.data.garment_attributes || null);
       const ca = analyseRes.data.confirmed_attributes;
@@ -250,6 +275,7 @@ export default function Upload() {
   const chooseManually = () => {
     setImageId(null);
     setGarmentAttributes(null);
+    setManualDesign(true);
     go(S.REVIEW);
   };
 
@@ -278,24 +304,12 @@ export default function Upload() {
     }
   };
 
-  const continueFromReview = () => {
-    if (!isAttributesConfirmed) {
-      setError('Please review the garment features and press “Confirm design features” first.');
-      return;
-    }
-    if (!design.supported) {
-      setError('This design cannot be drafted yet: '
-        + design.unsupported.map((u) => `${u.head.replace(/_/g, ' ')} = ${u.label || u.value}`).join('; ')
-        + '. Edit the design and confirm a supported option.');
-      return;
-    }
-    go(S.MEASURE);
-  };
+  const continueFromReview = () => go(S.MEASURE);
 
   // ── 4: measurements ───────────────────────────────────────────────────────
+  // switching the unit only changes how values are SHOWN; what was typed (and its unit) is kept and saved
   const handleUnitToggle = (newUnit) => {
     if (newUnit === unit) return;
-    setMeas((prev) => ({ ...prev, ...convertDisplayValues(prev, unit, newUnit) }));
     setUnit(newUnit);
     setFieldErrors({});
   };
@@ -305,7 +319,11 @@ export default function Upload() {
       setError('Please confirm a supported design in the AI review step before saving measurements.');
       return;
     }
-    const localErrors = validateMeasurements(meas, unit);
+    if (!measurementId && !meas.client_name.trim()) {
+      setError('Please enter the customer name (step 1) or choose a saved customer before saving.');
+      return;
+    }
+    const localErrors = validateMeasurements(meas, requiredKeys);
     if (Object.keys(localErrors).length > 0) {
       setFieldErrors(localErrors);
       setError('Please correct the highlighted measurements.');
@@ -318,7 +336,8 @@ export default function Upload() {
       const payload = {
         client_name: meas.client_name.trim() !== '' ? meas.client_name.trim() : 'Customer Profile',
         ...(customerContact.trim() ? { email: customerContact.trim() } : {}),
-        ...buildPayload(meas, unit),
+        ...buildPayload(meas, measUnits, 'cm', requiredKeys),
+        design: confirmedAttributes,
         fabric_type: meas.fabric_type,
         fit_preference: meas.fit_preference || 'standard',
       };
@@ -327,6 +346,7 @@ export default function Upload() {
         : await measurementsAPI.save(payload);
       setFieldErrors({});
       setMeasurementId(res.data.measurement_id || res.data.profile_id || measurementId);
+      setSavedMeasKey(measKey);
       go(S.FABRIC);
     } catch (err) {
       const parsed = parseFieldErrors(err);
@@ -343,6 +363,14 @@ export default function Upload() {
 
   // ── 5: fabric & fit → generate the pattern ────────────────────────────────
   const handleGeneratePattern = async () => {
+    if (!designReady) {
+      setError('Please confirm a supported design in the AI review step first.');
+      return;
+    }
+    if (!measurementsSaved) {
+      setError('Please save the measurements for this design (step 4) before generating the pattern.');
+      return;
+    }
     if (!selectedFabricId) {
       setFabricValidationError('Please choose one of the recommended fabrics to continue.');
       setError('Please choose a fabric before generating the pattern.');
@@ -368,6 +396,7 @@ export default function Upload() {
       });
       setPatternId(patRes.data.pattern_id);
       setPatternData(patRes.data);
+      setPatternKey(inputsKey);
       go(S.PREVIEW);
       if (patRes.data.validation_passed === false || patRes.data.fabric_estimate_blocked) {
         const errs = (patRes.data.validation?.errors || []).join(' ');
@@ -431,11 +460,14 @@ export default function Upload() {
     }
   };
 
-  const openEstimateStep = () => {
-    if (patternData?.validation_passed === false) return;
-    go(S.ESTIMATE);
-    if (!yardageData) runEstimate();
-  };
+  const openEstimateStep = () => go(S.ESTIMATE);
+
+  // opening the estimate step (by button or the step bar) calculates the estimate for the CURRENT pattern
+  useEffect(() => {
+    if (step === S.ESTIMATE && patternCurrent && patternData?.validation_passed !== false && !estimates && !yardageError && !loading) {
+      runEstimate();
+    }
+  }, [step, patternCurrent]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── 8: PDF ────────────────────────────────────────────────────────────────
   const handleCreatePdf = async () => {
@@ -480,13 +512,24 @@ export default function Upload() {
   };
 
   const validationBlocked = patternData?.validation_passed === false;
+  const stale = (has) => (has ? (patternStale ? 'stale' : 'done') : 'pending');
+  const stepStatus = {
+    [S.CUSTOMER]: measurementId || meas.client_name.trim() ? 'done' : 'pending',
+    [S.UPLOAD]: imageId || manualDesign ? 'done' : 'pending',
+    [S.REVIEW]: designReady ? 'done' : 'pending',
+    [S.MEASURE]: measurementsSaved ? 'done' : (measurementId && savedMeasKey !== null ? 'stale' : 'pending'),
+    [S.FABRIC]: selectedFabricId ? 'done' : 'pending',
+    [S.PREVIEW]: stale(Boolean(patternData)),
+    [S.ESTIMATE]: stale(Boolean(yardageData)),
+    [S.EXPORT]: stale(Boolean(exportId && pdfDownloaded)),
+  };
   const leave = (to) => { setUnsaved(false); navigate(to); };
 
   // ── render ────────────────────────────────────────────────────────────────
   return (
     <div className="view active" id="v-wizard">
       <div className="wizard-container">
-        <StepIndicator currentStep={step} setStep={(n) => { setError(''); setStep(n); }} maxStep={maxStep} pdfDownloaded={pdfDownloaded} />
+        <StepIndicator currentStep={step} setStep={go} status={stepStatus} />
 
         {error && <div role="alert" className="alert error wizard-alert">{error}</div>}
         {notice && !error && <div role="status" className="alert success wizard-alert">{notice}</div>}
@@ -505,7 +548,7 @@ export default function Upload() {
                     <option value="">+ New customer</option>
                     {uniqueProfiles.map((p) => (
                       <option key={p.measurement_id} value={p.measurement_id}>
-                        {p.client_name || 'Customer'}{p.email ? ` — ${p.email}` : ''}{p.complete === false ? ' (measurements incomplete)' : ''}
+                        {p.client_name || 'Customer'}{p.email ? ` — ${p.email}` : ''}
                       </option>
                     ))}
                   </select>
@@ -576,6 +619,11 @@ export default function Upload() {
           <div className="wizard-body" id="wp3">
             <Title title="Review the AI suggestions"
                    help="Confirm or correct each feature before continuing. The AI can make mistakes, especially on necklines and sleeve styles." />
+            {!imageId && !manualDesign && !confirmedAttributes ? (
+              <EmptyState title="No design yet" action="Go to upload" onAction={() => go(S.UPLOAD)}>
+                Upload a garment photo for AI suggestions, or choose the design manually in the upload step.
+              </EmptyState>
+            ) : (
             <div className="review-layout">
               <div className={`review-photo${imagePreview && imageId ? '' : ' empty'}`}>
                 {imagePreview && imageId ? <img src={imagePreview} alt="Uploaded garment" /> : <p>No photo — design chosen manually.</p>}
@@ -593,9 +641,10 @@ export default function Upload() {
               <PredictionReview garmentAttributes={garmentAttributes} confirmedAttributes={confirmedAttributes}
                                 onConfirm={handleConfirmGarmentAttributes} isSubmitting={confirmLoading} error={confirmError} />
             </div>
+            )}
             <NavRow>
               <button type="button" className="btn btn-outline" onClick={() => go(S.UPLOAD)}>Back</button>
-              <button type="button" className="btn btn-primary btn-lg" onClick={continueFromReview} disabled={!designReady}>Continue to measurements</button>
+              <button type="button" className="btn btn-primary btn-lg" onClick={continueFromReview}>Continue to measurements</button>
             </NavRow>
           </div>
         )}
@@ -604,7 +653,15 @@ export default function Upload() {
         {!loading && step === S.MEASURE && (
           <div className="wizard-body" id="wp4">
             <Title title="Body measurements"
-                   help={`All ${MEASUREMENT_FIELDS.length} measurements are needed to draft a pattern that fits${meas.client_name ? ` ${meas.client_name}` : ''}. Select a field to see how to measure it.`} />
+                   help={designReady
+                     ? `This design needs ${requiredKeys.length} measurements${meas.client_name ? ` for ${meas.client_name}` : ''}. Select a field to see how to measure it.`
+                     : 'The measurements needed depend on the confirmed design.'} />
+            {!designReady ? (
+              <EmptyState title="Confirm the design first" action="Go to AI review" onAction={() => go(S.REVIEW)}>
+                Which measurements are needed depends on the garment, neckline and sleeves you confirm in the AI review step.
+              </EmptyState>
+            ) : (
+            <>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 14 }}
                  data-testid="unit-toggle">
               <span className="form-label" id="unit-label">Measurement unit</span>
@@ -616,23 +673,31 @@ export default function Upload() {
                 ))}
               </div>
             </div>
+            {measurementId && savedMeasKey !== null && !measurementsSaved && (
+              <div role="status" className="alert warn" style={{ marginBottom: 12 }} data-testid="meas-unsaved">
+                The measurements changed since they were saved. Save them again before generating the pattern.
+              </div>
+            )}
             <div className="meas-layout">
-              <aside className="meas-figure" aria-live="polite">
-                <MeasureFigure active={activeField} />
-                <h3>{MEASUREMENT_FIELDS.find((f) => f.key === activeField)?.label}</h3>
-                <p>{GUIDES[activeField]}</p>
-                <p className="form-hint" style={{ marginTop: 6 }}>Inches are converted exactly (1 in = 2.54 cm).</p>
+              <aside className="meas-figure" aria-label="Measurement guide">
+                <h3>Measurement guide</h3>
+                <MeasureFigure active={activeField} fields={requiredKeys} sleeveCm={cmValues.sleeve_cm} />
+                <p className="form-hint" style={{ marginTop: 6 }}>
+                  Shows where to measure {LABELS[activeField] ? <strong>{LABELS[activeField].toLowerCase()}</strong> : 'each field'}; it is a guide, not a body model.
+                  Inches are converted exactly (1 in = 2.54 cm).
+                </p>
               </aside>
               <div className="meas-grid">
-                {MEASUREMENT_FIELDS.map((field) => {
+                {MEASUREMENT_FIELDS.filter((f) => requiredKeys.includes(f.key)).map((field) => {
                   const key = field.key;
                   const message = fieldErrors[key] || (key === 'armhole_depth_cm' ? fieldErrors.armhole_cm : undefined);
                   return (
                     <div className={`meas-field${activeField === key ? ' active' : ''}`} key={key}>
                       <label className="form-label" htmlFor={`meas-${key}`}>{field.label}<span className="sr-only"> ({unit})</span></label>
                       <div className="input-suffix">
-                        <input id={`meas-${key}`} className="form-input" type="number" step="any" inputMode="decimal"
-                               value={meas[key]} aria-invalid={message ? 'true' : 'false'} aria-describedby={`hint-${key}`}
+                        <input id={`meas-${key}`} className="form-input" type="number" step="any" inputMode="decimal" min="0"
+                               value={displayValue(meas[key], measUnits[key] || 'cm', unit)} aria-invalid={message ? 'true' : 'false'}
+                               aria-describedby={activeField === key ? `guide-${key}` : undefined}
                                onFocus={() => setActiveField(key)}
                                onChange={(e) => {
                                  setError('');
@@ -642,23 +707,22 @@ export default function Upload() {
                                    return rest;
                                  });
                                  setMeas({ ...meas, [key]: e.target.value });
+                                 setMeasUnits({ ...measUnits, [key]: unit });
                                }} />
                         <span aria-hidden="true">{unit}</span>
                       </div>
-                      <small id={`hint-${key}`} className="form-hint">{rangeText(field)}</small>
+                      {activeField === key && <small id={`guide-${key}`} className="form-hint meas-guide" data-testid={`guide-${key}`}>{GUIDES[key]}</small>}
                       {message && <div role="alert" className="field-error" data-testid={`error-${key}`}>{message}</div>}
                     </div>
                   );
                 })}
               </div>
             </div>
-            <details className="section-card" style={{ marginTop: 16 }} onToggle={(e) => setShow3d(e.currentTarget.open)}>
-              <summary style={{ cursor: 'pointer', fontWeight: 600 }}>Open the 3D measuring guide</summary>
-              {show3d && <div style={{ marginTop: 12 }}><MeasurementGuide activeField={activeField} setActiveField={setActiveField} meas={meas} /></div>}
-            </details>
+            </>
+            )}
             <NavRow>
               <button type="button" className="btn btn-outline" onClick={() => go(S.REVIEW)}>Back</button>
-              <button type="button" className="btn btn-primary btn-lg" onClick={handleSaveMeasurements}>Save and continue</button>
+              <button type="button" className="btn btn-primary btn-lg" onClick={handleSaveMeasurements} disabled={!designReady}>Save and continue</button>
             </NavRow>
           </div>
         )}
@@ -667,6 +731,12 @@ export default function Upload() {
         {!loading && step === S.FABRIC && (
           <div className="wizard-body" id="wp5">
             <Title title="Choose fabric and fit" help="Pick how loose the garment should be and a fabric. The chosen fabric decides woven or knit drafting." />
+            {!designReady ? (
+              <EmptyState title="Confirm the design first" action="Go to AI review" onAction={() => go(S.REVIEW)}>
+                Fabric recommendations depend on the confirmed garment, neckline and sleeves.
+              </EmptyState>
+            ) : (
+            <>
             <section className="section-card">
               <h3 id="fit-h">Fit preference</h3>
               <div className="choice-grid" role="group" aria-labelledby="fit-h">
@@ -705,23 +775,42 @@ export default function Upload() {
               <span className="chip">{FITS.find((f) => f.value === meas.fit_preference)?.label} fit</span>
               <span className="chip accent">{selectedFabricName || 'no fabric chosen yet'}</span>
             </div>
+            {!measurementsSaved && (
+              <p className="form-hint" data-testid="needs-measurements">Save the measurements for this design (step 4) before generating the pattern.</p>
+            )}
+            </>
+            )}
             <NavRow>
               <button type="button" className="btn btn-outline" onClick={() => go(S.MEASURE)}>Back</button>
-              <button type="button" className="btn btn-primary btn-lg" onClick={handleGeneratePattern}>Confirm and generate pattern</button>
+              <button type="button" className="btn btn-primary btn-lg" onClick={handleGeneratePattern} disabled={!designReady}>
+                {patternStale ? 'Regenerate pattern' : 'Confirm and generate pattern'}
+              </button>
             </NavRow>
           </div>
         )}
 
         {/* ── 6 PATTERN PREVIEW ── */}
-        {!loading && step === S.PREVIEW && patternData && (
+        {!loading && step === S.PREVIEW && (
           <div className="wizard-body" id="wp6">
             <Title title="Pattern preview" help="Drafted from your measurements and confirmed design, then checked automatically. Zoom and drag to inspect the pieces." />
-            <PatternPreview pieces={patternData?.pattern_pieces} fabricWidth={fabricWidth} validation={patternData?.validation}
-                            draftingBlock={patternData?.drafting_block} armholeSleeve={patternData?.armhole_sleeve}
-                            transformations={patternData?.final_pattern?.transformations} />
+            {patternStale && (
+              <EmptyState title="The pattern needs to be generated again" action="Regenerate pattern" onAction={handleGeneratePattern}>
+                The design, measurements, fit or fabric changed after this pattern was made, so it is no longer shown as current.
+              </EmptyState>
+            )}
+            {!patternData && (
+              <EmptyState title="No pattern yet" action="Go to fabric & fit" onAction={() => go(S.FABRIC)}>
+                Confirm the design, save the measurements and choose a fabric, then generate the pattern.
+              </EmptyState>
+            )}
+            {patternCurrent && (
+              <PatternPreview pieces={patternData?.pattern_pieces} fabricWidth={fabricWidth} validation={patternData?.validation}
+                              draftingBlock={patternData?.drafting_block} armholeSleeve={patternData?.armhole_sleeve}
+                              transformations={patternData?.final_pattern?.transformations} />
+            )}
             <NavRow>
               <button type="button" className="btn btn-outline" onClick={() => go(S.FABRIC)}>Back</button>
-              <button type="button" className="btn btn-primary btn-lg" onClick={openEstimateStep} disabled={validationBlocked}>Continue to fabric estimate</button>
+              <button type="button" className="btn btn-primary btn-lg" onClick={openEstimateStep}>Continue to fabric estimate</button>
             </NavRow>
           </div>
         )}
@@ -731,6 +820,17 @@ export default function Upload() {
           <div className="wizard-body" id="wp7">
             <Title title="Fabric estimate"
                    help='The pattern pieces (with seam allowance) are laid out on 36", 45" and 60" fabric. The pieces stay the same; only the layout and the length change.' />
+            {!patternCurrent || validationBlocked ? (
+              <EmptyState title={validationBlocked && patternCurrent ? 'Estimate blocked' : 'No current pattern'}
+                          action={patternStale ? 'Regenerate pattern' : 'Go to pattern preview'}
+                          onAction={patternStale ? handleGeneratePattern : () => go(S.PREVIEW)}>
+                {validationBlocked && patternCurrent
+                  ? 'The pattern failed its automatic checks, so no fabric estimate is calculated.'
+                  : patternStale ? 'The inputs changed after the pattern was made; generate it again to get a current estimate.'
+                    : 'Generate the pattern first; the estimate is laid out from its validated pieces.'}
+              </EmptyState>
+            ) : (
+            <>
             <div className="form-field" style={{ maxWidth: 360 }}>
               <label className="form-label" htmlFor="cut-mode">Cutting layout</label>
               <select id="cut-mode" className="form-select" value={cuttingMode} onChange={(e) => { setCuttingMode(e.target.value); runEstimate(fabricWidth, e.target.value); }}>
@@ -805,9 +905,11 @@ export default function Upload() {
                 </details>
               </div>
             )}
+            </>
+            )}
             <NavRow>
               <button type="button" className="btn btn-outline" onClick={() => go(S.PREVIEW)}>Back</button>
-              <button type="button" className="btn btn-primary btn-lg" onClick={() => go(S.EXPORT)} disabled={!yardageData}>Continue to PDF export</button>
+              <button type="button" className="btn btn-primary btn-lg" onClick={() => go(S.EXPORT)}>Continue to PDF export</button>
             </NavRow>
           </div>
         )}
@@ -825,6 +927,15 @@ export default function Upload() {
                 {exportId && <span className="sr-only">Printable pattern (PDF)</span>}
               </div>
             </div>
+            {!patternCurrent ? (
+              <EmptyState title={patternStale ? 'The PDF would be out of date' : 'No pattern to export yet'}
+                          action={patternStale ? 'Regenerate pattern' : 'Go to pattern preview'}
+                          onAction={patternStale ? handleGeneratePattern : () => go(S.PREVIEW)}>
+                {patternStale
+                  ? 'The design, measurements or fabric changed after the pattern was made. Generate it again, then create the PDF.'
+                  : 'Generate the pattern and calculate the fabric estimate, then create the printable PDF here.'}
+              </EmptyState>
+            ) : (
             <div className="export-layout">
               <section className="section-card" style={{ marginBottom: 0 }}>
                 <ul className="export-list">
@@ -851,6 +962,7 @@ export default function Upload() {
                 <TilePreview pieces={patternData?.pattern_pieces} pages={pdfInfo?.pages} />
               </section>
             </div>
+            )}
 
             {pdfDownloaded && !feedbackSubmitted && (
               <form onSubmit={handleFeedbackSubmit} className="section-card" style={{ marginTop: 16 }} aria-label="Feedback">

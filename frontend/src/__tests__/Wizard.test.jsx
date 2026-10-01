@@ -1,4 +1,4 @@
-// End-to-end behaviour of the 7-step creation wizard against a mocked API.
+// End-to-end behaviour of the 8-step creation wizard against a mocked API.
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
 import { MemoryRouter } from 'react-router-dom';
@@ -23,7 +23,7 @@ vi.mock('../components/FabricRecommendation', () => ({
 
 const VALID = {
   bust_cm: 88, waist_cm: 70, hip_cm: 94, height_cm: 162, neck_cm: 36, shoulder_cm: 12, across_back_cm: 34,
-  back_waist_length_cm: 40, armhole_depth_cm: 20, garment_length_cm: 65, bicep_cm: 28, sleeve_cm: 55, wrist_cm: 16,
+  back_waist_length_cm: 40, armhole_depth_cm: 20, garment_length_cm: 65, bicep_cm: 28, sleeve_cm: 24, wrist_cm: 16,
 };
 const CONFIRMED = { garment_type: 'blouse', neckline_type: 'round-neck', sleeve_length: 'short-sleeve', sleeve_style: 'regular-sleeve' };
 
@@ -73,8 +73,12 @@ const chooseDesign = (over = {}) => {
     fireEvent.change(screen.getByTestId(`select-${k}`), { target: { value: v } }));
   fireEvent.click(screen.getByTestId('confirm-btn'));
 };
-const fill = () => Object.entries(VALID).forEach(([k, v]) =>
-  fireEvent.change(document.querySelector(`#meas-${k}`), { target: { value: String(v) } }));
+// fills only the fields the confirmed design shows
+const fill = () => Object.entries(VALID).forEach(([k, v]) => {
+  const input = document.querySelector(`#meas-${k}`);
+  if (input) fireEvent.change(input, { target: { value: String(v) } });
+});
+const stepButton = (label) => screen.getByText(label, { selector: '.wstep-lbl' }).closest('button');
 
 const heading = (name) => screen.findByRole('heading', { name });
 
@@ -108,7 +112,11 @@ describe('creation wizard — full workflow', () => {
     expect(imagesAPI.upload).toHaveBeenCalledTimes(1);
     expect(imagesAPI.analyse).toHaveBeenCalledWith('i1');
     expect(imagesAPI.confirmAttributes).toHaveBeenCalledWith('i1', CONFIRMED);
-    expect(measurementsAPI.save.mock.calls[0][0]).toMatchObject({ unit: 'cm', client_name: 'Test Customer', email: 'amara@example.com' });
+    const saved = measurementsAPI.save.mock.calls[0][0];
+    expect(saved).toMatchObject({ unit: 'cm', client_name: 'Test Customer', email: 'amara@example.com', design: CONFIRMED, sleeve_cm: 24 });
+    expect(saved).not.toHaveProperty('wrist_cm');          // short sleeve: no wrist
+    expect(saved).not.toHaveProperty('height_cm');         // no drafting calculation uses height
+    expect(stepButton('Measurements').getAttribute('data-status')).toBe('done');
 
     fireEvent.click(screen.getByText('pick-poplin'));
     fireEvent.click(screen.getByText('Confirm and generate pattern'));
@@ -148,17 +156,75 @@ describe('creation wizard — full workflow', () => {
     await screen.findByText(/Thank you/);
   });
 
-  it('cannot open later steps before earlier ones are done', () => {
+  it('opens any step at any time with an honest empty state and real pending statuses', async () => {
     render(<MemoryRouter><Upload /></MemoryRouter>);
-    ['Upload image', 'AI review', 'Measurements', 'Fabric & fit', 'Pattern preview', 'Fabric estimate', 'Download PDF'].forEach((label) =>
-      expect(screen.getByText(label, { selector: '.wstep-lbl' }).closest('button').disabled).toBe(true));
+    ['Upload image', 'AI review', 'Measurements', 'Fabric & fit', 'Pattern preview', 'Fabric estimate', 'Download PDF'].forEach((label) => {
+      expect(stepButton(label).disabled).toBe(false);
+      expect(stepButton(label).getAttribute('aria-label')).toMatch(/\(Pending\)/);
+    });
+    const cases = [['AI review', /No design yet/], ['Measurements', /Confirm the design first/], ['Fabric & fit', /Confirm the design first/],
+      ['Pattern preview', /No pattern yet/], ['Fabric estimate', /No current pattern/], ['Download PDF', /No pattern to export yet/]];
+    for (const [label, text] of cases) {
+      fireEvent.click(stepButton(label));
+      expect((await screen.findByTestId('step-empty')).textContent).toMatch(text);
+    }
+    expect(patternsAPI.generate).not.toHaveBeenCalled();
+    expect(exportAPI.estimates).not.toHaveBeenCalled();
   });
 
-  it('asks for the customer name before continuing', () => {
+  it('keeps entered data when jumping between steps', async () => {
+    render(<MemoryRouter><Upload /></MemoryRouter>);
+    fireEvent.change(screen.getByLabelText('Customer name'), { target: { value: 'Nadeesha' } });
+    fireEvent.click(stepButton('Download PDF'));
+    fireEvent.click(stepButton('Customer & design'));
+    expect(screen.getByLabelText('Customer name').value).toBe('Nadeesha');
+    expect(stepButton('Customer & design').getAttribute('data-status')).toBe('done');
+  });
+
+  it('asks for the customer name when the measurements are saved, not when navigating', async () => {
     render(<MemoryRouter><Upload /></MemoryRouter>);
     fireEvent.click(screen.getByText('Continue to upload'));
+    expect(screen.getByTestId('image-input')).toBeTruthy();                   // navigation is not blocked
+    fireEvent.click(screen.getByText('Choose the design manually'));
+    await heading('Review the AI suggestions');
+    chooseDesign();
+    fireEvent.click(screen.getByText('Continue to measurements'));
+    fill();
+    fireEvent.click(screen.getByText('Save and continue'));
     expect(screen.getByRole('alert').textContent).toMatch(/customer name/);
-    expect(screen.queryByTestId('image-input')).toBeNull();
+    expect(measurementsAPI.save).not.toHaveBeenCalled();
+  });
+
+  it('marks the pattern, estimate and PDF as out of date when a measurement changes', async () => {
+    await reachStep4();
+    fireEvent.click(screen.getByText('pick-poplin'));
+    fireEvent.click(screen.getByText('Confirm and generate pattern'));
+    await heading('Pattern preview');
+    expect(screen.getByTestId('pattern-preview')).toBeTruthy();
+    fireEvent.click(stepButton('Measurements'));
+    fireEvent.change(document.querySelector('#meas-bust_cm'), { target: { value: '91.5' } });
+    expect(screen.getByTestId('meas-unsaved')).toBeTruthy();
+    ['Measurements', 'Pattern preview'].forEach((label) => expect(stepButton(label).getAttribute('data-status')).toBe('stale'));
+    fireEvent.click(stepButton('Pattern preview'));
+    expect((await screen.findByTestId('step-empty')).textContent).toMatch(/generated again/);
+    expect(screen.queryByTestId('pattern-preview')).toBeNull();               // the old pattern is not shown as current
+    fireEvent.click(stepButton('Download PDF'));
+    expect((await screen.findByTestId('step-empty')).textContent).toMatch(/out of date/);
+    fireEvent.click(stepButton('Fabric & fit'));
+    fireEvent.click(screen.getByText('Regenerate pattern'));
+    expect(screen.getByRole('alert').textContent).toMatch(/save the measurements/i);   // stale values are not drafted
+    expect(patternsAPI.generate).toHaveBeenCalledTimes(1);
+  });
+
+  it('changing the fabric after generation also requires regeneration', async () => {
+    await reachStep4();
+    fireEvent.click(screen.getByText('pick-poplin'));
+    fireEvent.click(screen.getByText('Confirm and generate pattern'));
+    await heading('Pattern preview');
+    fireEvent.click(stepButton('Fabric & fit'));
+    fireEvent.click(screen.getByTestId('fit-loose'));
+    expect(stepButton('Pattern preview').getAttribute('data-status')).toBe('stale');
+    expect(screen.getByText('Regenerate pattern')).toBeTruthy();
   });
 
   it('rejects a non-image or oversized file with a plain message', () => {
@@ -236,8 +302,9 @@ describe('creation wizard — full workflow', () => {
     fireEvent.click(screen.getByText('pick-poplin'));
     fireEvent.click(screen.getByText('Confirm and generate pattern'));
     await heading('Pattern preview');
-    expect(screen.getByText('Continue to fabric estimate').disabled).toBe(true);
     expect(screen.getAllByText(/outline self-intersects/).length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByText('Continue to fabric estimate'));
+    expect((await screen.findByTestId('step-empty')).textContent).toMatch(/failed its automatic checks/);
     expect(exportAPI.estimates).not.toHaveBeenCalled();
   });
 
@@ -257,7 +324,8 @@ describe('creation wizard — full workflow', () => {
     expect(screen.getByTestId('estimate-row-45').textContent).toMatch(/Does not fit/);
     expect(screen.getByTestId('width-45').disabled).toBe(true);
     expect(screen.getAllByText('Calculation failed').length).toBeGreaterThan(0);
-    expect(screen.getByText('Continue to PDF export').disabled).toBe(true);
+    fireEvent.click(screen.getByText('Continue to PDF export'));
+    expect(screen.getByText('Create printable PDF').disabled).toBe(true);        // no PDF without an estimate
   });
 });
 

@@ -8,7 +8,7 @@ const API = process.env.E2E_API_URL || 'http://127.0.0.1:5055/api';
 const IMAGE = path.resolve(process.env.E2E_IMAGE || '../ai_training/data/eval_real_product_set/images/blouse_01.jpg');
 const MEAS = {
   bust_cm: 88, waist_cm: 70, hip_cm: 94, height_cm: 162, neck_cm: 36, shoulder_cm: 12, across_back_cm: 34,
-  back_waist_length_cm: 40, armhole_depth_cm: 20, garment_length_cm: 65, bicep_cm: 28, sleeve_cm: 55, wrist_cm: 16,
+  back_waist_length_cm: 40, armhole_depth_cm: 20, garment_length_cm: 65, bicep_cm: 28, sleeve_cm: 24, wrist_cm: 16,
 };
 
 // Set E2E_SHOT_DIR to save a full-page screenshot of every wizard step (visual evidence);
@@ -67,17 +67,29 @@ test('register -> upload -> AI review -> measurements -> fabric -> pattern -> es
   await page.getByRole('button', { name: 'Continue to measurements' }).click();
   mark('design edited, validated as in-scope and confirmed');
 
-  // 4. an out-of-range measurement is rejected inline, then correct values are saved
+  // 4. only the measurements this design needs; a non-positive value is rejected inline; units never double-convert
   await shot('03-measurements-empty');
-  await page.locator('#meas-bust_cm').fill('5');
+  await expect(page.locator('#meas-wrist_cm')).toHaveCount(0);          // short sleeve: no wrist
+  await expect(page.locator('#meas-height_cm')).toHaveCount(0);         // no drafting calculation uses height
+  await expect(page.getByText(/All 13 measurements|Open the 3D measuring guide|full arm/)).toHaveCount(0);
+  await page.locator('#meas-sleeve_cm').focus();
+  await expect(page.getByTestId('guide-sleeve_cm')).toHaveText('උරහිසේ අග සිට ඔබට අත අවසන් වෙන්න අවශ්‍ය ස්ථානය දක්වා මනින්න.');
+  await page.locator('#meas-bust_cm').fill('-5');
   await page.getByRole('button', { name: 'Save and continue' }).click();
-  await expect(page.getByTestId('error-bust_cm')).toContainText(/plausible range/);
+  await expect(page.getByTestId('error-bust_cm')).toContainText(/greater than 0/);
   await shot('03b-measurement-inline-error');
-  for (const [k, v] of Object.entries(MEAS)) await page.locator(`#meas-${k}`).fill(String(v));
+  for (const [k, v] of Object.entries(MEAS)) {
+    if (await page.locator(`#meas-${k}`).count()) await page.locator(`#meas-${k}`).fill(String(v));
+  }
+  await page.locator('#meas-bust_cm').fill('88.9');
+  await page.getByTestId('unit-in').click();
+  await expect(page.locator('#meas-bust_cm')).toHaveValue('35');
+  await page.getByTestId('unit-cm').click();
+  await expect(page.locator('#meas-bust_cm')).toHaveValue('88.9');      // exactly what was typed
   await page.getByRole('button', { name: 'Save and continue' }).click();
   await expect(page.getByRole('heading', { name: 'Choose fabric and fit' })).toBeVisible();
   await shot('04-fabric-and-fit');
-  mark('measurements validated (inline error shown) and saved');
+  mark('only design measurements shown, non-positive value rejected inline, unit toggle kept typed values, saved');
 
   // 5. recommended fabric with explanation, then generate
   await expect(page.getByText(/Cotton Poplin|Linen|Rayon|Jersey/).first()).toBeVisible({ timeout: 30_000 });
@@ -123,10 +135,19 @@ test('register -> upload -> AI review -> measurements -> fabric -> pattern -> es
   mark(`PDF downloaded: ${out} (${bytes.length} bytes)`);
   fs.writeFileSync(path.join(path.dirname(out), 'e2e_last_pdf_path.txt'), out);
 
-  // 8. feedback, then the saved pattern is visible again from the library
+  // 8. feedback; then a measurement change makes the pattern/estimate/PDF out of date (free step navigation)
   await page.getByLabel(/How easy was it/).selectOption('5');
   await page.getByRole('button', { name: 'Send feedback' }).click();
   await expect(page.getByText(/Thank you/)).toBeVisible();
+  await page.getByRole('button', { name: /^Step 4: Measurements/ }).click();
+  await page.locator('#meas-bust_cm').fill('90');
+  await expect(page.getByRole('button', { name: /^Step 6: Pattern preview \(Needs update\)/ })).toBeVisible();
+  await page.getByRole('button', { name: /^Step 6: Pattern preview/ }).click();
+  await expect(page.getByTestId('step-empty')).toContainText(/generated again/);
+  await expect(page.getByTestId('pattern-preview')).toHaveCount(0);
+  await page.getByRole('button', { name: /^Step 8: Download PDF/ }).click();
+  await expect(page.getByTestId('step-empty')).toContainText(/out of date/);
+  mark('free navigation: edited measurement marks pattern, estimate and PDF as needing regeneration');
   await page.goto('/history');
   await expect(page.locator('.library-item').first()).toBeVisible();
   await page.getByRole('button', { name: 'View pattern' }).first().click();
@@ -160,5 +181,7 @@ test('out-of-scope design cannot be confirmed through the UI', async ({ page, re
   await page.getByTestId('select-sleeve_length').selectOption('short-sleeve');
   await expect(page.getByTestId('select-sleeve_style').locator('option[value="puff-sleeve"]')).toBeDisabled();
   await expect(page.getByTestId('confirm-btn')).toBeDisabled();            // style still missing
-  await expect(page.getByRole('button', { name: 'Continue to measurements' })).toBeDisabled();
+  await page.getByRole('button', { name: 'Continue to measurements' }).click();       // navigation is free ...
+  await expect(page.getByTestId('step-empty')).toContainText(/Confirm the design first/);   // ... but nothing is drafted
+  await expect(page.locator('#meas-bust_cm')).toHaveCount(0);
 });

@@ -1,4 +1,4 @@
-import { Check } from 'lucide-react';
+import { Check, RefreshCw } from 'lucide-react';
 
 export const WIZARD_STEPS = [
   { id: 1, label: 'Customer & design' },
@@ -12,24 +12,30 @@ export const WIZARD_STEPS = [
 ];
 export const LAST_STEP = WIZARD_STEPS.length;
 
+const STATUS_TEXT = { done: 'Completed', pending: 'Pending', stale: 'Needs update' };
+
 /**
- * Progress indicator for the creation wizard. A step can be opened only if the user has already
- * reached it (maxStep), so nobody can skip the design confirmation or the measurements.
+ * Progress indicator for the creation wizard. Every step can be opened at any time (entered data is kept);
+ * `status` ({stepId: 'done' | 'pending' | 'stale'}) comes from the real wizard state, not from the order in
+ * which the steps were visited. The actions inside a step (save, generate, export) do their own validation.
  */
-export default function StepIndicator({ currentStep, setStep, maxStep = 1, pdfDownloaded = false }) {
+export default function StepIndicator({ currentStep, setStep, status = {} }) {
   return (
     <nav className="wizard-steps" aria-label="Pattern creation progress">
       {WIZARD_STEPS.map((step) => {
-        const reachable = step.id <= maxStep;
-        const isDone = currentStep > step.id || (step.id === LAST_STEP && pdfDownloaded);
-        const isActive = currentStep === step.id && !(step.id === LAST_STEP && pdfDownloaded);
-        const stateClass = isDone ? 'done' : isActive ? 'active' : 'idle';
+        const state = status[step.id] || 'pending';
+        const isActive = currentStep === step.id;
+        const stateClass = isActive ? 'active' : state === 'done' ? 'done' : state === 'stale' ? 'stale' : 'idle';
         return (
-          <button type="button" key={step.id} className={`wstep ${stateClass}`} disabled={!reachable}
+          <button type="button" key={step.id} className={`wstep ${stateClass}`}
                   aria-current={isActive ? 'step' : undefined}
-                  aria-label={`Step ${step.id}: ${step.label}${isDone ? ' (done)' : ''}`}
-                  onClick={() => reachable && setStep && setStep(step.id)}>
-            <span className="wstep-num" aria-hidden="true">{isDone ? <Check size={16} strokeWidth={3} /> : step.id}</span>
+                  aria-label={`Step ${step.id}: ${step.label} (${STATUS_TEXT[state]})`}
+                  data-status={state}
+                  onClick={() => setStep && setStep(step.id)}>
+            <span className="wstep-num" aria-hidden="true">
+              {state === 'done' && !isActive ? <Check size={16} strokeWidth={3} />
+                : state === 'stale' && !isActive ? <RefreshCw size={14} strokeWidth={2.6} /> : step.id}
+            </span>
             <span className="wstep-lbl">{step.label}</span>
           </button>
         );
