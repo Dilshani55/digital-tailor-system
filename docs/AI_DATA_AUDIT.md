@@ -1,92 +1,146 @@
-# 15-class data audit and training decision (30 Sep 2026)
+# AI training-data audit (1 Oct 2026)
 
-Question: can a classifier with the exact 3 / 5 / 3 / 4 output heads be trained and *independently
-validated* with the data that exists today? Answer: **no — the evidence for 9 of the 15 classes is
-insufficient, and for 5 classes there is nothing to evaluate against.** The production model therefore
-stays the validated M13 checkpoint (SHA-256 `3b69a470ed5d039844056135ad27c700a865b82196ef85dc6a5e9f53c84f0339`),
-whose predictions outside the 15 classes are shown but never remapped.
-
-Reproduce (local data, not in Git):
+What data exists on this machine for the garment classifier (heads 3 / 5 / 3 / 4), how far each label can be
+trusted, what was wrong, what was fixed, and what still needs a person. Everything here is produced by one
+read-only script from the manifests the trainer really reads:
 
 ```powershell
-$env:PYTHONPATH="."
-backend\venv\Scripts\python ai_training\scripts\build_15class_manifests.py    # trusted counts + verdict
-backend\venv\Scripts\python ai_training\scripts\audit_15class_classes.py      # this table + recovery candidates
-backend\venv\Scripts\python ai_training\scripts\make_review_contact_sheets.py # human-review sheets
+backend\venv\Scripts\python ai_training\scripts\v2\audit_datasets.py --out evidence\ai_data_audit
 ```
 
-Manifest checksums of this run: `train.jsonl 4f2a1c34…57da0`, `val.jsonl 07c145e6…fe30ef`,
-`test.jsonl 5fc3784d…f473d6` (full values in `ai_training/data/manifests_15class/counts.json`).
-Targets per class (trusted labels): train ≥ 100, validation ≥ 30, test ≥ 30.
+(`evidence/` and all datasets are local and git-ignored. The first run hashes about 43,500 photos and takes a few
+minutes; later runs use a cache.)
 
-## Per-class table
+## Datasets
 
-"Raw count" = labelled records of the class before trust filtering; trusted = `human_verified`,
-`fashionpedia_direct`, or `none` derived from an explicit sleeveless label; validation/test exclude images with a
-near-duplicate (dHash ≤ 4) in training. "Upper bound" = images in the raw Fashionpedia annotations (train + val)
-where the explicit attribute occurs together with exactly the garment we train on (a top/blouse and no other
-upper garment) — the most any recovery could reach.
+| Dataset | Folder (local) | Licence | Used for |
+|---|---|---|---|
+| Fashionpedia | `ai_training/data/raw/fashionpedia` | annotations CC BY 4.0 | garment type (human-verified subset), neckline, sleeve length, puff / bell sleeves |
+| DeepFashion2 | `ai_training/datasets/archive/DeepFashion2` → prepared tops in `ai_training/datasets/deepfashion2_tops` | non-commercial research | sleeve length (human category), `none` for sleeveless; garment detector training |
+| DeepFashion-MultiModal (DMM) | `ai_training/datasets/deepfashion_multimodal` | non-commercial research | sleeve length and neckline (human shape annotation); garment type by **proxy** (shop category / navel rule) |
 
-| Head | Class | Raw count | Trusted train | Val | Test | Locked benchmark | Train label provenance | Raw upper bound | Known risks |
-|---|---|---:|---:|---:|---:|---:|---|---:|---|
-| garment_type | blouse | 359 | **87** | 39 | 42 | 20 | human_verified 87, accepted_pseudo_label 191 | | Fashionpedia merges blouses with button-down shirts (the review sheets show men's shirts and jackets) |
-| garment_type | t-shirt | 288 | 212 | 36 | 40 | 20 | human_verified 212 | | |
-| garment_type | crop-top | 903 | 815 | 39 | 44 | 20 | fashionpedia_direct 764, human_verified 51, accepted_pseudo_label 5 | | |
-| neckline_type | round-neck | 3621 | 2597 | 497 | 527 | 23 | fashionpedia_direct 2597 | | |
-| neckline_type | v-neck | 1172 | 815 | 160 | 197 | 8 | fashionpedia_direct 815 | | |
-| neckline_type | square-neck | 171 | 126 | **21** | **24** | **0** | fashionpedia_direct 126 | 134 | pool exhausted; not in the benchmark |
-| neckline_type | collared-neck | 493 | **0** | **0** | **0** | **0** | fashionpedia_rule_derived 493 | | only a candidate rule (collar part present); nothing trusted anywhere |
-| neckline_type | off-shoulder | 213 | 146 | **25** | 42 | 1 | fashionpedia_direct 146 | 214 | pool exhausted |
-| sleeve_length | sleeveless | 22 | **16** | **4** | **2** | **0** | fashionpedia_direct 16 | 61 | very rare on tops; not in the benchmark |
-| sleeve_length | short-sleeve | 3787 | 2722 | 543 | 522 | 29 | fashionpedia_direct 2722 | | |
-| sleeve_length | long-sleeve | 5497 | 3895 | 778 | 824 | 13 | fashionpedia_direct 3895 | | |
-| sleeve_style | none | 16 | **16** | **0** | **0** | **0** | derived_from_explicit_sleeveless 16 | | limited by sleeveless |
-| sleeve_style | regular-sleeve | 494 | **0** | **0** | **0** | **0** | fashionpedia_rule_derived 494 | | "set-in sleeve" is a construction, not a style |
-| sleeve_style | puff-sleeve | 194 | 142 | **19** | 33 | 8 | fashionpedia_direct 142 | 200 | pool exhausted |
-| sleeve_style | bell-sleeve | 89 | **58** | **18** | **13** | 3 | fashionpedia_direct 58 | 95 | pool exhausted |
+Every image a manifest names exists on disk; no image is unreadable.
 
-Bold = below target. Verdict of `build_15class_manifests.py`: **NOT_READY**.
+## Labels per head and class
 
-## Weak-class recovery (spec §5.2)
+`trusted` = a person labelled this attribute (or `none` follows from an explicit sleeveless label).
+`proxy` = a shop category or a rule stands in for the label. Counts are for the manifests of the next
+candidate (`manifests_m42`, after the fixes below, before any human review).
 
-* The raw annotations were searched directly. Explicit attributes sit on **part** annotations (sleeve,
-  neckline, collar) and mostly belong to dresses/jackets: e.g. 951 puff-sleeve parts exist, but only ~200 of them
-  are on images whose only upper garment is a top/blouse — and 194 are already used. The same holds for bell,
-  square-neck and off-shoulder (upper bounds 95 / 134 / 214 vs 89 / 171 / 213 already used).
-* `sleeveless`: 61 unambiguous images exist; after removing those already in the manifests **15 new candidates**
-  remain (`ai_training/data/audits/sleeveless_recovery_candidates.jsonl`, provenance `fashionpedia_direct`, with
-  `none` derived from it). Even with all of them sleeveless reaches ~37 labels versus the 160 needed. They are
-  listed, not added: they must follow their source image's split and pass the near-duplicate check in a reviewed
-  rebuild.
-* A missing sleeve annotation is **never** treated as sleeveless (tested).
-* `collared-neck` and `regular-sleeve` have no direct attribute; their only evidence is a rule (collar part /
-  "set-in" construction) and the review sheets show why that is not trustworthy (suits, jackets, men's shirts).
-  They need human review.
+| Head | Class | Train | Val | Test (test_all) | Test (test_dmm) | Benchmark (60) |
+|---|---|---:|---:|---:|---:|---:|
+| garment_type | blouse | 87 (+4,687 proxy) | 38 (+878 proxy) | 42 | 0 (+1,077 proxy) | 20 |
+| garment_type | t-shirt | 211 (+4,047 proxy) | 36 (+821 proxy) | 40 | 0 (+675 proxy) | 20 |
+| garment_type | crop-top | 814 (+1,779 proxy) | 38 (+355 proxy) | 44 | 0 (+380 proxy) | 20 |
+| neckline_type | round-neck | 7,468 | 1,479 | 527 | 994 | 23 |
+| neckline_type | v-neck | 1,762 | 335 | 197 | 168 | 8 |
+| neckline_type | square-neck | 189 | 32 | **24** | **8** | **0** |
+| neckline_type | collared-neck | **0** | **0** | **0** | **0** | **0** |
+| neckline_type | off-shoulder | 146 | **25** | 42 | **0** | **1** |
+| sleeve_length | sleeveless | 9,282 | 1,460 | 369 | 1,436 | **0** |
+| sleeve_length | short-sleeve | 9,057 | 1,673 | 1,018 | 673 | 29 |
+| sleeve_length | long-sleeve | 10,060 | 1,682 | 1,317 | 543 | 13 |
+| sleeve_style | none | 9,282 | 1,456 | 367 | 1,436 | **0** |
+| sleeve_style | regular-sleeve | **0** | **0** | **0** | **0** | **0** |
+| sleeve_style | puff-sleeve | 142 | **18** | 33 | **0** | 8 |
+| sleeve_style | bell-sleeve | **57** | **17** | **13** | **0** | 3 |
 
-## Human review (prepared, not done)
+Bold = fewer than 30 validation / test examples, or fewer than 100 training examples.
 
-`make_review_contact_sheets.py` produced 45 contact sheets (36 numbered crops each) and one CSV per sheet from the
-existing 1,413-item queue (collared-neck, regular-sleeve, sleeveless candidates, blouse). A reviewer writes the
-class, `reject` or `uncertain` and a reviewer id per number; `--collect` turns the CSVs into `decisions.jsonl`
-for `build_15class_manifests.py --decisions`. The collected yield is unknown until someone reviews them.
+What this means for the six classes the brief names:
 
-## Training decision (spec §5.6–5.7, Milestone 3)
+| Class | Evidence | Consequence |
+|---|---|---|
+| regular-sleeve | **No trusted label anywhere.** 448 Fashionpedia candidates ("set-in sleeve" is a construction, not a style). | Cannot be learned or tested until a person reviews photos. The app shows "please select". |
+| collared-neck | **No trusted label anywhere.** Candidates: 277 Fashionpedia (collar part), 810 DMM ("lapel": 582 train / 84 val / 144 test). | Same. The 582 lapel candidates stay masked: "lapel" also means a jacket lapel. |
+| bell-sleeve | 57 train / 17 val / 13 test, Fashionpedia only; the source pool is exhausted. | Weak: test F1 rests on 13 photos. |
+| square-neck | 189 train / 32 val / 24 test (+8 DMM). | Weak: just under 30 test photos. |
+| off-shoulder | 146 train / 25 val / 42 test, Fashionpedia only. | Usable, small. |
+| crop-top / T-shirt | Trusted test labels: 44 / 40 (126 garment-type test labels in total). Training is dominated by proxies. | One wrong test photo changes garment accuracy by 0.8 points; small differences between models are noise. |
 
-**No training run was started.** Reasons, all measured above:
+## What was wrong and what was done
 
-1. Five classes (collared-neck, sleeveless, none, regular-sleeve, and square-neck) have **no example in the
-   locked benchmark**, and three (collared-neck, none, regular-sleeve) have **no trusted validation or test
-   example** — the acceptance gate's "no zero/near-zero recall on critical weak classes" criterion cannot even be
-   computed, so no candidate could pass it honestly.
-2. The three earlier controlled experiments on the same data (focal loss γ 2 / γ 1, label-safe augmentation)
-   all failed the gate ([AI_EVIDENCE.md](AI_EVIDENCE.md) §4); repeating runs on unchanged data would spend
-   3+ CPU hours without new information.
-3. The guard `train_15class_guarded.py` refuses to train while the verdict is NOT_READY — by design.
+| Finding | Measured | Action in `build_m42_manifests.py` |
+|---|---|---|
+| **Tank tops labelled "t-shirt".** DMM's shop category `Tees_Tanks` mixes tees and tanks; with a human sleeve label of "sleeveless" the garment is a tank top, not a T-shirt (class definition: knit tee *with sleeves*). | 4,481 labels (3,203 train, 566 val, 712 test_dmm) — 44 % of the DMM "t-shirt" proxy labels used by the M41 experiment | Garment type **masked** for those records (not relabelled); the human sleeve label is kept |
+| Training photos near-identical to test photos (dHash, Hamming ≤ 4) | 25 test_all photos and 11 test_dmm photos had a near-twin in training | 43 training records dropped. The test files are not touched |
+| Validation photos near-identical to training or test photos | 233 validation photos had a near-twin in training (199 of them DMM ~ DMM); 47 test photos had a near-twin in validation | 266 validation records dropped (thresholds are chosen on validation) |
+| DeepFashion2 ids reused for different photos (its train and validation folders are numbered separately), so the id `df2:023609` names two photos | 116 ids | Not leakage: the photos differ (0 byte-identical photos across splits). The audit now identifies a DeepFashion2 photo by folder + id |
+| Byte-identical photos across splits | 0 | – |
+| Same DMM garment item in two splits | 0 | – |
+| Labels outside a head's classes, class index ≠ label, mask ≠ label, masked provenance used as a label, `none` without sleeveless | 0 | – |
+| DeepFashion2 category → sleeve length, DMM shape value → sleeve length / neckline, re-derived from the source files for every record | 0 mismatches | – |
 
-What would change the decision: reviewed labels from the contact sheets (collared-neck, regular-sleeve, blouse),
-and — for sleeveless/none, square-neck, bell, puff, off-shoulder — images from another **licensed** dataset
-(to be proposed to and approved by the project owner per dataset) plus a new locked benchmark that contains every
-class (≥ 10 each).
+After the fixes the same audit on `manifests_m42` reports no mapping problem and no identical or near-identical
+photo between training, validation and any test set.
 
-The production checkpoint is unchanged and its backup in `backend/app/ai/models/archive_m13_checkpoint/`
-is intact.
+Labels that are correct but describe a garment the engine cannot draft (information only, kept): sleeveless blouse
+(2,991 proxy), long-sleeved crop top (416 proxy, 88 Fashionpedia, 16 human-verified).
+
+## Human review queue
+
+`build_review_queue_m42.py` (seed 42) → `ai_training/data/label_queue_m42/queue.jsonl`, 725 photos:
+
+| Question | Source | Train | Val | Test |
+|---|---|---:|---:|---:|
+| Neckline (collared-neck candidates) | Fashionpedia, collar part attached | 140 | 40 | 45 |
+| Neckline (collared-neck candidates) | DMM front views, source value "lapel" | 100 | 30 | 35 |
+| Sleeve style (regular-sleeve candidates) | Fashionpedia, "set-in sleeve" | 140 | 40 | 45 |
+| Sleeve style (regular-sleeve candidates) | DeepFashion2 short / long sleeved tops | 60 | 20 | 30 |
+
+The reviewer answers the class they see, or `other` / `unclear`. Class definitions:
+[LABEL_GUIDE_15class.md](../ai_training/datasets/LABEL_GUIDE_15class.md). **Status: not reviewed yet (0 of 725).**
+
+```powershell
+backend\venv\Scripts\python ai_training\tools\review_labels.py --reviewer "your name"     # then open http://127.0.0.1:5090
+```
+
+## Acceptance targets (fixed before training)
+
+`ai_training/config/m42_acceptance.json`, committed before any M42 run. The gate set is the unchanged M40 test set
+(`test_all`) with the crop the app uses (garment detector, box + 10 %):
+
+| Item | M40 (baseline) | Candidate must reach |
+|---|---|---|
+| Garment type macro-F1 | 0.759 | ≥ 0.79 |
+| Neckline macro-F1 | 0.503 | ≥ 0.53 |
+| Sleeve length macro-F1 | 0.817 | ≥ 0.81 |
+| Sleeve style macro-F1 | 0.617 | ≥ 0.61 |
+| Accuracy of every head | 0.762 / 0.663 / 0.840 / 0.930 | not more than 0.01 below M40 |
+| Sleeve length answered automatically | 92.2 % correct at 79.7 % coverage | ≥ 90 % correct, coverage ≥ 75 % |
+| Any other head answered automatically | none | ≥ 90 % correct when answered |
+| Integrity | – | loads in the production code; test files byte-identical to M40's; no near-identical train / test photos |
+
+The checkpoint and all thresholds are chosen on validation only. A head is answered automatically only if every one
+of its classes has at least 15 trusted validation examples. New classes (collared-neck, regular-sleeve) are offered
+as AI suggestions only with ≥ 30 reviewed test examples and F1 ≥ 0.60 on them; that does not decide pass / fail.
+Pass → the candidate becomes the default and M40 is kept as rollback. Fail → M40 stays and the gap is reported.
+M40 itself does not pass this gate (garment type and neckline), so a candidate has to be really better.
+
+## Training status
+
+**No M42 training run has been started.** Order of work once the review is done:
+
+```powershell
+backend\venv\Scripts\python ai_training\scripts\v2\build_m42_manifests.py                 # applies the fixes + the reviewed labels
+$env:AUDIT_MANIFESTS="ai_training/data/manifests_m42"; backend\venv\Scripts\python ai_training\scripts\v2\audit_datasets.py --out evidence\ai_data_audit\m42
+backend\venv\Scripts\python ai_training\scripts\train_multitask.py --config ai_training/config/m42_config.json --classes ai_training/config/classes_v2_15class.json --train-manifest ai_training/data/manifests_m42/train.jsonl --val-manifest ai_training/data/manifests_m42/val.jsonl --output-dir ai_training/data/training_runs/m42
+backend\venv\Scripts\python ai_training\scripts\v2\eval_m42.py --candidate ai_training/data/training_runs/m42/checkpoints/best.pt --out ai_training/data/training_runs/m42/evaluation
+```
+
+`m42_config.json` is the M40 / M41 recipe with a longer schedule (M41 was still improving at its last allowed
+epoch): up to 40 fine-tuning epochs with early stopping (patience 8), backbone layers 4–8 trainable instead of only
+layer 8. CPU only on this laptop: plan one overnight run. `eval_m42.py` reports whole-photo, detector-crop and
+ground-truth-crop results separately, per-head accuracy and macro-F1, per-class precision / recall / F1, confusion
+matrices and auto-answer accuracy with coverage, then writes `gate.json` with PASS or FAIL.
+
+Until a candidate passes, the deployed model is **M40** (auto-fills sleeve length only) with the garment detector;
+see [AI_EVIDENCE.md](AI_EVIDENCE.md), [AI_DETECTOR.md](AI_DETECTOR.md) and [AI_M41.md](AI_M41.md).
+
+## Earlier audit (30 Sep 2026, Fashionpedia only)
+
+The first audit concerned the older 28-class model (M13) and Fashionpedia alone; its per-class table is superseded
+by the one above. Its conclusions that still hold: explicit Fashionpedia attributes for puff, bell, square-neck and
+off-shoulder are exhausted (no more examples can be recovered from that dataset); a missing sleeve annotation is
+never treated as sleeveless; rule-derived collared-neck and regular-sleeve labels are not trustworthy without a
+person (the review sheets showed suits, jackets and men's shirts).

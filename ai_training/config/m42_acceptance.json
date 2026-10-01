@@ -1,0 +1,92 @@
+{
+  "schema_version": 1,
+  "name": "M42 acceptance gate",
+  "written_on": "2026-10-01",
+  "written_before_training": true,
+  "note": "These targets were fixed BEFORE any M42 training run. They are not to be changed after a candidate has been evaluated. A candidate that misses any 'required' item is not deployed: M40 stays the default and the gap is reported.",
+  "baseline": {
+    "model": "M40",
+    "checkpoint": "backend/app/ai/models/garment_multitask_m40_15class.pt",
+    "sha256": "3ed45bc121c0eea82fb44280a6a5b5e2e2beaf43035fc501cf3e5089436c66be",
+    "detector_crop_test_all": {
+      "garment_type": {
+        "n": 126,
+        "accuracy": 0.7619,
+        "macro_f1": 0.7594
+      },
+      "neckline_type": {
+        "n": 790,
+        "accuracy": 0.6633,
+        "macro_f1": 0.503
+      },
+      "sleeve_length": {
+        "n": 2704,
+        "accuracy": 0.8399,
+        "macro_f1": 0.8174
+      },
+      "sleeve_style": {
+        "n": 413,
+        "accuracy": 0.9298,
+        "macro_f1": 0.6171
+      }
+    },
+    "auto_answer": {
+      "sleeve_length": {
+        "coverage": 0.797,
+        "accuracy_when_answered": 0.922
+      }
+    }
+  },
+  "evaluation": {
+    "gate_set": "test_all = ai_training/data/manifests_m40/test.jsonl, unchanged (byte-identical copy in the candidate's manifests)",
+    "gate_input": "detector crop: whole photo -> garment detector -> tight box + 10 % margin -> classifier (whole photo when no box). This is what the app does.",
+    "reported_separately_not_gated": [
+      "whole photo",
+      "ground-truth crop",
+      "test_fp",
+      "test_df2",
+      "bench60",
+      "test_dmm (same source as part of the training data)",
+      "test_reviewed (human-reviewed collared-neck / regular-sleeve)"
+    ],
+    "selection": "The checkpoint (best validation mean macro-F1) and every confidence threshold are chosen on the validation split only. The test sets are used once, after selection."
+  },
+  "required": {
+    "macro_f1_min": {
+      "garment_type": 0.79,
+      "neckline_type": 0.53,
+      "sleeve_length": 0.81,
+      "sleeve_style": 0.61
+    },
+    "accuracy_max_drop_vs_baseline": 0.01,
+    "auto_answer": {
+      "min_accuracy_when_answered": 0.9,
+      "heads_that_must_stay_auto_answered": {
+        "sleeve_length": {
+          "min_coverage": 0.75
+        }
+      },
+      "rule": "A head is answered automatically only above its validation-chosen threshold. Every head the candidate answers automatically must be at least 90 % correct when it answers, on test_all with the detector crop. A head that misses this is a gate failure (it may not simply be switched off after seeing the test result).",
+      "min_validation_examples_per_class": 15,
+      "validation_rule": "A head may be answered automatically only if every one of its classes has at least 15 trusted validation examples; otherwise validation cannot reveal a failure on that class and the head stays 'please select'. Thresholds are chosen on validation with the app's detector crop: the smallest score at which accepted validation predictions are >= 90 % correct with >= 20 % coverage."
+    },
+    "integrity": [
+      "the candidate loads in the production inference code with heads 3 / 5 / 3 / 4",
+      "the test files used are byte-identical to the M40 test files",
+      "no training photo is identical or near-identical (dHash <= 4) to a test photo"
+    ]
+  },
+  "new_classes": {
+    "classes": {
+      "neckline_type": "collared-neck",
+      "sleeve_style": "regular-sleeve"
+    },
+    "min_reviewed_test_examples": 30,
+    "min_f1_on_test_reviewed": 0.6,
+    "rule": "Not part of the pass / fail decision. A new class is offered as an AI suggestion only if it has at least 30 human-reviewed test examples and reaches F1 0.60 on them; otherwise the app keeps showing 'please select' for it and the report says so."
+  },
+  "decision": {
+    "pass": "every 'required' item holds -> the candidate becomes the default model; M40 (checkpoint + thresholds sidecar) is kept as the rollback",
+    "fail": "any 'required' item fails -> M40 stays the default; the report lists each failed item with the measured value and the target"
+  }
+}

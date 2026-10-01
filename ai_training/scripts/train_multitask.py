@@ -378,7 +378,7 @@ def run_training():
             model.load_state_dict(ckpt["model_state_dict"])
             print(f"Loaded best Stage A model state from {stage_a_best_ckpt}.")
 
-        model.unfreeze_partial_backbone()
+        model.unfreeze_partial_backbone(config.get("stage_b_unfreeze_from", 8))
         param_info = model.get_param_count()
         print(f"Stage B Parameters: Total={param_info['total_params']:,}, Trainable={param_info['trainable_params']:,}, Frozen={param_info['frozen_params']:,}")
 

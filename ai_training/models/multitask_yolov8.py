@@ -81,17 +81,16 @@ class YOLOv8MultiTaskClassifier(nn.Module):
         for param in self.projection_conv.parameters():
             param.requires_grad = True
 
-    def unfreeze_partial_backbone(self):
+    def unfreeze_partial_backbone(self, first_trainable_layer: int = 8):
         """
-        Keeps early backbone layers (0-7) frozen.
-        Unfreezes final backbone stage (layer 8) and shared projection layer (projection_conv).
+        Keeps the early backbone layers (0 .. first_trainable_layer - 1) frozen and unfreezes the rest of the
+        backbone plus the shared projection layer (projection_conv). The default (8) unfreezes only the final
+        backbone stage, as every model up to M41 was trained; a smaller number fine-tunes more of the backbone.
         """
-        for i in range(8):
+        first = max(0, min(8, int(first_trainable_layer)))
+        for i in range(9):
             for param in self.backbone[i].parameters():
-                param.requires_grad = False
-
-        for param in self.backbone[8].parameters():
-            param.requires_grad = True
+                param.requires_grad = i >= first
 
         for param in self.projection_conv.parameters():
             param.requires_grad = True
