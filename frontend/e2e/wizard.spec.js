@@ -150,6 +150,7 @@ test('register -> upload -> AI review -> measurements -> fabric -> pattern -> es
   mark('free navigation: edited measurement marks pattern, estimate and PDF as needing regeneration');
   await page.goto('/history');
   await expect(page.locator('.library-item').first()).toBeVisible();
+  await expect(page.locator('.library-item').first().locator('.tag').first()).toHaveText('PDF ready');
   await page.getByRole('button', { name: 'View pattern' }).first().click();
   await expect(page.getByRole('heading', { name: /Blouse pattern/ })).toBeVisible();
   await expect(page.getByTestId('pattern-preview')).toBeVisible();

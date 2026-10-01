@@ -52,6 +52,7 @@ describe('Customers', () => {
     patternsAPI.getAll.mockRejectedValue(new Error('down'));
     render(<MemoryRouter><Customers /></MemoryRouter>);
     expect(await screen.findByTestId('pattern-count-m1')).toHaveTextContent('—');
+    expect(screen.getByTestId('counts-unavailable').textContent).toMatch(/unknown, not zero/);
   });
 
   it('reports a load failure instead of an empty customer list', async () => {
@@ -89,8 +90,8 @@ describe('Customers', () => {
 
 describe('Recent activity (header)', () => {
   it('lists only the user’s real patterns and PDFs', async () => {
-    patternsAPI.getAll.mockResolvedValue({ data: { patterns: [{ pattern_id: 'p1', garment_type: 'crop-top', yardage_metres: 0.9, generated_at: '2026-09-02T10:00:00' }] } });
-    exportAPI.getAll.mockResolvedValue({ data: { exports: [{ export_id: 'e1', exported_at: '2026-09-03T10:00:00' }] } });
+    patternsAPI.getAll.mockResolvedValue({ data: { patterns: [{ pattern_id: 'p1', garment_type: 'crop-top', yardage_metres: 0.9, generated_at: '2026-09-02T10:00:00',
+      exports: [{ export_id: 'e1', exported_at: '2026-09-03T10:00:00' }] }] } });
     render(<MemoryRouter><Navbar /></MemoryRouter>);
     fireEvent.click(screen.getByRole('button', { name: 'Recent activity' }));
     const list = await screen.findByTestId('activity-list');
@@ -101,10 +102,17 @@ describe('Recent activity (header)', () => {
 
   it('says there is no activity for a new account', async () => {
     patternsAPI.getAll.mockResolvedValue({ data: { patterns: [] } });
-    exportAPI.getAll.mockResolvedValue({ data: { exports: [] } });
     render(<MemoryRouter><Navbar /></MemoryRouter>);
     fireEvent.click(screen.getByRole('button', { name: 'Recent activity' }));
     expect(await screen.findByText(/No activity yet/)).toBeTruthy();
+  });
+
+  it('says the activity could not be loaded instead of "no activity"', async () => {
+    patternsAPI.getAll.mockRejectedValue(new Error('down'));
+    render(<MemoryRouter><Navbar /></MemoryRouter>);
+    fireEvent.click(screen.getByRole('button', { name: 'Recent activity' }));
+    expect(await screen.findByText(/could not be loaded/)).toBeTruthy();
+    expect(screen.queryByText(/No activity yet/)).toBeNull();
   });
 });
 

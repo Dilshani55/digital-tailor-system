@@ -1,9 +1,11 @@
+import os
 import time
 from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from app.models.design_image import DesignImage
 from app.models.measurement import MeasurementProfile
 from app.models.pattern_result import PatternResult
+from app.models.pdf_export import PdfExport
 from app.models.session import Session
 from app.models.user import User
 from app.logic.parametric_engine import ParametricEngine
@@ -12,6 +14,7 @@ from app.logic.taxonomy_map import confirmed_to_cad_features
 from app.logic.drafting.ease import DraftingError
 from app.logic import feature_schema
 from app.logic import measurement_schema as ms
+from app.utils.references import deref, pattern_owner_id, ref_id
 from datetime import datetime, timezone
 
 patterns_bp = Blueprint("patterns", __name__)
@@ -322,10 +325,9 @@ def get_pattern(pattern_id):
         return jsonify({"error": "Pattern not found"}), 404
 
     # Security check via session → user
-    if str(pattern.session_id.user_id.id) != current_user_id:
+    if pattern_owner_id(pattern) != current_user_id:
         return jsonify({"error": "Unauthorized"}), 403
 
-    from app.models.pdf_export import PdfExport
     exports = PdfExport.objects(pattern_id=pattern).order_by("-exported_at")
     spec = pattern.design_spec or {}
     return jsonify({
@@ -356,10 +358,54 @@ def get_pattern(pattern_id):
     }), 200
 
 
+# ── DELETE PATTERN ────────────────────────────────────────────────────────────
+@patterns_bp.route("/<pattern_id>", methods=["DELETE"])
+@jwt_required()
+def delete_pattern(pattern_id):
+    """
+    Delete a saved pattern together with its printable PDFs. The customer, their measurements and the design
+    photo are kept. (DELETE /api/export/<id> removes one PDF only and keeps the pattern.)
+    """
+    current_user_id = get_jwt_identity()
+    try:
+        pattern = PatternResult.objects(id=pattern_id.strip("<>")).first()
+    except Exception:
+        return jsonify({"error": "Invalid pattern_id format"}), 400
+    # someone else's pattern is reported exactly like a missing one
+    if not pattern or pattern_owner_id(pattern) != current_user_id:
+        return jsonify({"error": "Pattern not found", "error_code": "PATTERN_NOT_FOUND"}), 404
+
+    exports = list(PdfExport.objects(pattern_id=pattern))
+    output_dir = current_app.config["OUTPUT_FOLDER"]
+    for name in {e.file_path for e in exports if e.file_path}:
+        path = os.path.join(output_dir, os.path.basename(name))
+        if os.path.isfile(path):
+            try:
+                os.remove(path)
+            except OSError:
+                current_app.logger.warning("Could not remove PDF file of deleted pattern %s", pattern.id)
+    for e in exports:
+        e.delete()
+
+    session = deref(pattern, "session_id")
+    deleted_id = str(pattern.id)
+    pattern.delete()
+    if session is not None:
+        session.status = "pattern_deleted"      # the generation record stays; it no longer has a pattern
+        session.save()
+
+    return jsonify({"message": "Pattern deleted", "pattern_id": deleted_id, "deleted_pdfs": len(exports)}), 200
+
+
 # ── GET ALL PATTERNS FOR USER ─────────────────────────────────────────────────
 @patterns_bp.route("/", methods=["GET"])
 @jwt_required()
 def get_all_patterns():
+    """
+    Every saved pattern of the signed-in user, with its customer and its PDFs. This one list is what the
+    dashboard, the customers page and the pattern library all count and show. References are read by id only,
+    so a deleted customer, photo or PDF file never breaks the list.
+    """
     current_user_id = get_jwt_identity()
     user = User.objects(id=current_user_id).first()
 
@@ -368,28 +414,49 @@ def get_all_patterns():
 
     sessions = list(Session.objects(user_id=user))
     session_ids = [s.id for s in sessions]
-    # customer (measurement profile) of each session, without dereferencing each pattern's session
-    profile_of_session = {}
-    for s in sessions:
-        ref = s._data.get("measurement_id")
-        profile_of_session[s.id] = str(getattr(ref, "id", ref)) if ref is not None else None
+    profile_of_session = {str(s.id): ref_id(s, "measurement_id") for s in sessions}
 
-    patterns = PatternResult.objects(
+    patterns = list(PatternResult.objects(
         session_id__in=session_ids
-    ).order_by("-generated_at")
+    ).order_by("-generated_at"))
+
+    profile_ids = sorted({v for v in profile_of_session.values() if v})
+    customer_names = {}
+    if profile_ids:
+        for m in MeasurementProfile.objects(id__in=profile_ids):
+            customer_names[str(m.id)] = getattr(m, "client_name", None) or None
+
+    exports_of = {}
+    if patterns:
+        output_dir = current_app.config["OUTPUT_FOLDER"]
+        for e in PdfExport.objects(pattern_id__in=[p.id for p in patterns]).order_by("-exported_at"):
+            exports_of.setdefault(ref_id(e, "pattern_id"), []).append({
+                "export_id":      str(e.id),
+                "filename":       e.file_path,
+                "exported_at":    str(e.exported_at),
+                "file_available": bool(e.file_path) and os.path.isfile(
+                    os.path.join(output_dir, os.path.basename(e.file_path))),
+            })
 
     result = []
     for p in patterns:
-        session_ref = p._data.get("session_id")
+        profile_id = profile_of_session.get(ref_id(p, "session_id"))
+        attributes = (getattr(p, "design_spec", None) or {}).get("attributes") or {}
         result.append({
             "pattern_id":     str(p.id),
-            "measurement_id": profile_of_session.get(getattr(session_ref, "id", session_ref)),
+            "measurement_id": profile_id,
+            "customer_name":  customer_names.get(profile_id),
             "garment_type":   p.garment_type,
+            "neckline_type":  attributes.get("neckline_type"),
+            "sleeve_length":  attributes.get("sleeve_length"),
+            "sleeve_style":   attributes.get("sleeve_style"),
             "yardage_metres": p.yardage_metres,
             "selected_fabric_id": p.selected_fabric_id,
             "selected_fabric_name": p.selected_fabric_name,
             "nesting_summary": p.nesting_summary or {},
             "pieces_count":   len(p.pattern_coordinates),
+            "validation_passed": bool(getattr(p, "validation_passed", True)),
+            "exports":        exports_of.get(str(p.id), []),
             "generated_at":   str(p.generated_at),
             "project_name":   getattr(p, "project_name", None)
         })

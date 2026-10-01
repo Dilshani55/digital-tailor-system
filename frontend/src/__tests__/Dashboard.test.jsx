@@ -4,7 +4,7 @@ import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import Dashboard from '../pages/Dashboard';
 import FabricSavings from '../pages/FabricSavings';
-import { exportAPI, patternsAPI } from '../services/api';
+import { patternsAPI } from '../services/api';
 
 vi.mock('../context/AuthContext', () => ({
   useAuth: () => ({ user: { full_name: 'Dilshani Vitharana' } })
@@ -12,7 +12,6 @@ vi.mock('../context/AuthContext', () => ({
 
 vi.mock('../services/api', () => ({
   patternsAPI: { getAll: vi.fn() },
-  exportAPI: { getAll: vi.fn() }
 }));
 
 function CurrentPath() {
@@ -32,6 +31,7 @@ describe('Dashboard data and navigation', () => {
             pieces_count: 3,
             yardage_metres: 1.2,
             selected_fabric_name: 'Cotton Poplin',
+            exports: [{ export_id: 'export-a', file_available: true }, { export_id: 'export-old', file_available: true }],
             nesting_summary: { waste_cm2: 12500, fabric_width_cm: 114, waste_percent: 28, fabric_length_cm: 120, cutting_mode: 'folded', total_pieces: 3 }
           },
           {
@@ -45,7 +45,6 @@ describe('Dashboard data and navigation', () => {
         ]
       }
     });
-    exportAPI.getAll.mockResolvedValue({ data: { exports: [{ export_id: 'export-a' }] } });
   });
 
   it('renders database-backed metrics and removes average efficiency', async () => {
@@ -57,6 +56,27 @@ describe('Dashboard data and navigation', () => {
     expect(screen.queryByText('Average efficiency')).not.toBeInTheDocument();
     expect(screen.getByText('From 2 saved fabric layouts')).toBeInTheDocument();
     expect(screen.getAllByText(/Fabric plan pending/)).toHaveLength(2);
+  });
+
+  it('counts the same saved patterns the library lists: 3 patterns, 1 with a PDF, 2 pending', async () => {
+    render(<MemoryRouter><Dashboard /></MemoryRouter>);
+    const card = (name) => screen.getByRole('button', { name });
+    expect(await screen.findByRole('button', { name: /patterns created/i })).toHaveTextContent('3');
+    expect(card(/pdf guides/i)).toHaveTextContent('1');
+    expect(card(/pdf guides/i)).toHaveTextContent('2 saved patterns with PDF pending');
+  });
+
+  it('shows unknown, never zero or an empty state, when the data cannot be loaded, and can retry', async () => {
+    patternsAPI.getAll.mockRejectedValueOnce(new Error('down'));
+    render(<MemoryRouter><Dashboard /></MemoryRouter>);
+    expect((await screen.findByRole('alert')).textContent).toMatch(/could not be loaded/);
+    expect(screen.getByRole('button', { name: /patterns created/i })).toHaveTextContent('—');
+    expect(screen.getByRole('button', { name: /pdf guides/i })).toHaveTextContent('—');
+    expect(screen.queryByText('No patterns yet')).toBeNull();
+    expect(screen.getByTestId('recent-unavailable')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /try again/i }));
+    expect(await screen.findByText('2.00 m²')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).toBeNull();
   });
 
   it('opens the saved offcut detail page from the metric card', async () => {

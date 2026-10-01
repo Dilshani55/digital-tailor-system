@@ -75,7 +75,8 @@ export default function Customers() {
   };
 
   const remove = async (p) => {
-    if (!window.confirm(`Delete the customer "${p.client_name}" and their measurements?`)) return;
+    const kept = count(p) > 0 ? ` Their ${count(p)} saved pattern${count(p) === 1 ? ' is' : 's are'} kept in the pattern library.` : '';
+    if (!window.confirm(`Delete the customer "${p.client_name}" and their measurements?${kept}`)) return;
     try {
       await measurementsAPI.delete(p.measurement_id);
       load();
@@ -86,8 +87,9 @@ export default function Customers() {
 
   const count = (p) => (patternCounts ? (patternCounts[p.measurement_id] || 0) : null);
   const q = query.trim().toLowerCase();
+  const countsKnown = patternCounts !== null;        // unknown counts cannot be filtered on
   const filtered = profiles.filter((p) => ((p.client_name || '').toLowerCase().includes(q) || (p.email || '').toLowerCase().includes(q))
-    && (filter === 'all' || (filter === 'with' ? count(p) > 0 : count(p) === 0)));
+    && (filter === 'all' || !countsKnown || (filter === 'with' ? count(p) > 0 : count(p) === 0)));
   const pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const current = Math.min(page, pages);
   const shown = filtered.slice((current - 1) * PAGE_SIZE, current * PAGE_SIZE);
@@ -119,9 +121,21 @@ export default function Customers() {
         </label>
       </div>
 
+      {!loading && !error && !countsKnown && (
+        <div role="alert" className="alert warn" data-testid="counts-unavailable" style={{ marginBottom: 12 }}>
+          The pattern counts could not be loaded, so they are shown as “—” (unknown, not zero).
+          <button type="button" className="btn btn-outline" style={{ marginLeft: 'auto' }} onClick={load}>Try again</button>
+        </div>
+      )}
+
       <section className="ui-card">
         {loading ? <LoadingSpinner message="Loading customers…" />
-          : error ? <div role="alert" className="alert error" style={{ margin: 20 }}>{error} Please refresh and try again.</div>
+          : error ? (
+            <div role="alert" className="alert error" style={{ margin: 20 }}>
+              {error} Please refresh and try again.
+              <button type="button" className="btn btn-outline" style={{ marginLeft: 'auto' }} onClick={load}>Try again</button>
+            </div>
+          )
             : filtered.length === 0 ? (
               <div className="empty-state">
                 <span><Users size={26} /></span>

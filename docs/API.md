@@ -67,7 +67,9 @@ Anything else returns `422 UNSUPPORTED_DESIGN` with an explanation; the system n
 ## Patterns `/api/patterns` 🔒
 
 * `POST /generate` – body `{measurement_id, image_id | "manual", fabric_id, confirmed_attributes?}`. The selected fabric must be compatible with the garment (`422 FABRIC_NOT_COMPATIBLE`) and its construction (woven/knit) decides the drafting block. Optional `project_name` (≤ 80 characters) is stored and printed in the PDF. Drafts the base block, applies the confirmed design, adds seam allowances and validates. Returns `pattern_id`, `base_block`, `final_pattern` (transformations), `pattern_pieces` (per piece: `segments` with Bézier control points, `outline` = sewing line, `cutting_line`, `notches`, `darts`, `grain_line`, `fold_line`, `cut_count`, `cut_on_fold`, `seam_allowances`, `units: "cm"`), `validation` (every check) and `validation_passed`. A pattern that fails validation is **not created** (422).
-* `GET /` – list (each item has `measurement_id`, the customer profile it was drafted for); `GET /{id}` – full saved pattern (geometry, validation, estimate, PDFs). The measured drafting time is stored as `generation_time_sec`.
+* `GET /` – every saved pattern of the user. This one list is what the dashboard, the customers page and the pattern library count and show. Each item has `measurement_id` and `customer_name` (both `null` if the customer profile was deleted), the confirmed `neckline_type` / `sleeve_length` / `sleeve_style`, `validation_passed`, and `exports` – its PDFs, newest first, each `{export_id, filename, exported_at, file_available}`. An empty `exports` means "PDF pending": the pattern is still listed.
+* `GET /{id}` – full saved pattern (geometry, validation, estimate, PDFs). The measured drafting time is stored as `generation_time_sec`.
+* `DELETE /{id}` – deletes the saved pattern **and its PDFs** (records and file). The customer, their measurements and the design photo are kept. Someone else's pattern answers `404 PATTERN_NOT_FOUND`, the same as a missing one.
 
 ## Fabric `/api/fabric` 🔒
 
@@ -79,7 +81,9 @@ Anything else returns `422 UNSUPPORTED_DESIGN` with an explanation; the system n
 * `POST /yardage/{pattern_id}` – body `{fabric_width_cm: 90|114|150|any > 0, cutting_mode: "auto"|"folded"|"open"}` (defaults 114, `auto`). Refused (422) if the pattern failed validation. Returns layout length, exact and recommended purchase length (+3 % shrinkage, +10 cm margin, rounded up to 10 cm), utilisation/waste, `placed_pieces` (polygon positions), `validation_checks` (exact overlap, bounds, fold, grain, quantities), `assumptions`, `mode_comparison`.
 * `POST /estimates/{pattern_id}` – fabric requirement for the three standard widths **36" (91.44 cm), 45" (114.3 cm), 60" (152.4 cm)** from the stored validated pieces, body `{selected_width_cm?, cutting_mode?}`. Each row: width in inches and cm, `fits`, `base_layout_length_cm`, `purchasing_allowance_cm`, `recommended_purchase_m` (+ yd), `utilisation_percent`, `waste_percent`, `placed_pieces` (layout), `validation_checks`, `warnings`; a width where a piece cannot be placed is `fits: false` with the reason and no numbers. The selected width (default: shortest purchase) becomes the saved estimate used by the PDF; all three rows are stored as `width_estimates`. 422 `PATTERN_VALIDATION_FAILED` for a pattern that failed validation.
 * `POST /pdf/{pattern_id}` – builds the printable 1:1 A4-tiled PDF from **stored data only** (validated pieces, measurement snapshot, drafting metadata, customer, design image, AI provenance, 36"/45"/60" estimates); the pattern is not re-drafted. → `export_id`, `pages`.
-* `GET /download/{export_id}` – the PDF. `GET /` list, `DELETE /{export_id}`.
+* `GET /download/{export_id}` – the PDF. `GET /` list. `DELETE /{export_id}` removes **one PDF only**; the pattern is kept (its file is removed with the last PDF record that uses it). A PDF whose pattern no longer exists answers `404 EXPORT_PATTERN_MISSING`.
+
+Records can be deleted independently, so a reference may point at a record that is gone. Routes treat that as "missing" (never a 500). `backend\venv\Scripts\python backend\tools\orphan_report.py` prints a **read-only** report of such records with a dry-run plan; it changes nothing.
 
 ## Research `/api/research` 🔒
 

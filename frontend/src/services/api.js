@@ -65,6 +65,8 @@ export const patternsAPI = {
   generate: (data) => api.post('/patterns/generate', data),
   getAll:   ()     => api.get('/patterns/'),
   getOne:   (id)   => api.get(`/patterns/${id}`),
+  // deletes the saved pattern and its PDFs; the customer and measurements are kept
+  delete:   (id)   => api.delete(`/patterns/${id}`),
 };
 
 // ── EXPORT ────────────────────────────────────────────────────────────────────

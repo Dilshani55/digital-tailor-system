@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Bell, ChevronDown, LogOut, Ruler, UserRound } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { patternsAPI, exportAPI } from '../services/api';
+import { patternsAPI } from '../services/api';
 import { confirmLeave } from '../utils/unsavedChanges';
 
 const label = (v) => (v ? String(v).replace(/-/g, ' ').replace(/^./, (c) => c.toUpperCase()) : 'Pattern');
@@ -13,7 +13,7 @@ export default function Navbar() {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
-  // Real activity only (the user's own saved patterns and PDFs); null = not loaded yet
+  // Real activity only (the user's own saved patterns and PDFs); null = not loaded yet, false = could not be loaded
   const [activity, setActivity] = useState(null);
   const ref = useRef(null);
   const notifRef = useRef(null);
@@ -23,18 +23,20 @@ export default function Navbar() {
     : '?';
 
   const loadActivity = () => {
-    Promise.all([patternsAPI.getAll(), exportAPI.getAll()])
-      .then(([p, e]) => {
+    patternsAPI.getAll()
+      .then((p) => {
+        const patterns = p.data.patterns || [];
         const items = [
-          ...(p.data.patterns || []).map((x) => ({
+          ...patterns.map((x) => ({
             id: `p-${x.pattern_id}`, at: x.generated_at,
             text: `${label(x.garment_type)} pattern generated${x.yardage_metres > 0 ? ` · ${x.yardage_metres} m fabric` : ''}`,
           })),
-          ...(e.data.exports || []).map((x) => ({ id: `e-${x.export_id}`, at: x.exported_at, text: 'Printable PDF created' })),
+          ...patterns.flatMap((x) => (x.exports || []).map((e) => (
+            { id: `e-${e.export_id}`, at: e.exported_at, text: `Printable PDF created · ${label(x.garment_type)}` }))),
         ].sort((a, b) => String(b.at).localeCompare(String(a.at))).slice(0, 5);
         setActivity(items);
       })
-      .catch(() => setActivity([]));
+      .catch(() => setActivity(false));
   };
 
   useEffect(() => {
@@ -87,8 +89,9 @@ export default function Navbar() {
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '8px' }} data-testid="activity-list">
                 {activity === null && <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Loading…</div>}
-                {activity?.length === 0 && <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>No activity yet. Patterns and PDFs you create appear here.</div>}
-                {activity?.map(n => (
+                {activity === false && <div role="alert" style={{ fontSize: '11px', color: 'var(--danger)' }}>Recent activity could not be loaded.</div>}
+                {activity && activity.length === 0 && <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>No activity yet. Patterns and PDFs you create appear here.</div>}
+                {activity && activity.map(n => (
                   <div key={n.id} style={{ paddingBottom: '8px', borderBottom: '1px solid var(--border)', fontSize: '11px', lineHeight: '1.4' }}>
                     <div style={{ color: 'var(--text-primary)' }}>{n.text}</div>
                     <small style={{ color: 'var(--text-muted)', display: 'block', marginTop: '2px' }}>{when(n.at)}</small>

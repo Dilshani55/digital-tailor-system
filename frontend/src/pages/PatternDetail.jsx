@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Download } from 'lucide-react';
+import { Download, FilePlus, Trash2 } from 'lucide-react';
 import PatternPreview from '../components/PatternPreview';
 import LoadingSpinner from '../components/LoadingSpinner';
 import { patternsAPI, exportAPI } from '../services/api';
@@ -16,13 +16,40 @@ export default function PatternDetail() {
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
 
-  useEffect(() => {
-    patternsAPI.getOne(patternId)
-      .then((r) => setData(r.data))
-      .catch((e) => setError(friendlyError(e, 'This pattern could not be loaded.')))
-      .finally(() => setLoading(false));
-  }, [patternId]);
+  const load = () => patternsAPI.getOne(patternId)
+    .then((r) => setData(r.data))
+    .catch((e) => setError(friendlyError(e, 'This pattern could not be loaded.')))
+    .finally(() => setLoading(false));
+
+  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [patternId]);
+
+  const createPdf = async () => {
+    setError('');
+    setBusy(true);
+    try {
+      await exportAPI.pdf(patternId);
+      await load();
+    } catch (e) {
+      setError(friendlyError(e, 'The PDF could not be created. Please try again.'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const removePattern = async () => {
+    if (!window.confirm('Delete this saved pattern and its PDF? The customer and their measurements are kept. This cannot be undone.')) return;
+    setError('');
+    setBusy(true);
+    try {
+      await patternsAPI.delete(patternId);
+      navigate('/history');
+    } catch (e) {
+      setError(friendlyError(e, 'Unable to delete this pattern.'));
+      setBusy(false);
+    }
+  };
 
   const download = async (exportId) => {
     try {
@@ -63,17 +90,31 @@ export default function PatternDetail() {
             <div className="result-tile"><div className="r-val">{formatResult(n.utilisation_percent, '%')}</div><div className="r-lbl">Fabric used by pieces</div></div>
           </div>
           <section className="ui-card" style={{ padding: '18px' }}>
-            <PatternPreview pieces={data.pattern_pieces} validation={data.validation} />
+            <PatternPreview pieces={data.pattern_pieces || []} validation={data.validation} />
           </section>
           <section className="ui-card" style={{ padding: '18px', marginTop: '14px' }}>
             <h2 style={{ fontSize: '14px', marginBottom: '8px' }}>Printable PDFs</h2>
             {(data.exports || []).length === 0
-              ? <p style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>No PDF has been created for this pattern yet.</p>
+              ? <p style={{ fontSize: '12px', color: 'var(--text-secondary)' }} data-testid="pdf-pending">PDF pending: no PDF has been created for this pattern yet.</p>
               : data.exports.map((e) => (
                 <button type="button" key={e.export_id} className="btn btn-outline" style={{ marginRight: '8px' }} onClick={() => download(e.export_id)}>
                   <Download size={15} /> Download {new Date(e.exported_at).toLocaleDateString('en-GB')}
                 </button>
               ))}
+            {data.validation_passed === false
+              ? <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '8px' }}>This pattern did not pass its automatic checks, so a PDF cannot be created for it.</p>
+              : (
+                <div style={{ marginTop: '10px' }}>
+                  <button type="button" className="btn btn-primary" disabled={busy} onClick={createPdf}>
+                    <FilePlus size={15} /> {(data.exports || []).length ? 'Create the PDF again' : 'Create the PDF'}
+                  </button>
+                </div>
+              )}
+          </section>
+          <section className="ui-card" style={{ padding: '18px', marginTop: '14px' }}>
+            <h2 style={{ fontSize: '14px', marginBottom: '8px' }}>Delete this pattern</h2>
+            <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '10px' }}>Removes the saved pattern and its PDF. The customer and their measurements are kept.</p>
+            <button type="button" className="btn btn-outline" disabled={busy} onClick={removePattern}><Trash2 size={15} /> Delete pattern</button>
           </section>
         </>
       )}

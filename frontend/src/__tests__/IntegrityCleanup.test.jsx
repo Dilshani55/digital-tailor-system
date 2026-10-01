@@ -7,11 +7,12 @@ import { fileURLToPath } from 'node:url';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import History from '../pages/History';
-import { exportAPI } from '../services/api';
+import { patternsAPI } from '../services/api';
 import { formatResult, NOT_CALCULATED, CALCULATION_FAILED } from '../utils/results';
 
 vi.mock('../services/api', () => ({
-  exportAPI: { getAll: vi.fn(), download: vi.fn(), delete: vi.fn() },
+  patternsAPI: { getAll: vi.fn(), delete: vi.fn() },
+  exportAPI: { download: vi.fn(), delete: vi.fn(), pdf: vi.fn() },
 }));
 
 const source = (rel) => fs.readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
@@ -59,8 +60,8 @@ describe('History page shows stored data or "unavailable"', () => {
   const renderHistory = () => render(<MemoryRouter><History /></MemoryRouter>);
 
   it('does not show hard-coded garment/fabric/efficiency values for records without them', async () => {
-    exportAPI.getAll.mockResolvedValue({ data: { exports: [
-      { export_id: 'e1', filename: 'pattern_abc.pdf', exported_at: '2026-09-01T10:00:00' },
+    patternsAPI.getAll.mockResolvedValue({ data: { patterns: [
+      { pattern_id: 'p1', generated_at: '2026-09-01T10:00:00', exports: [{ export_id: 'e1', filename: 'pattern_abc.pdf' }] },
     ] } });
     renderHistory();
     await screen.findByText('Garment unavailable');
@@ -75,10 +76,11 @@ describe('History page shows stored data or "unavailable"', () => {
   });
 
   it('shows the real stored values when they exist', async () => {
-    exportAPI.getAll.mockResolvedValue({ data: { exports: [{
-      export_id: 'e2', filename: 'pattern_xyz.pdf', exported_at: '2026-09-01T10:00:00',
+    patternsAPI.getAll.mockResolvedValue({ data: { patterns: [{
+      pattern_id: 'p2', generated_at: '2026-09-01T10:00:00', exports: [{ export_id: 'e2', filename: 'pattern_xyz.pdf' }],
       garment_type: 'crop-top', neckline_type: 'square-neck', sleeve_length: 'sleeveless',
-      fabric_name: 'Cotton Poplin', fabric_width_cm: 150, yardage_metres: 0.75, utilisation_percent: 43.2,
+      selected_fabric_name: 'Cotton Poplin', yardage_metres: 0.75,
+      nesting_summary: { fabric_width_cm: 150, utilisation_percent: 43.2 },
     }] } });
     renderHistory();
     await screen.findByText('Crop top');
@@ -89,9 +91,10 @@ describe('History page shows stored data or "unavailable"', () => {
   });
 
   it('reports a load failure instead of pretending the library is empty', async () => {
-    exportAPI.getAll.mockRejectedValue(new Error('network'));
+    patternsAPI.getAll.mockRejectedValue(new Error('network'));
     renderHistory();
     const alert = await screen.findByRole('alert');
     expect(alert.textContent).toMatch(/Could not load/);
+    expect(screen.queryByText('Your pattern library is empty')).toBeNull();
   });
 });

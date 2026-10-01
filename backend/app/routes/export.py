@@ -13,6 +13,7 @@ VALIDATION_FAILED_MESSAGE = ("Pattern validation failed. Fabric estimation and P
                              "until the pattern is corrected.")
 from app.logic.pdf_generator import PDFGenerator
 from app.logic import measurement_schema as ms
+from app.utils.references import deref, pattern_owner_id, ref_id
 
 export_bp = Blueprint("export", __name__)
 
@@ -33,11 +34,8 @@ def _stored_summary(pattern):
     stored is None ("unavailable") — never a placeholder.
     """
     nesting = getattr(pattern, "nesting_summary", None) or {}
-    try:
-        image = pattern.session_id.image_id
-        confirmed = (getattr(image, "confirmed_attributes", None) or {}) if image else {}
-    except Exception:
-        confirmed = {}
+    image = deref(deref(pattern, "session_id"), "image_id")
+    confirmed = (getattr(image, "confirmed_attributes", None) or {}) if image else {}
     yardage = getattr(pattern, "yardage_metres", None)
     return {
         "garment_type":     getattr(pattern, "garment_type", None) or None,
@@ -121,7 +119,7 @@ def estimate_standard_widths(pattern_id):
         return jsonify({"error": "Invalid pattern_id format"}), 400
     if not pattern:
         return jsonify({"error": "Pattern not found"}), 404
-    if str(pattern.session_id.user_id.id) != current_user_id:
+    if pattern_owner_id(pattern) != current_user_id:
         return jsonify({"error": "Unauthorized"}), 403
     if getattr(pattern, "validation_passed", True) is False:
         return jsonify({"error": VALIDATION_FAILED_MESSAGE, "error_code": "PATTERN_VALIDATION_FAILED",
@@ -179,7 +177,7 @@ def calculate_yardage(pattern_id):
     if not pattern:
         return jsonify({"error": "Pattern not found"}), 404
 
-    if str(pattern.session_id.user_id.id) != current_user_id:
+    if pattern_owner_id(pattern) != current_user_id:
         return jsonify({"error": "Unauthorized"}), 403
 
     # Locked workflow step 8: do not estimate fabric if pattern validation failed
@@ -257,7 +255,7 @@ def generate_pdf(pattern_id):
     if not pattern:
         return jsonify({"error": "Pattern not found"}), 404
 
-    if str(pattern.session_id.user_id.id) != current_user_id:
+    if pattern_owner_id(pattern) != current_user_id:
         return jsonify({"error": "Unauthorized"}), 403
 
     # Locked workflow step 8: block PDF when geometric validation failed
@@ -292,11 +290,12 @@ def generate_pdf(pattern_id):
         pattern.save()
 
     try:
-        session    = pattern.session_id
-        image_obj  = session.image_id
+        # the customer profile or the design photo may have been deleted since the pattern was made
+        session    = deref(pattern, "session_id")
+        image_obj  = deref(session, "image_id")
+        profile    = deref(session, "measurement_id")
         features = {}
         if image_obj:
-            image_obj.reload()
             features = image_obj.detected_features or {}
 
         # The measurements the pattern was GENERATED from (not the profile as it is edited today).
@@ -305,7 +304,11 @@ def generate_pdf(pattern_id):
                                 fit_preference=snapshot.get("fit_preference", "standard"))
         else:
             attrs = (pattern.design_spec or {}).get("attributes") or {}
-            measurements, m_code, m_errors = ms.engine_measurements(session.measurement_id, attrs)
+            if profile is None:
+                return jsonify({"error": "This pattern has no saved measurements and its customer profile was "
+                                         "deleted, so its PDF cannot be created. Generate the pattern again.",
+                                "error_code": "MEASUREMENTS_UNAVAILABLE"}), 409
+            measurements, m_code, m_errors = ms.engine_measurements(profile, attrs)
             if m_errors:
                 return jsonify(ms.error_response_body(m_errors, code=m_code)), 422
 
@@ -331,7 +334,6 @@ def generate_pdf(pattern_id):
             if isinstance(res, tuple):
                 layouts[w] = res[1]
 
-        profile = getattr(session, "measurement_id", None)
         image_path = None
         if image_obj and getattr(image_obj, "file_path", None) and image_obj.file_path != "manual_selection.png":
             candidate = os.path.join(current_app.config["UPLOAD_FOLDER"], os.path.basename(image_obj.file_path))
@@ -406,8 +408,11 @@ def download_pdf(export_id):
     if not pdf_export:
         return jsonify({"error": "Export not found"}), 404
 
-    # Security check
-    if str(pdf_export.pattern_id.session_id.user_id.id) != current_user_id:
+    # Security check (a PDF whose pattern no longer exists belongs to nobody)
+    pattern = deref(pdf_export, "pattern_id")
+    if pattern is None:
+        return jsonify({"error": "Export not found", "error_code": "EXPORT_PATTERN_MISSING"}), 404
+    if pattern_owner_id(pattern) != current_user_id:
         return jsonify({"error": "Unauthorized"}), 403
 
     output_dir = current_app.config["OUTPUT_FOLDER"]
@@ -439,18 +444,23 @@ def delete_export(export_id):
     if not pdf_export:
         return jsonify({"error": "Export not found"}), 404
 
-    # Security check
-    if str(pdf_export.pattern_id.session_id.user_id.id) != current_user_id:
+    # Security check (a PDF whose pattern no longer exists belongs to nobody)
+    pattern = deref(pdf_export, "pattern_id")
+    if pattern is None:
+        return jsonify({"error": "Export not found", "error_code": "EXPORT_PATTERN_MISSING"}), 404
+    if pattern_owner_id(pattern) != current_user_id:
         return jsonify({"error": "Unauthorized"}), 403
 
     # Attempt to delete PDF file from disk
     output_dir = current_app.config["OUTPUT_FOLDER"]
-    file_path  = os.path.join(output_dir, pdf_export.file_path)
-    if os.path.exists(file_path):
+    file_path  = os.path.join(output_dir, os.path.basename(pdf_export.file_path))
+    # one pattern's PDFs share a file name: remove the file only with its last record
+    still_used = PdfExport.objects(file_path=pdf_export.file_path, id__ne=pdf_export.id).count() > 0
+    if not still_used and os.path.isfile(file_path):
         try:
             os.remove(file_path)
-        except Exception:
-            pass
+        except OSError:
+            current_app.logger.warning("Could not remove PDF file of export %s", pdf_export.id)
 
     # Delete record from MongoDB
     pdf_export.delete()
@@ -470,8 +480,9 @@ def get_all_exports():
 
     sessions    = Session.objects(user_id=user)
     session_ids = [s.id for s in sessions]
-    patterns    = PatternResult.objects(session_id__in=session_ids)
+    patterns    = list(PatternResult.objects(session_id__in=session_ids))
     pattern_ids = [p.id for p in patterns]
+    by_id       = {str(p.id): p for p in patterns}
     exports     = PdfExport.objects(
                       pattern_id__in=pattern_ids
                   ).order_by("-exported_at")
@@ -480,12 +491,12 @@ def get_all_exports():
     for e in exports:
         item = {
             "export_id":   str(e.id),
-            "pattern_id":  str(e.pattern_id.id),
+            "pattern_id":  ref_id(e, "pattern_id"),
             "filename":    e.file_path,
             "download_url": f"/api/export/download/{str(e.id)}",
             "exported_at": str(e.exported_at)
         }
-        item.update(_stored_summary(e.pattern_id))
+        item.update(_stored_summary(by_id[item["pattern_id"]]))
         result.append(item)
 
     return jsonify({

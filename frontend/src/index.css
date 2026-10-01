@@ -129,6 +129,9 @@ h3 { font-size: 15px; font-weight: 600; }
 .pill.bad { background: var(--danger-soft); color: var(--danger); }
 .alert { display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; border-radius: 12px; font-size: 14px; border: 1px solid; }
 .alert.error, .inline-alert.error { background: var(--danger-soft); border-color: #efc4c0; color: #8d2a2a; }
+.tag.pdf-ready { background: #e9f6ee; border-color: #b9dfc6; color: #1f6b3a; }
+.tag.pdf-pending, .tag.pdf-missing { background: var(--warn-soft); border-color: #efd9a8; color: var(--warn); }
+.row-actions button:disabled { opacity: .5; cursor: default; }
 .alert.warn { background: var(--warn-soft); border-color: #efd9a8; color: var(--warn); }
 .alert.info { background: var(--surface-soft); border-color: var(--line); color: var(--ink-2); }
 .alert.success { background: #e7f3ea; border-color: #bcdcc6; color: #22603a; }
