@@ -101,7 +101,7 @@ class TestDraftingValues(unittest.TestCase):
             self.assertIn(meta["status"], (DERIVED, ASSUMPTION))
 
     def test_missing_or_invalid_measurement_raises(self):
-        for key in ("neck_cm", "sleeve_cm", "armhole_depth_cm"):
+        for key in ("neck_cm", "armhole_depth_cm", "garment_length_cm"):      # bodice: always needed
             m = measurements()
             m[key] = None
             with self.assertRaises(DraftingError):
@@ -109,6 +109,24 @@ class TestDraftingValues(unittest.TestCase):
         for bad in (float("nan"), -1, 0):
             with self.assertRaises(DraftingError):
                 compute_drafting_values(measurements(neck_cm=bad), ease_profile_for(WOVEN_BLOCK))
+            with self.assertRaises(DraftingError):                           # optional, but invalid if given
+                compute_drafting_values(measurements(wrist_cm=bad), ease_profile_for(WOVEN_BLOCK))
+
+    def test_design_specific_measurements_may_be_absent_and_are_not_invented(self):
+        m = measurements(hip_cm=None, bicep_cm=None, sleeve_cm=None, wrist_cm=None, height_cm=None)
+        dv, rows = compute_drafting_values(m, ease_profile_for(WOVEN_BLOCK))
+        for value in (dv.garment_hip, dv.q_hip, dv.bicep_width, dv.sleeve_length, dv.wrist_width):
+            self.assertIsNone(value)
+        names = {r["name"] for r in rows}
+        self.assertNotIn("garment_hip", names)
+        self.assertNotIn("sleeve_width_bicep", names)
+
+    def test_sleeveless_base_block_has_no_sleeve(self):
+        b = base(bicep_cm=None, sleeve_cm=None, wrist_cm=None)
+        self.assertIsNone(b.sleeve)
+        self.assertEqual(len(b.pieces), 2)
+        self.assertTrue(b.validation["passed"], b.validation["errors"])
+        self.assertNotIn("cap_height_cm", b.armhole)
 
     def test_undraftable_combinations_are_reported_per_field(self):
         cases = [
@@ -210,8 +228,8 @@ class TestBaseBlockValidity(unittest.TestCase):
         b = base()
         self.assertAlmostEqual(b.front.meta["hem_y_cm"], b.dv.waist_y)
         self.assertEqual(b.front.segment("neckline").kind, "cubic")
-        self.assertEqual(b.sleeve.meta["sleeve_kind"], "full")
-        self.assertAlmostEqual(b.sleeve.meta["length_cm"], b.dv.sleeve_length)
+        self.assertEqual(b.sleeve.meta["sleeve_kind"], "block")
+        self.assertAlmostEqual(b.sleeve.meta["length_cm"], b.dv.sleeve_length)          # the wanted length
 
     def test_key_dimensions_derive_from_measurements(self):
         b = base("medium")

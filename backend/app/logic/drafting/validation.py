@@ -171,11 +171,13 @@ def validate_base_block(base):
     for piece in base.pieces:
         validate_piece(piece, res)
     _pair_checks(base.front, base.back, base.dv, res)
-    info = _sleeve_checks(base.front, base.back, base.sleeve, res)
-    res.check("sleeve cap solved to target",
-              abs(info["cap_ease_cm"] - base.dv.sleeve_cap_ease) <= CAP_EASE_SOLVE_TOL_CM,
-              f"ease {info['cap_ease_cm']:.3f} vs target {base.dv.sleeve_cap_ease:g}",
-              "Sleeve cap length does not match its target")
+    info = {}
+    if base.sleeve is not None:                       # sleeveless designs have no sleeve block
+        info = _sleeve_checks(base.front, base.back, base.sleeve, res)
+        res.check("sleeve cap solved to target",
+                  abs(info["cap_ease_cm"] - base.dv.sleeve_cap_ease) <= CAP_EASE_SOLVE_TOL_CM,
+                  f"ease {info['cap_ease_cm']:.3f} vs target {base.dv.sleeve_cap_ease:g}",
+                  "Sleeve cap length does not match its target")
     out = res.dump()
     out["armhole_sleeve"] = {k: round(v, 3) for k, v in info.items()}
     out["scope"] = "geometry validation only; not a fit or sewing validation"

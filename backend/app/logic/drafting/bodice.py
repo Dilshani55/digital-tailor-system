@@ -42,7 +42,7 @@ def waist_allocation(dv, dart_allowed):
 def side_profile(dv, side_take):
     """Side-seam reference nodes and x(y)."""
     x_waist = dv.q_bust - side_take
-    x_hip = max(dv.q_hip, x_waist)
+    x_hip = max(dv.q_hip, x_waist) if dv.q_hip is not None else x_waist   # hip unused above the waist
     u = (dv.q_bust, dv.armhole_depth)
     w = (x_waist, dv.waist_y)
     h = (x_hip, dv.hip_y)
@@ -88,6 +88,12 @@ def build_bodice(dv, side, *, neck=None, hem_y, block_allows_darts, name=None):
             code="HEM_ABOVE_UNDERARM",
             field_errors={"garment_length_cm": [{"code": "NOT_DRAFTABLE", "message":
                           "Garment length puts the hem at or above the underarm level."}]})
+
+    if hem_y > dv.waist_y + 1e-9 and dv.q_hip is None:
+        raise DraftingError(
+            "The hem is below the waist, so the hip measurement is needed to shape the side seam.",
+            code="MEASUREMENTS_INCOMPLETE",
+            field_errors={"hip_cm": [{"code": "REQUIRED", "message": "Hip is required for this design."}]})
 
     at_waist = abs(hem_y - dv.waist_y) < 1e-6
     dart_allowed = block_allows_darts and (at_waist or hem_y >= dv.waist_y + 3.0)

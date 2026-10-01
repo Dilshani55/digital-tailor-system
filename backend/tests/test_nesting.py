@@ -87,7 +87,8 @@ class TestGeometryAwareNesting(unittest.TestCase):
 
     def test_mathematical_consistency_and_purchase_allowance(self):
         res = NestingAlgorithm(self.pieces, fabric_width_cm=114).run()
-        self.assertEqual(res["usable_area_cm2"], round(114 * res["fabric_length_cm"], 1))
+        # fabric_length_cm is reported rounded to 0.01 cm, so 114 x it can differ by up to 114 x 0.005 cm2
+        self.assertAlmostEqual(res["usable_area_cm2"], 114 * res["fabric_length_cm"], delta=114 * 0.005 + 0.05)
         self.assertAlmostEqual(res["utilisation_percent"],
                                res["total_pattern_piece_area_cm2"] / res["usable_area_cm2"] * 100, delta=0.1)
         self.assertAlmostEqual(res["waste_percent"], 100 - res["utilisation_percent"], delta=0.11)

@@ -79,10 +79,10 @@ ASSUMPTIONS = {
     "crop_max_hem_above_waist_cm": dict(
         status=ASSUMPTION, value=2.0,
         note="Crop-top hem must be at least 2 cm above the waist line; regular length must reach the waist."),
-    "sleeve_length_fraction": dict(
-        status=ASSUMPTION,
-        value={"short-sleeve": 0.40, "elbow-length": 0.58, "three-quarter-sleeve": 0.75, "long-sleeve": 1.00},
-        note="Design sleeve length = fraction of the measured full-arm sleeve_cm (shoulder tip to wrist)."),
+    "short_sleeve_hem_width": dict(
+        status=ASSUMPTION, value="eased bicep width",
+        note="A short plain sleeve keeps the eased bicep width down to its hem (no taper); a long sleeve tapers "
+             "to the eased wrist. The sleeve length itself is always the measured sleeve_cm."),
     "sleeve_ease_cm": dict(
         status=ASSUMPTION, value={"woven_bodice": dict(bicep=5.0, wrist=4.0, cap=2.0),
                                   "knit_bodice": dict(bicep=3.0, wrist=2.0, cap=1.0)},

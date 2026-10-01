@@ -118,26 +118,39 @@ class TestNecklineTransformations(unittest.TestCase):
 
 
 class TestSleeveTransformations(unittest.TestCase):
-    def test_short_and_long_sleeves_are_no_longer_identical(self):
-        short, long_ = final(length="short-sleeve"), final(length="long-sleeve")
+    def test_short_and_long_sleeves_use_the_entered_lengths(self):
+        short = final(length="short-sleeve", over=dict(sleeve_cm=24))
+        long_ = final(length="long-sleeve", over=dict(sleeve_cm=55))
         s, l = piece(short, "Sleeve").to_dict(), piece(long_, "Sleeve").to_dict()
         self.assertNotEqual(s["outline"], l["outline"])
-        self.assertNotEqual(s["bounding_box"], l["bounding_box"])
-        self.assertAlmostEqual(s["bounding_box"]["height_cm"], 0.40 * 55, places=2)
+        self.assertAlmostEqual(s["bounding_box"]["height_cm"], 24.0, places=2)   # no fraction of a full arm
         self.assertAlmostEqual(l["bounding_box"]["height_cm"], 55.0, places=2)
 
-    def test_lengths_follow_the_documented_fractions_of_the_measured_arm(self):
-        for length, frac in A["sleeve_length_fraction"].items():
-            f = final(length=length)
-            self.assertAlmostEqual(piece(f, "Sleeve").meta["length_cm"], frac * 55.0, places=6, msg=length)
-        self.assertLess(0.40, 0.58)
-        self.assertLess(0.58, 0.75)
+    def test_sleeve_length_is_exactly_the_measured_value(self):
+        for length, value in (("short-sleeve", 20.0), ("short-sleeve", 26.5), ("long-sleeve", 58.25)):
+            f = final(length=length, over=dict(sleeve_cm=value))
+            self.assertAlmostEqual(piece(f, "Sleeve").meta["length_cm"], value, places=6, msg=length)
+            t = next(t for t in f.transformations if t["id"] == "sleeve_length")
+            self.assertAlmostEqual(t["sleeve_length_cm"], value, places=3)
+            self.assertNotIn("fraction", t)
+        self.assertNotIn("sleeve_length_fraction", A)
 
-    def test_length_follows_the_measured_arm_not_a_constant(self):
-        a = piece(final(over=dict(sleeve_cm=50), length="short-sleeve"), "Sleeve").meta["length_cm"]
-        b = piece(final(over=dict(sleeve_cm=65), length="short-sleeve"), "Sleeve").meta["length_cm"]
-        self.assertAlmostEqual(a, 20.0)
-        self.assertAlmostEqual(b, 26.0)
+    def test_short_sleeve_is_straight_and_long_sleeve_tapers_to_the_wrist(self):
+        short = piece(final(length="short-sleeve", over=dict(sleeve_cm=24, wrist_cm=None)), "Sleeve").meta
+        self.assertAlmostEqual(short["width_hem_cm"], short["width_bicep_cm"])      # no wrist needed
+        f = final(length="long-sleeve", over=dict(sleeve_cm=58))
+        long_ = piece(f, "Sleeve").meta
+        self.assertAlmostEqual(long_["width_hem_cm"], f.dv.wrist_width)
+
+    def test_long_sleeve_without_wrist_is_reported_not_guessed(self):
+        with self.assertRaises(DraftingError) as ctx:
+            final(length="long-sleeve", over=dict(sleeve_cm=58, wrist_cm=None))
+        self.assertIn("wrist_cm", ctx.exception.field_errors)
+
+    def test_sleeveless_design_needs_no_sleeve_measurements(self):
+        f = final(length="sleeveless", style="none", over=dict(bicep_cm=None, sleeve_cm=None, wrist_cm=None))
+        self.assertIsNone(f.sleeve)
+        self.assertTrue(f.validation["passed"], f.validation["errors"])
 
     def test_sleeve_cap_is_identical_for_every_length_and_matches_the_armhole(self):
         caps = set()

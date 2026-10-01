@@ -341,7 +341,7 @@ class PDFGenerator:
         names = [("bust_cm", "Bust"), ("waist_cm", "Waist"), ("hip_cm", "Hip"), ("height_cm", "Height"),
                  ("neck_cm", "Neck"), ("shoulder_cm", "Shoulder length"), ("across_back_cm", "Across-back width"),
                  ("back_waist_length_cm", "Back waist length"), ("armhole_depth_cm", "Armhole depth"),
-                 ("garment_length_cm", "Garment length"), ("bicep_cm", "Bicep"), ("sleeve_cm", "Sleeve (full arm)"),
+                 ("garment_length_cm", "Garment length"), ("bicep_cm", "Bicep"), ("sleeve_cm", "Sleeve length"),
                  ("wrist_cm", "Wrist")]
         entered = self.ctx.get("original_values") or {}
         for h, xcm in zip(("Measurement", "Used (cm)", "As entered", "Source"), (2.0, 7.2, 10.2, 13.6)):
@@ -351,7 +351,7 @@ class PDFGenerator:
             v = self.meas.get(key)
             e = entered.get(key) or {}
             as_entered = f"{e['value']:g} {e.get('unit', '')}".strip() if isinstance(e.get("value"), (int, float)) else "-"
-            for txt, xcm in zip((label, _fmt(v), as_entered, "measured" if v is not None else "not measured"),
+            for txt, xcm in zip((label, _fmt(v), as_entered, "measured" if v is not None else "not needed for this design"),
                                 (2.0, 7.2, 10.2, 13.6)):
                 self._text(xcm * CM, y, txt, 8.5)
             y -= 0.42 * CM

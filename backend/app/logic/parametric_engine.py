@@ -105,7 +105,8 @@ class ParametricEngine:
                 "ease_profile": ease.to_dict(),
                 "eased": {
                     "bust_cm": round(dv.garment_bust, 2), "waist_cm": round(dv.garment_waist, 2),
-                    "hip_cm": round(dv.garment_hip, 2), "height_cm": self.raw.get("height_cm"),
+                    "hip_cm": round(dv.garment_hip, 2) if dv.garment_hip is not None else None,
+                    "height_cm": self.raw.get("height_cm"),
                     "fit_preference": ease.fit_preference,
                 },
                 "derived": {

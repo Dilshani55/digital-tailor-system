@@ -73,6 +73,10 @@ def build_puff_sleeve(dv, cap_height, hem_y, *, spread, rise, gathered_hem, name
       gathered_hem=False long puff: fullness only at the cap, tapering to the eased wrist
     """
     _check_length(cap_height, hem_y)
+    if not gathered_hem and dv.wrist_width is None:
+        raise DraftingError("A long puff sleeve tapers to the wrist, so the wrist measurement is needed.",
+                            code="MEASUREMENTS_INCOMPLETE",
+                            field_errors={"wrist_cm": [{"code": "REQUIRED", "message": "Wrist is required for this design."}]})
     w = dv.bicep_width * (1.0 + spread)
     h = cap_height + rise
     hem = hem_y + rise
@@ -132,8 +136,13 @@ def build_bell_sleeve(dv, cap_height, hem_y, *, flare, name="Sleeve", sleeve_kin
     )
 
 
-def build_sleeve(dv, cap_height, hem_y, *, name="Sleeve", sleeve_kind="full"):
-    """Sleeve piece with the given cap height and hem level (distance from the crown)."""
+def build_sleeve(dv, cap_height, hem_y, *, name="Sleeve", sleeve_kind="full", taper_to_wrist=False):
+    """
+    Plain sleeve with the given cap height and hem level (distance from the crown = the wanted sleeve length).
+    taper_to_wrist=True (long sleeve): the underarm seams run straight from the eased bicep width to the eased
+    wrist width at the hem. Otherwise (short sleeve) the sleeve keeps the eased bicep width down to the hem
+    (straight sleeve, project assumption) - no wrist measurement is needed.
+    """
     w = dv.bicep_width
     if hem_y < cap_height + MIN_HEM_BELOW_UNDERARM:
         raise DraftingError(
@@ -141,9 +150,14 @@ def build_sleeve(dv, cap_height, hem_y, *, name="Sleeve", sleeve_kind="full"):
             f"sleeve cap ({cap_height:.1f} cm).", code="SLEEVE_TOO_SHORT_FOR_CAP",
             field_errors={"sleeve_cm": [{"code": "NOT_DRAFTABLE", "message":
                           "Sleeve length is too short for this armhole/sleeve cap."}]})
-    total = dv.sleeve_length
-    frac = (hem_y - cap_height) / (total - cap_height)
-    hem_w = w + (dv.wrist_width - w) * frac
+    if taper_to_wrist:
+        if dv.wrist_width is None:
+            raise DraftingError("A long sleeve tapers to the wrist, so the wrist measurement is needed.",
+                                code="MEASUREMENTS_INCOMPLETE",
+                                field_errors={"wrist_cm": [{"code": "REQUIRED", "message": "Wrist is required for this design."}]})
+        hem_w = dv.wrist_width
+    else:
+        hem_w = w
     x_l, x_r = (w - hem_w) / 2.0, (w + hem_w) / 2.0
     left, right = cap_segments(w, cap_height)
     segments = [

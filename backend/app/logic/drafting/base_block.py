@@ -2,8 +2,8 @@
 BASE BLOCK stage:
     ValidatedMeasurements -> EaseProfile -> DraftingValues -> BaseBlock -> validate_base_block()
 
-The base block is a fitted waist-length bodice (round neck, hem at the waist line) plus a
-full-length plain sleeve. It is NOT a garment pattern; design transformations are applied
+The base block is a fitted waist-length bodice (round neck, hem at the waist line) plus, when the design
+has sleeves, a plain sleeve at the wanted sleeve length (cap solved from the bodice armhole). It is NOT a garment pattern; design transformations are applied
 afterwards (transformations.py). Prototype, mathematically generated, geometry-validated only.
 """
 
@@ -26,12 +26,13 @@ class BaseBlock:
 
     @property
     def pieces(self):
-        return [self.front, self.back, self.sleeve]
+        return [p for p in (self.front, self.back, self.sleeve) if p is not None]
 
     def to_dict(self):
         return {
             "stage": "base_block",
-            "description": "Fitted waist-length bodice + full-length plain sleeve, before design transformations.",
+            "description": "Fitted waist-length bodice (+ plain sleeve at the wanted length when the design has "
+                           "sleeves), before design transformations.",
             "block": {"block_id": self.block["block_id"], "block_label": self.block["block_label"]},
             "ease": self.ease.to_dict(),
             "drafting_values": self.explanation,
@@ -58,17 +59,19 @@ def draft_base_block(measurements, block, fit_preference="standard"):
     front_len = front.meta["armhole_length_cm"]
     back_len = back.meta["armhole_length_cm"]
     total = front_len + back_len
-    target = total + dv.sleeve_cap_ease
-    cap_h = sleeve.solve_cap_height(dv.bicep_width, target)
-    sleeve_piece = sleeve.build_sleeve(dv, cap_h, dv.sleeve_length, name="Sleeve Block", sleeve_kind="full")
-
-    armhole = {
-        "front_armhole_seam_cm": front_len, "back_armhole_seam_cm": back_len,
-        "total_armhole_seam_cm": total, "target_cap_ease_cm": dv.sleeve_cap_ease,
-        "sleeve_cap_seam_cm": sleeve_piece.meta["cap_length_cm"],
-        "cap_ease_cm": sleeve_piece.meta["cap_length_cm"] - total,
-        "cap_height_cm": cap_h,
-    }
+    armhole = {"front_armhole_seam_cm": front_len, "back_armhole_seam_cm": back_len, "total_armhole_seam_cm": total}
+    sleeve_piece = None
+    if dv.bicep_width is not None and dv.sleeve_length is not None:      # the design has sleeves
+        target = total + dv.sleeve_cap_ease
+        cap_h = sleeve.solve_cap_height(dv.bicep_width, target)
+        sleeve_piece = sleeve.build_sleeve(dv, cap_h, dv.sleeve_length, name="Sleeve Block", sleeve_kind="block",
+                                           taper_to_wrist=dv.wrist_width is not None)
+        armhole.update({
+            "target_cap_ease_cm": dv.sleeve_cap_ease,
+            "sleeve_cap_seam_cm": sleeve_piece.meta["cap_length_cm"],
+            "cap_ease_cm": sleeve_piece.meta["cap_length_cm"] - total,
+            "cap_height_cm": cap_h,
+        })
     base = BaseBlock(measurements, block, ease, dv, explanation, front, back, sleeve_piece, armhole)
     result = validate_base_block(base)
     base.validation = result

@@ -6,7 +6,7 @@ from app.logic import feature_schema as fs
 from app.logic.drafting.assumptions import A
 from app.logic.nesting_algorithm import estimate_fabric
 from app.logic.parametric_engine import ParametricEngine
-from tests.fixtures import measurements, design
+from tests.fixtures import measurements, design, SHORT_SLEEVE_CM
 
 CROP_LEN = {"small": 34, "medium": 36, "large": 38}
 WIDTHS_CM = (91.44, 114.3, 152.4)       # 36, 45 and 60 inches
@@ -14,6 +14,8 @@ WIDTHS_CM = (91.44, 114.3, 152.4)       # 36, 45 and 60 inches
 
 def _gen(garment, length, style, size="medium", fabric="woven", neck="round-neck"):
     over = {"garment_length_cm": CROP_LEN[size]} if garment == "crop-top" else {}
+    if length == "short-sleeve":
+        over["sleeve_cm"] = SHORT_SLEEVE_CM[size]           # the wanted short-sleeve length, not a full arm
     return ParametricEngine(measurements(size, fabric_type=fabric, **over),
                             design_spec={"attributes": design(garment, neck, length, style)}).generate()
 

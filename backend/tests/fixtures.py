@@ -14,6 +14,10 @@ PROFILES = {
 }
 
 
+# Wanted SHORT sleeve length (shoulder tip to hem) per profile. sleeve_cm in PROFILES is a long sleeve.
+SHORT_SLEEVE_CM = {"small": 22, "medium": 24, "large": 26}
+
+
 def measurements(profile="medium", fabric_type="woven", fit_preference="standard", **over):
     m = dict(PROFILES[profile], fabric_type=fabric_type, fit_preference=fit_preference)
     m.update(over)

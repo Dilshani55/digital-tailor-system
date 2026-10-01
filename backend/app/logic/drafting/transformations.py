@@ -157,8 +157,13 @@ def apply_design(base, attributes):
                     "drafted straight — shaped facing not implemented)."})
         transformations.append({"id": "sleeve_style", "type": "none", "design": style_attr, "status": "applied"})
     else:
-        frac = A["sleeve_length_fraction"][length_attr]
-        sleeve_hem = frac * dv.sleeve_length
+        if dv.sleeve_length is None or dv.bicep_width is None or base.sleeve is None:
+            raise DraftingError("This design has sleeves, so the bicep and sleeve length measurements are needed.",
+                                code="MEASUREMENTS_INCOMPLETE",
+                                field_errors={k: [{"code": "REQUIRED", "message": "Required for this design."}]
+                                              for k in ("bicep_cm", "sleeve_cm")
+                                              if (dv.bicep_width if k == "bicep_cm" else dv.sleeve_length) is None})
+        sleeve_hem = dv.sleeve_length                 # the measured, wanted sleeve length (no fraction)
         cap_h = base.armhole["cap_height_cm"]
         label = LENGTH_LABEL[length_attr]
         if style_attr == "puff-sleeve":
@@ -187,15 +192,18 @@ def apply_design(base, attributes):
                 "flare_fraction": flare, "hem_width_cm": round(sleeve_piece.meta["width_hem_cm"], 3),
                 "note": "Fitted solved cap; flares from the underarm to a curved hem meeting both seams at 90 degrees."}
         else:
-            sleeve_piece = sleeve_mod.build_sleeve(dv, cap_h, sleeve_hem, name=f"Sleeve ({label})", sleeve_kind=label)
+            sleeve_piece = sleeve_mod.build_sleeve(dv, cap_h, sleeve_hem, name=f"Sleeve ({label})", sleeve_kind=label,
+                                                   taper_to_wrist=length_attr == "long-sleeve")
             style_record = {
                 "id": "sleeve_style", "type": "plain_set_in", "design": style_attr, "status": "applied",
                 "note": "Plain set-in sleeve; cap solved from the bodice armhole seam lengths."}
         sleeve_piece.transformations = ["sleeve_length", "sleeve_style"]
         transformations.append({
             "id": "sleeve_length", "type": f"{label}_sleeve", "design": length_attr,
-            "full_arm_reference_cm": dv.sleeve_length, "fraction": frac, "sleeve_length_cm": round(sleeve_hem, 3),
-            "rule": "design length = fraction x measured sleeve_cm (project assumption)", "status": "applied"})
+            "sleeve_length_cm": round(sleeve_hem, 3),
+            "rule": "sleeve length = the measured sleeve_cm (shoulder tip to where the sleeve should end); "
+                    "long sleeves taper to the wrist, short sleeves stay at the bicep width",
+            "status": "applied"})
         transformations.append(style_record)
 
     # 4. accessory pieces required by the block
