@@ -1,5 +1,6 @@
 // Real end-to-end run: browser -> React -> Flask -> MongoDB -> classifier -> drafting -> nesting -> PDF.
 import { test, expect } from '@playwright/test';
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -133,6 +134,14 @@ test('register -> upload -> AI review -> measurements -> fabric -> pattern -> es
   expect(bytes.subarray(0, 5).toString()).toBe('%PDF-');
   expect(bytes.length).toBeGreaterThan(20_000);
   mark(`PDF downloaded: ${out} (${bytes.length} bytes)`);
+  // the PDF's own vector data: A4 pages, a 5.00 x 5.00 cm calibration square, the required sections
+  const python = path.resolve('../backend/venv/Scripts/python.exe');
+  if (fs.existsSync(python)) {
+    const report = JSON.parse(execFileSync(python, [path.resolve('../backend/tools/verify_pdf.py'), out], { encoding: 'utf-8' }));
+    expect(report.passed, JSON.stringify(report.checks)).toBe(true);
+    expect(report.calibration_squares_cm).toEqual([[5, 5]]);
+    mark(`PDF verified digitally: ${report.pages} A4 pages, calibration square ${report.calibration_squares_cm[0].join(' x ')} cm`);
+  }
   fs.writeFileSync(path.join(path.dirname(out), 'e2e_last_pdf_path.txt'), out);
 
   // 8. feedback; then a measurement change makes the pattern/estimate/PDF out of date (free step navigation)

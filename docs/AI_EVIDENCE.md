@@ -1,5 +1,7 @@
 # AI evidence: dataset audit, models and deployment decision
 
+> **Current state (1 Oct 2026).** Deployed: classifier **M40** (SHA-256 `3ed45bc1…66be`, heads 3 / 5 / 3 / 4) fed by the garment detector ([AI_DETECTOR.md](AI_DETECTOR.md)). Only sleeve length is answered automatically; the other three features are always "please select". M41 was an experiment and is not deployed ([AI_M41.md](AI_M41.md)). The data audit, the fixes, the human review queue and the acceptance targets fixed **before** training the next candidate are in [AI_DATA_AUDIT.md](AI_DATA_AUDIT.md); that candidate (M42) has **not** been trained. Sections 1-6 below describe the earlier 28-class model (M13, the rollback) and are kept as history.
+
 Everything here is produced by scripts in `ai_training/` from files on the development machine (data and checkpoints are not stored in Git). Commands to reproduce are at the end. Nothing in this file is estimated or copied from a report without being re-computed.
 
 ## 1. What the model is
