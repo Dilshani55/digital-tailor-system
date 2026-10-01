@@ -1,7 +1,7 @@
 # DeepFashion2 tops (sleeve-length subset)
 
-Built by `ai_training/scripts/build_df2_tops_dataset.py` from the **local** DeepFashion2 copy in `Dataset/archive/`
-(`Dataset/archive.zip`, downloaded 14 June 2026 by the project owner from the Kaggle mirror named in the research
+Built by `ai_training/scripts/build_df2_tops_dataset.py` from the **local** DeepFashion2 copy in `ai_training/datasets/archive/` (moved from `Dataset/archive/`)
+(`archive.zip`, downloaded 14 June 2026 by the project owner from the Kaggle mirror named in the research
 proposal, section 4.3.2: *deepfashion2-original-with-dataframes*). No new download was needed.
 
 ## Source and licence — read before citing

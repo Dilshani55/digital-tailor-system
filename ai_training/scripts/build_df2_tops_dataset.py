@@ -100,7 +100,7 @@ def dhash(path):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--root", default="Dataset/archive/DeepFashion2")
+    ap.add_argument("--root", default="ai_training/datasets/archive/DeepFashion2")
     ap.add_argument("--out", default="ai_training/datasets/deepfashion2_tops")
     ap.add_argument("--train-per-class", type=int, default=3000)
     ap.add_argument("--val-per-class", type=int, default=400)
@@ -183,7 +183,7 @@ def main():
     kept["test"] = clean
 
     os.makedirs(os.path.join(args.out, "annotations"), exist_ok=True)
-    summary = {"source": "DeepFashion2 (local copy Dataset/archive)", "quality_filters": "single top in photo, occlusion<=2, bbox>=100px",
+    summary = {"source": "DeepFashion2 (local copy ai_training/datasets/archive)", "quality_filters": "single top in photo, occlusion<=2, bbox>=100px",
                "near_duplicates_removed": dict(dropped), "seed": args.seed, "counts": {}}
     for split, items in kept.items():
         recs = []
