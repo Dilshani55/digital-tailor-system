@@ -23,7 +23,9 @@ export default function PatternDetail() {
     .catch((e) => setError(friendlyError(e, 'This pattern could not be loaded.')))
     .finally(() => setLoading(false));
 
-  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [patternId]);
+  // reload only when another pattern is opened
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { load(); }, [patternId]);
 
   const createPdf = async () => {
     setError('');

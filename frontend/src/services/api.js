@@ -17,14 +17,20 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Auto-redirect to login if token expires
+// A 401 on a signed-in request means the session is no longer valid (expired, or signed with an old key):
+// sign out and go to the sign-in page. A 401 from the sign-in form itself is just a wrong e-mail or password -
+// the form shows it; reloading the page would wipe that message.
+export function isSignInRequest(url = '') {
+  return /\/auth\/(login|register|google-login)$/.test(url);
+}
+
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
+    if (error.response?.status === 401 && !isSignInRequest(error.config?.url)) {
       localStorage.removeItem('token');
       localStorage.removeItem('user');
-      window.location.href = '/auth';
+      if (window.location.pathname !== '/auth') window.location.href = '/auth';
     }
     return Promise.reject(error);
   }
@@ -36,6 +42,7 @@ export const authAPI = {
   login:    (data) => api.post('/auth/login',    data),
   googleLogin: (data) => api.post('/auth/google-login', data),
   profile:  ()     => api.get('/auth/profile'),
+  changePassword: (data) => api.post('/auth/change-password', data),
 };
 
 // ── MEASUREMENTS ──────────────────────────────────────────────────────────────

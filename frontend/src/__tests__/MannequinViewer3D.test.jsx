@@ -1,6 +1,5 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import React from 'react';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import MeasurementGuide from '../components/MeasurementGuide';
 
 // Mock Canvas and React Three Fiber to test R3F component cleanly in JSDOM

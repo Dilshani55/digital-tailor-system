@@ -1,7 +1,6 @@
 // Pages that used to show invented values (fake notifications, a default pattern count of "2",
 // made-up e-mail addresses, a hard-coded "ONLINE" database status) must now show only real data.
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import React from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import Customers from '../pages/Customers';
@@ -10,7 +9,8 @@ import Settings from '../pages/Settings';
 import Navbar from '../components/Navbar';
 import Sidebar from '../components/Sidebar';
 import PatternDetail from '../pages/PatternDetail';
-import { measurementsAPI, patternsAPI, exportAPI, imagesAPI } from '../services/api';
+import { authAPI, measurementsAPI, patternsAPI, imagesAPI } from '../services/api';
+import LoginForm from '../components/auth/LoginForm';
 import { getPreferences } from '../utils/preferences';
 
 vi.mock('../context/AuthContext', () => ({
@@ -21,6 +21,7 @@ vi.mock('../services/api', () => ({
   patternsAPI: { getAll: vi.fn(), getOne: vi.fn() },
   exportAPI: { getAll: vi.fn(), download: vi.fn() },
   imagesAPI: { modelStatus: vi.fn() },
+  authAPI: { changePassword: vi.fn() },
   researchAPI: { submitFeedback: vi.fn() },
 }));
 
@@ -215,6 +216,54 @@ describe('Measurements page', () => {
     const body = measurementsAPI.update.mock.calls[0][1];
     expect(body).toMatchObject({ bust_cm: 88, waist_cm: 27.5 });                       // stored cm not rewritten
     expect(body.units).toMatchObject({ bust_cm: 'cm', waist_cm: 'in' });
+  });
+});
+
+describe('Passwords', () => {
+  const fillPw = (current, next, again = next) => {
+    fireEvent.change(screen.getByLabelText('Current password'), { target: { value: current } });
+    fireEvent.change(screen.getByLabelText('New password'), { target: { value: next } });
+    fireEvent.change(screen.getByLabelText('New password again'), { target: { value: again } });
+    fireEvent.click(screen.getByRole('button', { name: 'Change password' }));
+  };
+
+  it('checks the new password before calling the server', async () => {
+    imagesAPI.modelStatus.mockResolvedValue({ data: { available: true } });
+    render(<Settings />);
+    fillPw('old-password-1', 'short');
+    expect(screen.getByTestId('password-error').textContent).toMatch(/at least 8 characters/);
+    fillPw('old-password-1', 'new-password-2', 'new-password-3');
+    expect(screen.getByTestId('password-error').textContent).toMatch(/not the same/);
+    expect(authAPI.changePassword).not.toHaveBeenCalled();
+  });
+
+  it('changes the password with the current one and clears the fields', async () => {
+    imagesAPI.modelStatus.mockResolvedValue({ data: { available: true } });
+    authAPI.changePassword.mockResolvedValue({ data: { message: 'Password changed.' } });
+    render(<Settings />);
+    fillPw('old-password-1', 'new-password-2');
+    expect((await screen.findByTestId('password-done')).textContent).toMatch(/Password changed/);
+    expect(authAPI.changePassword).toHaveBeenCalledWith({ current_password: 'old-password-1', new_password: 'new-password-2' });
+    expect(screen.getByLabelText('Current password')).toHaveValue('');
+    expect(screen.getByLabelText('New password')).toHaveValue('');
+  });
+
+  it('shows the reason from the server when the current password is wrong', async () => {
+    imagesAPI.modelStatus.mockResolvedValue({ data: { available: true } });
+    authAPI.changePassword.mockRejectedValue({ response: { status: 400, data: { error: 'The current password is not correct.', error_code: 'CURRENT_PASSWORD_WRONG' } } });
+    render(<Settings />);
+    fillPw('wrong-password', 'new-password-2');
+    expect((await screen.findByTestId('password-error')).textContent).toMatch(/current password is not correct/);
+    expect(screen.queryByTestId('password-done')).toBeNull();
+  });
+
+  it('says honestly that there is no reset e-mail', () => {
+    render(<MemoryRouter><LoginForm onSubmit={() => {}} onSwitchTab={() => {}} /></MemoryRouter>);
+    fireEvent.click(screen.getByRole('button', { name: 'Forgot password?' }));
+    const note = screen.getByRole('status').textContent;
+    expect(note).toMatch(/no e-mail service/);
+    expect(note).toMatch(/Settings/);
+    expect(note).not.toMatch(/link has been sent|check your inbox/i);
   });
 });
 

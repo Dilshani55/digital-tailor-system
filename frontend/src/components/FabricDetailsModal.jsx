@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { X, Check, ChevronDown, ChevronUp, Info, ShieldCheck, Sparkles } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { X, Check, ChevronDown, ChevronUp, Info, Sparkles } from 'lucide-react';
 
 export default function FabricDetailsModal({ fabric, isSelected, onSelect, onClose }) {
   const [showTechDetails, setShowTechDetails] = useState(false);

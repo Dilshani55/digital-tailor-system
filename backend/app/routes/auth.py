@@ -12,6 +12,7 @@ from flask import current_app
 auth_bp = Blueprint("auth", __name__)
 
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+MIN_PASSWORD_LENGTH = 8
 GOOGLE_TOKENINFO = "https://oauth2.googleapis.com/tokeninfo?id_token="
 
 
@@ -48,7 +49,7 @@ def register():
 
     if not EMAIL_RE.match(str(data["email"]).strip()):
         return jsonify({"error": "Please enter a valid email address."}), 400
-    if len(str(data["password"])) < 8:
+    if len(str(data["password"])) < MIN_PASSWORD_LENGTH:
         return jsonify({"error": "Password must be at least 8 characters."}), 400
 
     # 2. Check if email already exists (e-mail addresses are compared case-insensitively)
@@ -151,6 +152,42 @@ def google_login():
         "token": token,
         "user": {"id": str(user.id), "full_name": user.full_name, "email": user.email},
     }), 200
+
+
+# ── CHANGE PASSWORD (signed-in user, current password required) ──────────────
+@auth_bp.route("/change-password", methods=["POST"])
+@jwt_required()
+def change_password():
+    """
+    The only way to change a password in the app: the signed-in user proves they know the current one.
+    There is deliberately no "forgot password" e-mail flow, because the system has no e-mail service; an
+    operator can set a new password on the server with tools/reset_password.py.
+    A wrong current password answers 400 (not 401), so the client does not treat it as an expired session.
+    """
+    user = User.objects(id=get_jwt_identity()).first()
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+    data = request.get_json(silent=True) or {}
+    current, new = data.get("current_password"), data.get("new_password")
+    if not isinstance(current, str) or not current or not isinstance(new, str) or not new:
+        return jsonify({"error": "The current password and a new password are required.",
+                        "error_code": "PASSWORD_FIELDS_REQUIRED"}), 400
+    if len(new) < MIN_PASSWORD_LENGTH:
+        return jsonify({"error": f"The new password must be at least {MIN_PASSWORD_LENGTH} characters.",
+                        "error_code": "PASSWORD_TOO_SHORT"}), 400
+    if len(new.encode("utf-8")) > 72:                      # bcrypt reads only the first 72 bytes
+        return jsonify({"error": "The new password is too long (72 bytes at most).",
+                        "error_code": "PASSWORD_TOO_LONG"}), 400
+    if not bcrypt.checkpw(current.encode("utf-8"), user.password.encode("utf-8")):
+        return jsonify({"error": "The current password is not correct.", "error_code": "CURRENT_PASSWORD_WRONG"}), 400
+    if new == current:
+        return jsonify({"error": "The new password must be different from the current one.",
+                        "error_code": "PASSWORD_UNCHANGED"}), 400
+    user.password = bcrypt.hashpw(new.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+    user.save()
+    return jsonify({"message": "Password changed."}), 200
+
+
 # ── GET PROFILE (protected route example) ────────────────────────────────────
 @auth_bp.route("/profile", methods=["GET"])
 @jwt_required()

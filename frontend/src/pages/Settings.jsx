@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { Check, Cpu, Ruler, Save, User } from 'lucide-react';
-import { imagesAPI } from '../services/api';
+import { Check, Cpu, KeyRound, Ruler, Save, User } from 'lucide-react';
+import { authAPI, imagesAPI } from '../services/api';
+import { friendlyError } from '../utils/friendlyError';
 import { FABRIC_WIDTHS, getPreferences, savePreferences, widthLabel } from '../utils/preferences';
 
 // Fixed by the drafting engine (backend/app/logic/drafting/seam_allowance.py) — shown for
@@ -22,6 +23,29 @@ export default function Settings() {
   const [prefs, setPrefs] = useState(getPreferences);
   const [saved, setSaved] = useState('');
   const [model, setModel] = useState({ state: 'loading' });
+  const [pw, setPw] = useState({ current: '', next: '', confirm: '' });
+  const [pwError, setPwError] = useState('');
+  const [pwDone, setPwDone] = useState('');
+  const [pwBusy, setPwBusy] = useState(false);
+
+  const changePassword = async (e) => {
+    e.preventDefault();
+    setPwError('');
+    setPwDone('');
+    if (!pw.current || !pw.next) { setPwError('Enter your current password and a new password.'); return; }
+    if (pw.next.length < 8) { setPwError('The new password must be at least 8 characters.'); return; }
+    if (pw.next !== pw.confirm) { setPwError('The two new passwords are not the same.'); return; }
+    setPwBusy(true);
+    try {
+      await authAPI.changePassword({ current_password: pw.current, new_password: pw.next });
+      setPw({ current: '', next: '', confirm: '' });
+      setPwDone('Password changed. Use the new password the next time you sign in.');
+    } catch (err) {
+      setPwError(friendlyError(err, 'The password could not be changed. Please try again.'));
+    } finally {
+      setPwBusy(false);
+    }
+  };
 
   useEffect(() => {
     imagesAPI.modelStatus()
@@ -54,8 +78,39 @@ export default function Settings() {
           <div style={row}><span style={{ color: 'var(--text-secondary)' }}>Name</span><strong>{user?.full_name || '—'}</strong></div>
           <div style={row}><span style={{ color: 'var(--text-secondary)' }}>E-mail</span><strong>{user?.email || '—'}</strong></div>
           <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '12px', lineHeight: 1.5 }}>
-            Changing the name, e-mail or password is not available in this prototype.
+            Changing the name or e-mail is not available in this prototype.
           </p>
+        </section>
+
+        <section className="ui-card" style={card} aria-labelledby="password-h">
+          <h2 id="password-h" style={h2}><KeyRound size={16}/> Change password</h2>
+          <form onSubmit={changePassword} noValidate style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            {pwError && <div role="alert" className="alert error" data-testid="password-error">{pwError}</div>}
+            {pwDone && <div role="status" className="alert success" data-testid="password-done">{pwDone}</div>}
+            <div className="form-field">
+              <label className="form-label" htmlFor="pw-current">Current password</label>
+              <input id="pw-current" type="password" className="form-input" autoComplete="current-password" value={pw.current}
+                     onChange={(e) => setPw({ ...pw, current: e.target.value })} />
+            </div>
+            <div className="form-field">
+              <label className="form-label" htmlFor="pw-new">New password</label>
+              <input id="pw-new" type="password" className="form-input" autoComplete="new-password" value={pw.next}
+                     onChange={(e) => setPw({ ...pw, next: e.target.value })} />
+              <span className="form-hint">At least 8 characters.</span>
+            </div>
+            <div className="form-field">
+              <label className="form-label" htmlFor="pw-confirm">New password again</label>
+              <input id="pw-confirm" type="password" className="form-input" autoComplete="new-password" value={pw.confirm}
+                     onChange={(e) => setPw({ ...pw, confirm: e.target.value })} />
+            </div>
+            <button type="submit" className="btn btn-primary" disabled={pwBusy} style={{ alignSelf: 'flex-start' }}>
+              {pwBusy ? 'Changing…' : 'Change password'}
+            </button>
+            <p style={{ fontSize: '11px', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+              There is no “forgot password” e-mail: this system has no e-mail service. A forgotten password can only be
+              reset by the person who runs the server. Other devices stay signed in until their session ends (24 hours).
+            </p>
+          </form>
         </section>
 
         <form className="ui-card" style={card} onSubmit={save} aria-labelledby="prefs-h">

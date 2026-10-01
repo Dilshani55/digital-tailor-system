@@ -152,7 +152,7 @@ export default function Measurements() {
       <div style={{ marginBottom: '24px' }}>
         <h1 style={{ fontSize: '22px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '4px' }}>Body measurements</h1>
         <p style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
-          Create or update a customer's measurement profile. Which measurements a pattern needs depends on the design
+          Create or update a customer&apos;s measurement profile. Which measurements a pattern needs depends on the design
           (for example, a sleeveless top needs no sleeve measurements); the pattern wizard asks for exactly those.
         </p>
       </div>

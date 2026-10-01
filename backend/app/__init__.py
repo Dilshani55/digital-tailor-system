@@ -30,7 +30,22 @@ def create_app():
         log.warning("SECRET_KEY / JWT_SECRET_KEY are not set in the environment: using random per-process "
                     "secrets (sign-in tokens stop working when the server restarts). Set them in backend/.env.")
 
-    JWTManager(app)
+    jwt = JWTManager(app)
+
+    # Every sign-in problem answers 401 with a JSON body, so the web app signs the user out cleanly. (By default a
+    # token with a bad signature - for example one issued before the secret key changed - answers 422, which the
+    # web app does not treat as "sign in again".)
+    @jwt.unauthorized_loader
+    def missing_token(_reason):
+        return jsonify({"error": "Please sign in to continue.", "error_code": "AUTHORIZATION_REQUIRED"}), 401
+
+    @jwt.invalid_token_loader
+    def invalid_token(_reason):
+        return jsonify({"error": "Please sign in again.", "error_code": "INVALID_TOKEN"}), 401
+
+    @jwt.expired_token_loader
+    def expired_token(_header, _payload):
+        return jsonify({"error": "Your session has expired. Please sign in again.", "error_code": "TOKEN_EXPIRED"}), 401
     CORS(app, resources={r"/api/*": {"origins": app.config["CORS_ORIGINS"]}})
 
     # Ensure upload and output directories exist

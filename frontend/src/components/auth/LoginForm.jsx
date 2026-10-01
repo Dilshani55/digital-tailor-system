@@ -55,7 +55,9 @@ export default function LoginForm({ onSubmit, loading, error, onSwitchTab, onGoo
         </div>
         {forgot && (
           <div className="alert info" role="status" style={{ marginBottom: 14, fontSize: 13 }}>
-            Password reset by e-mail is not available in this prototype. Please contact the administrator.
+            This system has no e-mail service, so it cannot send a password-reset link.
+            If you are still signed in on another device, change your password there under Settings.
+            Otherwise the person who runs the server can set a new password for your account.
           </div>
         )}
         <button type="submit" className="btn btn-primary btn-lg btn-block" disabled={loading}>

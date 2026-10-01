@@ -34,7 +34,7 @@ function ProtectedLayout({ children }) {
 }
 
 function AppRoutes() {
-  const { user, loading } = useAuth();
+  const { loading } = useAuth();
   if (loading) return <LoadingSpinner />;
 
   return (

@@ -1,7 +1,6 @@
 // Measurement fields that depend on the confirmed design, positive-number validation (no plausibility ranges),
 // exact unit handling, the sleeve-length guide and field-level errors in the React form.
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import React from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import Upload from '../pages/Upload';

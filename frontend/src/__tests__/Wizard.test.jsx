@@ -1,6 +1,5 @@
 // End-to-end behaviour of the 8-step creation wizard against a mocked API.
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import React from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import Upload from '../pages/Upload';

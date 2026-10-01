@@ -1,7 +1,6 @@
 // Regression tests for the research-integrity cleanup (Step 1):
 // the UI must never display fabricated results when real data is absent.
-import { render, screen, waitFor } from '@testing-library/react';
-import React from 'react';
+import { render, screen } from '@testing-library/react';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { MemoryRouter } from 'react-router-dom';

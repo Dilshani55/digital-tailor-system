@@ -3,7 +3,7 @@ import { CheckCircle2, AlertTriangle, Sparkles, RefreshCw, HelpCircle, Shirt, Ci
 
 import {
   ACTIVE_TAXONOMY_OPTIONS, HEAD_TITLES, supportOf, supportReport, consistencyError, UNSUPPORTED, APPROXIMATED,
-  OUTSIDE_SCOPE_MESSAGE, LOW_CONFIDENCE_MESSAGE, predictionOutsideScope, optionBlockedReason, labelOf,
+  OUTSIDE_SCOPE_MESSAGE, predictionOutsideScope, optionBlockedReason, labelOf,
 } from '../utils/designSchema';
 
 // Re-exported for existing importers; the single frontend definition lives in utils/designSchema.js.
@@ -74,6 +74,8 @@ export default function PredictionReview({
         sleeve_style: '',
       });
     }
+    // the selections follow the server's prediction / confirmation only; `suggest` is derived from those two
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [garmentAttributes, confirmedAttributes]);
 
   const handleChange = (head, value) => {

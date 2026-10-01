@@ -908,7 +908,7 @@ export default function Upload() {
                 {STANDARD_WIDTHS.map((w) => (
                   <button type="button" key={w.cm} className={`width-card${fabricWidth === w.cm ? ' selected' : ''}`}
                           aria-pressed={fabricWidth === w.cm} data-testid={`width-choice-${w.inches}`} onClick={() => setFabricWidth(w.cm)}>
-                    <span className="wc-width">{w.inches}" · {w.cm} cm{fabricWidth === w.cm ? ' · selected' : ''}</span>
+                    <span className="wc-width">{w.inches}&quot; · {w.cm} cm{fabricWidth === w.cm ? ' · selected' : ''}</span>
                     <span className="wc-buy">{NOT_CALCULATED}</span>
                     <span className="wc-meta">Laid out from the generated pattern</span>
                   </button>
@@ -920,7 +920,7 @@ export default function Upload() {
               <div className="width-cards" aria-hidden="true">
                 {estimates.map((e) => (
                   <div key={e.fabric_width_cm} className={`width-card${e.selected ? ' selected' : ''}${e.fits ? '' : ' nofit'}`}>
-                    <span className="wc-width">{e.fabric_width_in}" · {e.fabric_width_cm} cm{e.selected ? ' · selected' : ''}</span>
+                    <span className="wc-width">{e.fabric_width_in}&quot; · {e.fabric_width_cm} cm{e.selected ? ' · selected' : ''}</span>
                     <span className="wc-buy">{e.fits ? `${e.recommended_purchase_m} m` : 'Does not fit'}</span>
                     <span className="wc-meta">{e.fits ? `layout ${e.base_layout_length_cm} cm · ${e.utilisation_percent}% used` : e.error}</span>
                   </div>
@@ -936,7 +936,7 @@ export default function Upload() {
                   <tbody>
                     {estimates.map((e) => (
                       <tr key={e.fabric_width_cm} className={e.selected ? 'row-selected' : ''} data-testid={`estimate-row-${e.fabric_width_in}`}>
-                        <td><strong>{e.fabric_width_in}"</strong><small>{e.fabric_width_cm} cm</small></td>
+                        <td><strong>{e.fabric_width_in}&quot;</strong><small>{e.fabric_width_cm} cm</small></td>
                         {e.fits ? (
                           <>
                             <td>{e.base_layout_length_cm} cm<small>{e.cutting_mode === 'folded' ? 'folded' : 'open'}</small></td>

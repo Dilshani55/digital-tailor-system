@@ -1,6 +1,5 @@
 // The pattern library lists SAVED PATTERNS (the records the dashboard and customers page count), not only PDFs.
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import React from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import History from '../pages/History';

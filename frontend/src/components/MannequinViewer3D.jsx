@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState, Suspense, useMemo } from 'react';
+import React, { useRef, useEffect, useState, Suspense } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls, useGLTF, Html } from '@react-three/drei';
 import * as THREE from 'three';
@@ -135,7 +135,7 @@ function MeasurementRings3D({ activeField, rotationAngle }) {
 }
 
 // ── Mannequin GLTF Model Mesh Component ─────────────────────────────────────
-function MannequinModel({ modelPath, rotationAngle, onRotate }) {
+function MannequinModel({ modelPath, rotationAngle }) {
   const groupRef = useRef();
   const { scene } = useGLTF(modelPath);
 

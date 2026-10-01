@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import MannequinViewer3D from './MannequinViewer3D';
-import { RotateCcw, Eye, Play, Pause, Info, Award } from 'lucide-react';
+import { RotateCcw, Play, Pause, Award } from 'lucide-react';
 
 export default function MeasurementGuide({ activeField, setActiveField, meas }) {
   const [showModal, setShowModal] = useState(true);
