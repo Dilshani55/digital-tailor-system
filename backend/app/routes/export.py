@@ -304,7 +304,8 @@ def generate_pdf(pattern_id):
             measurements = dict(snapshot["canonical_cm"], fabric_type=fabric_type,
                                 fit_preference=snapshot.get("fit_preference", "standard"))
         else:
-            measurements, m_code, m_errors = ms.engine_measurements(session.measurement_id)
+            attrs = (pattern.design_spec or {}).get("attributes") or {}
+            measurements, m_code, m_errors = ms.engine_measurements(session.measurement_id, attrs)
             if m_errors:
                 return jsonify(ms.error_response_body(m_errors, code=m_code)), 422
 

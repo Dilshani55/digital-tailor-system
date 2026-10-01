@@ -3,28 +3,10 @@ import { useLocation } from 'react-router-dom';
 import { measurementsAPI } from '../services/api';
 import LoadingSpinner from '../components/LoadingSpinner';
 import {
-  MEASUREMENT_FIELDS, FIELD_KEYS, CORE_FIELDS, validateMeasurements, convertDisplayValues,
-  parseFieldErrors, buildPayload, rangeText,
+  MEASUREMENT_FIELDS, FIELD_KEYS, validateMeasurements, displayValue, parseFieldErrors, buildPayload,
 } from '../utils/measurementSchema';
+import { GUIDES } from '../utils/measurementGuides';
 import { friendlyError } from '../utils/friendlyError';
-
-// How to take each measurement. Wording matches what the drafting engine expects
-// (e.g. shoulder = shoulder LENGTH from the neck point to the shoulder tip, not tip-to-tip).
-const GUIDES = {
-  bust_cm: 'Around the fullest part of the bust, tape horizontal and parallel to the floor.',
-  waist_cm: 'Around the natural waist, the narrowest part of the torso.',
-  hip_cm: 'Around the fullest part of the hips and seat, feet together.',
-  height_cm: 'Standing height from the top of the head to the floor, without shoes (used for plausibility checks).',
-  neck_cm: 'Around the base of the neck, where a round neckline would sit.',
-  shoulder_cm: 'Shoulder length: from the side of the neck (neck point) to the shoulder tip — one shoulder only.',
-  across_back_cm: 'Across the back between the two armhole creases, about 10 cm below the neck bone.',
-  back_waist_length_cm: 'Down the centre back from the neck bone to the natural waist.',
-  armhole_depth_cm: 'From the shoulder tip straight down to the level of the underarm.',
-  garment_length_cm: 'Wanted finished length: from the neck point at the shoulder down to where the hem should be.',
-  bicep_cm: 'Around the fullest part of the upper arm.',
-  sleeve_cm: 'Full arm length: from the shoulder tip over a slightly bent elbow to the wrist bone.',
-  wrist_cm: 'Around the wrist bone.',
-};
 
 // Positions on the body diagram (only for the measurements it can show).
 const DIAGRAM = {
@@ -55,6 +37,7 @@ export default function Measurements() {
   const [unit, setUnit] = useState('cm');
   const [activeField, setActiveField] = useState('bust_cm');
   const [formData, setFormData] = useState(EMPTY);
+  const [typedUnits, setTypedUnits] = useState({});     // unit each value was typed in (stored values: cm)
   const [fieldErrors, setFieldErrors] = useState({});
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -62,7 +45,8 @@ export default function Measurements() {
 
   const loadProfile = (p) => {
     setFormData(p ? fromProfile(p) : EMPTY);
-    setUnit('cm');                 // stored profile values are canonical centimetres
+    setTypedUnits({});             // stored profile values are canonical centimetres
+    setUnit('cm');
     setFieldErrors({});
     setError('');
   };
@@ -91,6 +75,7 @@ export default function Measurements() {
 
   const setField = (key, value) => {
     setFormData((prev) => ({ ...prev, [key]: value }));
+    if (FIELD_KEYS.includes(key)) setTypedUnits((prev) => ({ ...prev, [key]: unit }));
     setFieldErrors((prev) => {
       if (!prev[key]) return prev;
       const { [key]: _removed, ...rest } = prev;
@@ -99,9 +84,9 @@ export default function Measurements() {
     setError('');
   };
 
+  // the unit only changes how values are shown; typed values keep their own unit (no double conversion)
   const toggleUnit = (next) => {
     if (next === unit) return;
-    setFormData((prev) => ({ ...prev, ...convertDisplayValues(prev, unit, next) }));
     setUnit(next);
     setFieldErrors({});
   };
@@ -114,15 +99,15 @@ export default function Measurements() {
       setError('Please enter the customer name.');
       return;
     }
-    // A profile needs the four core measurements; the rest can be completed later
-    // (the wizard asks for all of them before drafting). The server re-validates everything.
-    const localErrors = validateMeasurements(formData, unit, CORE_FIELDS);
+    // No measurement is required to keep a profile: which ones a pattern needs depends on the design, and the
+    // pattern wizard asks for exactly those. Every entered value must be a number > 0 (server re-validates).
+    const localErrors = validateMeasurements(formData, []);
     if (Object.keys(localErrors).length) {
       setFieldErrors(localErrors);
       setError('Please correct the highlighted measurements.');
       return;
     }
-    const payload = { client_name: formData.client_name.trim(), ...buildPayload(formData, unit), fabric_type: formData.fabric_type };
+    const payload = { client_name: formData.client_name.trim(), ...buildPayload(formData, typedUnits, 'cm'), fabric_type: formData.fabric_type };
     try {
       if (selectedProfileId) {
         await measurementsAPI.update(selectedProfileId, payload);
@@ -163,8 +148,8 @@ export default function Measurements() {
       <div style={{ marginBottom: '24px' }}>
         <h1 style={{ fontSize: '22px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '4px' }}>Body measurements</h1>
         <p style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
-          Create or update a customer's measurement profile. All {MEASUREMENT_FIELDS.length} measurements are needed to draft a pattern;
-          a profile can be saved once bust, waist, hip and height are entered.
+          Create or update a customer's measurement profile. Which measurements a pattern needs depends on the design
+          (for example, a sleeveless top needs no sleeve measurements); the pattern wizard asks for exactly those.
         </p>
       </div>
 
@@ -175,7 +160,7 @@ export default function Measurements() {
             <option value="">+ New customer profile</option>
             {profiles.map((p) => (
               <option key={p.measurement_id} value={p.measurement_id}>
-                {p.client_name}{p.complete === false ? ' (incomplete)' : ''}
+                {p.client_name}
               </option>
             ))}
           </select>
@@ -216,16 +201,15 @@ export default function Measurements() {
                 <div key={key} className="form-field" onMouseEnter={() => setActiveField(key)}
                      style={{ borderLeft: `3px solid ${activeField === key ? 'var(--text-accent)' : 'transparent'}`, paddingLeft: '8px' }}>
                   <label className="form-label" htmlFor={`profile-${key}`}>
-                    {DIAGRAM[key] ? `${DIAGRAM[key].n}. ` : ''}{field.label} ({unit}){CORE_FIELDS.includes(key) ? ' *' : ''}
+                    {DIAGRAM[key] ? `${DIAGRAM[key].n}. ` : ''}{field.label} ({unit})
                   </label>
                   <input
                     id={`profile-${key}`} ref={(el) => { inputs.current[key] = el; }}
                     type="number" step="any" inputMode="decimal" className="form-input"
-                    value={formData[key]} aria-invalid={message ? 'true' : 'false'} aria-describedby={`profile-hint-${key}`}
+                    value={displayValue(formData[key], typedUnits[key] || 'cm', unit)} aria-invalid={message ? 'true' : 'false'}
                     style={message ? { borderColor: '#B23B3B' } : undefined}
                     onFocus={() => setActiveField(key)} onChange={(e) => setField(key, e.target.value)}
                   />
-                  <small id={`profile-hint-${key}`} style={{ color: 'var(--text-muted)', fontSize: '11px' }}>{rangeText(field)}</small>
                   {message && <div role="alert" data-testid={`profile-error-${key}`} style={{ color: '#9B2C2C', fontSize: '12px' }}>{message}</div>}
                 </div>
               );
@@ -240,7 +224,7 @@ export default function Measurements() {
             </div>
           </div>
 
-          <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '14px' }}>* required to save a profile. Inches are converted exactly (1 in = 2.54 cm).</p>
+          <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '14px' }}>Every value must be a number greater than 0; decimals are fine. Inches are converted exactly (1 in = 2.54 cm).</p>
           <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '16px', borderTop: '1px solid var(--border)', paddingTop: '16px' }}>
             <button type="button" className="btn btn-outline" onClick={reset}>Reset</button>
             <button type="submit" className="btn btn-primary">Save measurements</button>
@@ -276,7 +260,6 @@ export default function Measurements() {
               {DIAGRAM[activeField] ? `${DIAGRAM[activeField].n}. ` : ''}{activeDef?.label}
             </span>
             <p style={{ margin: 0, fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.45 }}>{GUIDES[activeField]}</p>
-            <p style={{ margin: '6px 0 0', fontSize: '11px', color: 'var(--text-muted)' }}>Accepted range: {activeDef && rangeText(activeDef)}</p>
           </div>
         </div>
       </div>

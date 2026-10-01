@@ -43,54 +43,88 @@ def _codes(errors, field):
     return [e["code"] for e in errors.get(field, [])]
 
 
+SLEEVELESS_CROP = {"garment_type": "crop-top", "neckline_type": "round-neck",
+                   "sleeve_length": "sleeveless", "sleeve_style": "none"}
+SHORT_BLOUSE = {"garment_type": "blouse", "neckline_type": "round-neck",
+                "sleeve_length": "short-sleeve", "sleeve_style": "regular-sleeve"}
+LONG_TSHIRT = {"garment_type": "t-shirt", "neckline_type": "round-neck",
+               "sleeve_length": "long-sleeve", "sleeve_style": "regular-sleeve"}
+LONG_BELL = {"garment_type": "blouse", "neckline_type": "v-neck",
+             "sleeve_length": "long-sleeve", "sleeve_style": "bell-sleeve"}
+BODICE = ["bust_cm", "waist_cm", "neck_cm", "shoulder_cm", "across_back_cm", "back_waist_length_cm",
+          "armhole_depth_cm", "garment_length_cm"]
+
+
 class TestSchemaDefinition(unittest.TestCase):
-    def test_thirteen_fields_with_ranges_and_labels(self):
+    def test_thirteen_fields_with_labels_and_no_ranges(self):
         self.assertEqual(len(ms.FIELD_KEYS), 13)
         self.assertEqual(set(ms.FIELD_KEYS), set(VALID_CM))
-        for key, (lo, hi) in ms.get_ranges().items():
-            self.assertTrue(0 < lo < hi, key)
-            self.assertIn(key, ms.LABELS)
-
-    def test_typical_measurements_pass(self):
-        self.assertEqual(ms.validate_canonical(dict(VALID_CM)), {})
+        self.assertEqual(ms.LABELS["sleeve_cm"], "Sleeve length")            # not "full arm"
+        self.assertFalse(hasattr(ms, "get_ranges"))
+        self.assertFalse(hasattr(ms, "validate_canonical"))
 
     def test_canonical_unit_is_cm_and_units_are_cm_in(self):
         self.assertEqual(ms.CANONICAL_UNIT, "cm")
         self.assertEqual(ms.UNITS, ("cm", "in"))
+        self.assertEqual(ms.CM_PER_INCH, 2.54)
 
     def test_schema_payload(self):
         p = ms.schema_payload()
-        self.assertEqual(p["required_for_profile"], list(ms.CORE_FIELDS))
-        self.assertEqual(len(p["required_for_pattern"]), 13)
         self.assertEqual(len(p["fields"]), 13)
+        self.assertEqual(p["requirement_rules"], ms.REQUIREMENTS["rules"])
+        self.assertNotIn("min_cm", p["fields"][0])
 
-    def test_range_override_from_environment(self):
-        with patch.dict(os.environ, {"MEASUREMENT_RANGES_JSON": '{"bust_cm": [50, 200]}'}):
-            self.assertEqual(ms.get_ranges()["bust_cm"], (50.0, 200.0))
-            self.assertEqual(ms.validate_canonical({"bust_cm": 190.0}), {})
-        self.assertEqual(ms.get_ranges()["bust_cm"], (60.0, 160.0))
 
-    def test_bad_environment_override_is_rejected(self):
-        for bad in ('{"nope_cm": [1, 2]}', '{"bust_cm": [100, 50]}', "not json"):
-            with patch.dict(os.environ, {"MEASUREMENT_RANGES_JSON": bad}):
-                with self.assertRaises(ValueError):
-                    ms.get_ranges()
+class TestRequiredForDesign(unittest.TestCase):
+    """The design decides which measurements are needed - derived from what the drafting engine uses."""
+
+    def test_sleeveless_crop_top_needs_only_the_bodice(self):
+        self.assertEqual(ms.required_for_design(SLEEVELESS_CROP), BODICE)        # no hip, sleeve, wrist, height
+
+    def test_short_sleeve_needs_bicep_and_sleeve_length_but_not_wrist(self):
+        req = ms.required_for_design(SHORT_BLOUSE)
+        self.assertIn("bicep_cm", req)
+        self.assertIn("sleeve_cm", req)
+        self.assertIn("hip_cm", req)                       # hem below the waist
+        self.assertNotIn("wrist_cm", req)
+        self.assertNotIn("height_cm", req)
+
+    def test_long_plain_sleeve_needs_the_wrist_but_a_bell_sleeve_does_not(self):
+        self.assertIn("wrist_cm", ms.required_for_design(LONG_TSHIRT))
+        self.assertNotIn("wrist_cm", ms.required_for_design(LONG_BELL))
+
+    def test_height_is_never_required(self):
+        import itertools
+        for gt, sl, ss in itertools.product(("blouse", "t-shirt", "crop-top"), ("sleeveless", "short-sleeve", "long-sleeve"),
+                                            ("none", "regular-sleeve", "puff-sleeve", "bell-sleeve")):
+            self.assertNotIn("height_cm", ms.required_for_design(
+                {"garment_type": gt, "neckline_type": "round-neck", "sleeve_length": sl, "sleeve_style": ss}))
+
+    def test_every_required_set_drafts_and_nothing_less_is_invented(self):
+        """With exactly the required fields the engine drafts; the unrequired ones stay None."""
+        from app.logic.parametric_engine import ParametricEngine
+        for design, length in ((SLEEVELESS_CROP, 36.0), (SHORT_BLOUSE, 62.0), (LONG_TSHIRT, 62.0), (LONG_BELL, 62.0)):
+            req = ms.required_for_design(design)
+            m = {k: (VALID_CM[k] if k in req else None) for k in ms.FIELD_KEYS}
+            m["garment_length_cm"] = length
+            if design["sleeve_length"] == "short-sleeve":
+                m["sleeve_cm"] = 24.0
+            m.update(fabric_type="knit" if design["garment_type"] == "t-shirt" else "woven", fit_preference="standard")
+            out = ParametricEngine(m, design_spec={"attributes": design}).generate()
+            self.assertTrue(out["validation"]["final_pattern"]["passed"], design)
+            for k in ms.FIELD_KEYS:
+                if k not in req:
+                    self.assertIsNone(out["measurements_used"]["raw"][k], (design, k))
 
 
 class TestFrontendParity(unittest.TestCase):
-    def test_frontend_schema_matches_backend(self):
-        import re
+    def test_frontend_reads_the_same_requirement_file_and_factor(self):
         path = os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "src", "utils", "measurementSchema.js")
         text = open(path, encoding="utf-8").read()
-        found = re.findall(r"key: '([a-z_]+)', label: '([^']+)', min: ([\d.]+), max: ([\d.]+)", text)
-        self.assertEqual([f[0] for f in found], list(ms.FIELD_KEYS))
-        ranges = ms.get_ranges()
-        for key, label, lo, hi in found:
-            self.assertEqual((float(lo), float(hi)), ranges[key], key)
-            self.assertEqual(label, ms.LABELS[key], key)
+        self.assertIn("config/measurement_requirements.json", text)
         self.assertIn("CM_PER_INCH = 2.54", text)
-        core = re.search(r"CORE_FIELDS = \[([^\]]+)\]", text).group(1)
-        self.assertEqual(re.findall(r"'([a-z_]+)'", core), list(ms.CORE_FIELDS))
+        self.assertNotIn("min:", text)                       # no plausibility ranges on the client either
+        self.assertNotIn("full arm", text)
 
 
 class TestParseNumber(unittest.TestCase):
@@ -134,22 +168,35 @@ class TestUnitConversion(unittest.TestCase):
     def test_inch_to_cm_exact_factor(self):
         canonical, original, errors = ms.convert_input({"bust_cm": 34.5, "height_cm": "64"}, "in")
         self.assertEqual(errors, {})
-        self.assertEqual(canonical["bust_cm"], round(34.5 * 2.54, 2))    # 87.63
-        self.assertEqual(canonical["height_cm"], 162.56)
+        self.assertAlmostEqual(canonical["bust_cm"], 87.63, places=9)
+        self.assertAlmostEqual(canonical["height_cm"], 162.56, places=9)
         self.assertEqual(original["bust_cm"], {"value": 34.5, "unit": "in"})
         self.assertEqual(original["height_cm"], {"value": 64.0, "unit": "in"})
+
+    def test_inch_conversion_keeps_full_precision(self):
+        canonical, _, _ = ms.convert_input({"neck_cm": 13.337}, "in")
+        self.assertAlmostEqual(canonical["neck_cm"], 13.337 * 2.54, places=9)   # not rounded to 2 decimals
+
+    def test_per_field_units(self):
+        canonical, original, errors = ms.convert_input({"bust_cm": 34.5, "waist_cm": "70.25"}, "cm", {"bust_cm": "in"})
+        self.assertEqual(errors, {})
+        self.assertAlmostEqual(canonical["bust_cm"], 87.63, places=9)
+        self.assertEqual(canonical["waist_cm"], 70.25)
+        self.assertEqual(original["bust_cm"]["unit"], "in")
+        self.assertEqual(original["waist_cm"]["unit"], "cm")
+        _, _, errors = ms.convert_input({"bust_cm": 34.5}, "cm", {"bust_cm": "mm"})
+        self.assertEqual(_codes(errors, "bust_cm"), ["INVALID_UNIT"])
 
     def test_cm_is_unchanged(self):
         canonical, original, _ = ms.convert_input({"bust_cm": 88.25}, "cm")
         self.assertEqual(canonical["bust_cm"], 88.25)
         self.assertEqual(original["bust_cm"], {"value": 88.25, "unit": "cm"})
 
-    def test_range_is_checked_after_conversion(self):
-        # 88 typed as inches is 223.5 cm: plausible only if the user really meant inches.
-        canonical, _, _ = ms.convert_input({"bust_cm": 88}, "in")
-        errors = ms.validate_canonical(canonical)
-        self.assertEqual(_codes(errors, "bust_cm"), ["OUT_OF_RANGE"])
-        self.assertIn("in)", errors["bust_cm"][0]["message"])           # bounds shown in both units
+    def test_unusual_but_positive_values_are_accepted_unchanged(self):
+        # no plausibility ranges: values are never clamped or rejected for being large or small
+        canonical, _, errors = ms.convert_input({"bust_cm": 223.52, "wrist_cm": 0.5, "height_cm": 300}, "cm")
+        self.assertEqual(errors, {})
+        self.assertEqual(canonical, {"bust_cm": 223.52, "wrist_cm": 0.5, "height_cm": 300.0})
 
     def test_armhole_alias(self):
         canonical, _, _ = ms.convert_input({"armhole_cm": 21}, "cm")
@@ -160,71 +207,6 @@ class TestUnitConversion(unittest.TestCase):
         self.assertEqual(_codes(errors, "bust_cm"), ["NOT_A_NUMBER"])
         self.assertEqual(_codes(errors, "waist_cm"), ["NOT_POSITIVE"])
         self.assertEqual(_codes(errors, "hip_cm"), ["NOT_FINITE"])
-
-
-class TestRanges(unittest.TestCase):
-    def test_every_field_rejects_below_and_above_and_accepts_bounds(self):
-        for key, (lo, hi) in ms.get_ranges().items():
-            self.assertEqual(ms.validate_canonical({key: lo}), {}, f"{key} min")
-            self.assertEqual(ms.validate_canonical({key: hi}), {}, f"{key} max")
-            self.assertEqual(_codes(ms.validate_canonical({key: lo - 0.01}), key), ["OUT_OF_RANGE"], key)
-            self.assertEqual(_codes(ms.validate_canonical({key: hi + 0.01}), key), ["OUT_OF_RANGE"], key)
-
-    def test_extreme_values(self):
-        errors = ms.validate_canonical({"bust_cm": 5.0, "waist_cm": 500.0, "height_cm": 30.0})
-        self.assertEqual(set(errors), {"bust_cm", "waist_cm", "height_cm"})
-        for e in errors.values():
-            self.assertIn("min_cm", e[0])
-
-
-class TestRelations(unittest.TestCase):
-    def _bad(self, **changes):
-        return ms.validate_canonical(dict(VALID_CM, **changes))
-
-    def test_each_relationship(self):
-        cases = [
-            ("wrist_cm", dict(wrist_cm=24.0, bicep_cm=20.0)),
-            ("neck_cm", dict(neck_cm=54.0, waist_cm=50.0, bust_cm=88.0)),
-            ("armhole_depth_cm", dict(armhole_depth_cm=30.0, back_waist_length_cm=30.0, height_cm=140.0)),
-            ("back_waist_length_cm", None),                                      # set below
-            ("sleeve_cm", dict(sleeve_cm=75.0, height_cm=130.0)),
-            ("garment_length_cm", dict(garment_length_cm=100.0, height_cm=130.0)),
-        ]
-        for field, changes in cases:
-            if field == "back_waist_length_cm":
-                changes = dict(back_waist_length_cm=30.0, height_cm=210.0)     # 14% of height (< 18%)
-            errors = self._bad(**changes)
-            self.assertIn("RELATION", _codes(errors, field), f"{field}: {errors}")
-
-    def test_every_relation_can_actually_fire_within_the_ranges(self):
-        """Guards against dead rules: each rule's field must be reachable by some in-range input."""
-        fired = set()
-        r = ms.get_ranges()
-        probes = [
-            dict(wrist_cm=r["wrist_cm"][1], bicep_cm=r["bicep_cm"][0]),
-            dict(neck_cm=r["neck_cm"][1], waist_cm=r["waist_cm"][0]),
-            dict(armhole_depth_cm=r["armhole_depth_cm"][1], back_waist_length_cm=r["back_waist_length_cm"][0]),
-            dict(back_waist_length_cm=r["back_waist_length_cm"][0], height_cm=r["height_cm"][1]),
-            dict(sleeve_cm=r["sleeve_cm"][1], height_cm=r["height_cm"][0]),
-            dict(garment_length_cm=r["garment_length_cm"][1], height_cm=r["height_cm"][0]),
-        ]
-        for probe in probes:
-            fired |= {f for f, errs in ms.validate_canonical(probe).items()
-                      if any(e["code"] == "RELATION" for e in errs)}
-        self.assertEqual(fired, set(ms._INVOLVED))
-
-    def test_relation_needs_both_values_present(self):
-        self.assertEqual(ms.validate_canonical({"wrist_cm": 24.0}), {})     # no bicep given -> nothing to compare
-
-    def test_relation_skipped_when_a_value_is_already_out_of_range(self):
-        errors = ms.validate_canonical({"wrist_cm": 24.0, "bicep_cm": 5.0})
-        self.assertEqual(_codes(errors, "bicep_cm"), ["OUT_OF_RANGE"])
-        self.assertNotIn("wrist_cm", errors)                                # no confusing second error
-
-    def test_partial_update_scope_limits_reporting(self):
-        merged = dict(VALID_CM, wrist_cm=24.0, bicep_cm=20.0)               # pre-existing bad pair
-        self.assertEqual(ms.validate_canonical(merged, only={"neck_cm"}), {})
-        self.assertIn("wrist_cm", ms.validate_canonical(merged, only={"bicep_cm"}))
 
 
 class _Profile(SimpleNamespace):
@@ -239,38 +221,41 @@ def _profile(**over):
 
 class TestEngineMeasurements(unittest.TestCase):
     def test_complete_valid_profile(self):
-        m, code, errors = ms.engine_measurements(_profile())
+        m, code, errors = ms.engine_measurements(_profile(), LONG_TSHIRT)
         self.assertEqual((code, errors), (None, {}))
         for key in ms.FIELD_KEYS:
             self.assertEqual(m[key], VALID_CM[key])
         self.assertEqual(m["fabric_type"], "woven")
         self.assertEqual(m["armhole_cm"], 20.0)
+        self.assertEqual(m["required_fields"], ms.required_for_design(LONG_TSHIRT))
 
-    def test_missing_measurement_is_never_defaulted(self):
-        for key in ms.FIELD_KEYS:
-            m, code, errors = ms.engine_measurements(_profile(**{key: None, "armhole_cm": None}))
+    def test_missing_required_measurement_is_never_defaulted(self):
+        for key in ms.required_for_design(LONG_TSHIRT):
+            m, code, errors = ms.engine_measurements(_profile(**{key: None, "armhole_cm": None}), LONG_TSHIRT)
             self.assertIsNone(m, key)
             self.assertEqual(code, "MEASUREMENTS_INCOMPLETE")
             self.assertEqual(list(errors), [key])
 
+    def test_measurements_the_design_does_not_need_may_be_missing(self):
+        m, code, errors = ms.engine_measurements(
+            _profile(hip_cm=None, height_cm=None, bicep_cm=None, sleeve_cm=None, wrist_cm=None), SLEEVELESS_CROP)
+        self.assertEqual((code, errors), (None, {}))
+        for key in ("hip_cm", "height_cm", "bicep_cm", "sleeve_cm", "wrist_cm"):
+            self.assertIsNone(m[key])                                  # passed as missing, never invented
+
     def test_armhole_falls_back_to_legacy_alias_only_if_present(self):
-        m, _, _ = ms.engine_measurements(_profile(armhole_depth_cm=None, armhole_cm=21.0))
+        m, _, _ = ms.engine_measurements(_profile(armhole_depth_cm=None, armhole_cm=21.0), SHORT_BLOUSE)
         self.assertEqual(m["armhole_depth_cm"], 21.0)
 
-    def test_implausible_values_are_rejected(self):
-        m, code, errors = ms.engine_measurements(_profile(bust_cm=5.0, waist_cm=500.0))
-        self.assertIsNone(m)
-        self.assertEqual(code, "MEASUREMENTS_INVALID")
-        self.assertEqual(set(errors), {"bust_cm", "waist_cm"})
-
     def test_corrupt_stored_values_are_rejected(self):
-        for bad in (float("nan"), -1, 0, "abc"):
-            m, code, errors = ms.engine_measurements(_profile(neck_cm=bad))
+        for bad in (float("nan"), float("inf"), -1, 0, "abc"):
+            m, code, errors = ms.engine_measurements(_profile(neck_cm=bad), SHORT_BLOUSE)
             self.assertIsNone(m)
+            self.assertEqual(code, "MEASUREMENTS_INVALID")
             self.assertIn("neck_cm", errors)
 
     def test_invalid_fabric_or_fit(self):
-        m, code, errors = ms.engine_measurements(_profile(fabric_type="silk", fit_preference="tight"))
+        m, code, errors = ms.engine_measurements(_profile(fabric_type="silk", fit_preference="tight"), SHORT_BLOUSE)
         self.assertIsNone(m)
         self.assertEqual(set(errors), {"fabric_type", "fit_preference"})
 
@@ -316,8 +301,7 @@ class TestMeasurementRoutes(unittest.TestCase):
         resp = self._post(dict(VALID_CM, client_name="Amara"))
         self.assertEqual(resp.status_code, 201, resp.get_json())
         profile = resp.get_json()["profile"]
-        self.assertTrue(profile["complete"])
-        self.assertEqual(profile["missing_fields"], [])
+        self.assertEqual(profile["entered_fields"], list(ms.FIELD_KEYS))
         self.assertEqual(profile["bust_cm"], 88.0)
         self.assertEqual(profile["original_values"]["bust_cm"], {"value": 88.0, "unit": "cm"})
         self.assertEqual(profile["canonical_unit"], "cm")
@@ -328,18 +312,17 @@ class TestMeasurementRoutes(unittest.TestCase):
         self.assertEqual(resp.status_code, 201, resp.get_json())
         saved = FakeProfile.saved[0]
         self.assertEqual(saved.unit, "in")
-        self.assertAlmostEqual(saved.bust_cm, VALID_CM["bust_cm"], delta=0.05)          # canonical cm
+        self.assertAlmostEqual(saved.bust_cm, inches["bust_cm"] * 2.54, places=9)       # exact canonical cm
         self.assertEqual(saved.original_values["bust_cm"], {"value": inches["bust_cm"], "unit": "in"})
         self.assertEqual(saved.armhole_cm, saved.armhole_depth_cm)
 
-    def test_inch_values_that_are_really_cm_are_rejected_not_accepted(self):
-        resp = self._post(dict(VALID_CM, unit="in"))       # 88 "inches" = 223 cm bust
-        self.assertEqual(resp.status_code, 400)
-        self.assertIn("bust_cm", resp.get_json()["field_errors"])
-        self.assertEqual(FakeProfile.saved, [])
+    def test_large_inch_values_are_converted_not_clamped_or_rejected(self):
+        resp = self._post(dict(VALID_CM, unit="in"))       # 88 in = 223.52 cm: unusual, but the user's value
+        self.assertEqual(resp.status_code, 201, resp.get_json())
+        self.assertAlmostEqual(FakeProfile.saved[0].bust_cm, 223.52, places=9)
 
     def test_field_level_errors_for_bad_inputs(self):
-        payload = dict(VALID_CM, bust_cm="abc", waist_cm=-4, hip_cm=0, height_cm=999, neck_cm=None)
+        payload = dict(VALID_CM, bust_cm="abc", waist_cm=-4, hip_cm=0, height_cm="Infinity", neck_cm=None)
         resp = self._post(payload)
         self.assertEqual(resp.status_code, 400)
         body = resp.get_json()
@@ -348,9 +331,15 @@ class TestMeasurementRoutes(unittest.TestCase):
         self.assertEqual(fe["bust_cm"][0]["code"], "NOT_A_NUMBER")
         self.assertEqual(fe["waist_cm"][0]["code"], "NOT_POSITIVE")
         self.assertEqual(fe["hip_cm"][0]["code"], "NOT_POSITIVE")
-        self.assertEqual(fe["height_cm"][0]["code"], "OUT_OF_RANGE")
-        self.assertNotIn("neck_cm", fe)          # optional at profile level
+        self.assertEqual(fe["height_cm"][0]["code"], "NOT_FINITE")
+        self.assertNotIn("neck_cm", fe)          # not required without a design
         self.assertEqual(FakeProfile.saved, [])
+
+    def test_decimals_are_accepted(self):
+        resp = self._post({"bust_cm": "88.75", "waist_cm": 70.125})
+        self.assertEqual(resp.status_code, 201, resp.get_json())
+        self.assertEqual(FakeProfile.saved[0].bust_cm, 88.75)
+        self.assertEqual(FakeProfile.saved[0].waist_cm, 70.125)
 
     def test_nan_and_infinity_json_are_rejected(self):
         with patch("app.routes.measurements.User") as user_cls, \
@@ -364,18 +353,30 @@ class TestMeasurementRoutes(unittest.TestCase):
         self.assertEqual(fe["bust_cm"][0]["code"], "NOT_FINITE")
         self.assertEqual(fe["waist_cm"][0]["code"], "NOT_FINITE")
 
-    def test_missing_core_fields(self):
-        resp = self._post({"client_name": "X"})
-        self.assertEqual(resp.status_code, 400)
-        self.assertEqual(set(resp.get_json()["field_errors"]), set(ms.CORE_FIELDS))
-
-    def test_core_only_profile_is_saved_but_marked_incomplete(self):
-        resp = self._post({k: VALID_CM[k] for k in ms.CORE_FIELDS})
-        self.assertEqual(resp.status_code, 201)
+    def test_without_a_design_no_measurement_is_required(self):
+        resp = self._post({"client_name": "X", "bust_cm": 88})
+        self.assertEqual(resp.status_code, 201, resp.get_json())
         p = resp.get_json()["profile"]
-        self.assertFalse(p["complete"])
-        self.assertEqual(len(p["missing_fields"]), 9)
+        self.assertEqual(p["entered_fields"], ["bust_cm"])
         self.assertIsNone(p["neck_cm"])                     # nothing fabricated
+
+    def test_with_a_design_exactly_its_measurements_are_required(self):
+        resp = self._post({"client_name": "X", "design": SLEEVELESS_CROP, "bust_cm": 88})
+        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(set(resp.get_json()["field_errors"]), set(BODICE) - {"bust_cm"})   # no hip/sleeve/height
+        ok = self._post(dict({k: VALID_CM[k] for k in BODICE}, design=SLEEVELESS_CROP))
+        self.assertEqual(ok.status_code, 201, ok.get_json())
+
+    def test_short_sleeve_design_does_not_require_the_wrist(self):
+        payload = {k: VALID_CM[k] for k in ms.required_for_design(SHORT_BLOUSE)}
+        resp = self._post(dict(payload, design=SHORT_BLOUSE))
+        self.assertEqual(resp.status_code, 201, resp.get_json())
+        self.assertIsNone(FakeProfile.saved[0].wrist_cm)
+
+    def test_invalid_design_is_rejected(self):
+        resp = self._post({"bust_cm": 88, "design": {"garment_type": "dress"}})
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("design", resp.get_json()["field_errors"])
 
     def test_invalid_unit_and_choices_and_body(self):
         self.assertEqual(self._post(dict(VALID_CM, unit="mm")).get_json()["field_errors"]["unit"][0]["code"],
@@ -389,11 +390,6 @@ class TestMeasurementRoutes(unittest.TestCase):
         self.assertEqual(resp.status_code, 400)
         self.assertEqual(resp.get_json()["error_code"], "INVALID_BODY")
 
-    def test_relationship_error_is_reported_on_the_field(self):
-        resp = self._post(dict(VALID_CM, wrist_cm=24.0, bicep_cm=20.0))
-        self.assertEqual(resp.status_code, 400)
-        self.assertEqual(resp.get_json()["field_errors"]["wrist_cm"][0]["code"], "RELATION")
-
     def _put(self, profile, payload):
         with patch("app.routes.measurements.MeasurementProfile") as mp:
             mp.objects.return_value.first.return_value = profile
@@ -404,7 +400,7 @@ class TestMeasurementRoutes(unittest.TestCase):
             "bust_cm": {"value": 88.0, "unit": "cm"}}))
         resp = self._put(profile, {"waist_cm": 27.5, "unit": "in"})
         self.assertEqual(resp.status_code, 200, resp.get_json())
-        self.assertEqual(profile.waist_cm, round(27.5 * 2.54, 2))
+        self.assertAlmostEqual(profile.waist_cm, 27.5 * 2.54, places=9)
         self.assertEqual(profile.original_values["waist_cm"], {"value": 27.5, "unit": "in"})
         self.assertEqual(profile.original_values["bust_cm"], {"value": 88.0, "unit": "cm"})   # preserved
         self.assertEqual(profile.bust_cm, 88.0)
@@ -416,22 +412,18 @@ class TestMeasurementRoutes(unittest.TestCase):
         self.assertEqual(profile.bust_cm, 88.0)
         self.assertEqual(FakeProfile.saved, [])
 
-    def test_update_relation_against_existing_values(self):
-        profile = FakeProfile(**dict(VALID_CM, armhole_cm=20.0, neck_cm=50.0))
-        resp = self._put(profile, {"waist_cm": 45.0})      # stored neck 50 cm is not smaller than the new waist
+    def test_update_with_a_design_checks_the_merged_profile(self):
+        profile = FakeProfile(**dict({k: VALID_CM[k] for k in BODICE}, armhole_cm=20.0))
+        resp = self._put(profile, {"waist_cm": 71.5, "design": SHORT_BLOUSE})   # hip, bicep, sleeve still missing
         self.assertEqual(resp.status_code, 400)
-        self.assertEqual(resp.get_json()["field_errors"]["neck_cm"][0]["code"], "RELATION")
-
-    def test_update_ignores_unrelated_legacy_problem(self):
-        legacy = dict(VALID_CM, armhole_cm=20.0, wrist_cm=24.0, bicep_cm=20.0)   # bad pair from before
-        profile = FakeProfile(**legacy)
-        resp = self._put(profile, {"neck_cm": 35.0})
-        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(set(resp.get_json()["field_errors"]), {"hip_cm", "bicep_cm", "sleeve_cm"})
+        self.assertEqual(profile.waist_cm, 70.0)                                  # untouched
 
     def test_schema_endpoint(self):
         resp = self.client.get("/api/measurements/schema", headers=_headers())
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(len(resp.get_json()["fields"]), 13)
+        self.assertEqual(resp.get_json()["requirement_rules"], ms.REQUIREMENTS["rules"])
 
 
 # ── pattern generation only ever sees validated measurements ─────────────────
@@ -463,13 +455,14 @@ class TestGenerateUsesValidatedMeasurements(unittest.TestCase):
             return resp, eng, pr
 
     def test_valid_profile_reaches_engine_and_snapshot_is_stored(self):
-        resp, eng, pr = self._generate(_profile(original_values={"bust_cm": {"value": 34.65, "unit": "in"}}))
+        resp, eng, pr = self._generate(_profile(sleeve_cm=24.0, original_values={"bust_cm": {"value": 34.65, "unit": "in"}}))
         self.assertEqual(resp.status_code, 201, resp.get_json())
         passed = eng.call_args.args[0]
         for key in ms.FIELD_KEYS:
-            self.assertEqual(passed[key], VALID_CM[key], key)
+            self.assertEqual(passed[key], dict(VALID_CM, sleeve_cm=24.0)[key], key)
         snap = pr.call_args.kwargs["measurements_snapshot"]
-        self.assertEqual(snap["canonical_cm"], VALID_CM)
+        self.assertEqual(snap["canonical_cm"], dict(VALID_CM, sleeve_cm=24.0))
+        self.assertEqual(snap["required_fields"], ms.required_for_design(CONFIRMED))
         self.assertEqual(snap["canonical_unit"], "cm")
         self.assertEqual(snap["original_values"]["bust_cm"], {"value": 34.65, "unit": "in"})
 
@@ -482,11 +475,17 @@ class TestGenerateUsesValidatedMeasurements(unittest.TestCase):
         eng.assert_not_called()
         pr.assert_not_called()
 
-    def test_implausible_profile_is_rejected(self):
-        resp, eng, _ = self._generate(_profile(bust_cm=5.0))
+    def test_short_sleeve_design_generates_without_wrist_or_height(self):
+        resp, eng, _ = self._generate(_profile(wrist_cm=None, height_cm=None, sleeve_cm=24.0))
+        self.assertEqual(resp.status_code, 201, resp.get_json())
+        self.assertIsNone(eng.call_args.args[0]["wrist_cm"])
+
+    def test_measurements_that_cannot_be_drafted_are_reported_by_the_engine(self):
+        resp, _, pr = self._generate(_profile(bust_cm=5.0, sleeve_cm=24.0))     # no range check, but no valid block
         self.assertEqual(resp.status_code, 422)
-        self.assertEqual(resp.get_json()["error_code"], "MEASUREMENTS_INVALID")
-        eng.assert_not_called()
+        self.assertIn(resp.get_json()["error_code"], ("MEASUREMENTS_NOT_DRAFTABLE", "BASE_BLOCK_INVALID",
+                                                      "SLEEVE_TOO_WIDE_FOR_ARMHOLE", "DESIGN_MEASUREMENT_CONFLICT"))
+        pr.assert_not_called()
 
 
 class TestEndToEndContract(unittest.TestCase):

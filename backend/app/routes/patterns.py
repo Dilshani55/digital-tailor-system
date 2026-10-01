@@ -168,9 +168,9 @@ def generate_pattern():
     design_image.design_spec = design_spec
     design_image.save()
 
-    # 3b. Body measurements: only validated, canonical-cm values may reach the engine.
-    #     Nothing is defaulted — missing/implausible values are field-level errors.
-    measurements_dict, m_code, m_errors = ms.engine_measurements(measurement)
+    # 3b. Body measurements: only validated, canonical-cm values may reach the engine, and every value the
+    #     confirmed design needs must be present. Nothing is defaulted - missing values are field-level errors.
+    measurements_dict, m_code, m_errors = ms.engine_measurements(measurement, clean)
     if m_errors:
         return jsonify(ms.error_response_body(m_errors, code=m_code)), 422
 
@@ -188,6 +188,7 @@ def generate_pattern():
         "schema_version": ms.SCHEMA_VERSION,
         "canonical_unit": ms.CANONICAL_UNIT,
         "canonical_cm": {k: measurements_dict[k] for k in ms.FIELD_KEYS},
+        "required_fields": measurements_dict["required_fields"],
         "original_values": getattr(measurement, "original_values", None) or {},
         "fabric_type": measurements_dict["fabric_type"],
         "fit_preference": measurements_dict["fit_preference"],

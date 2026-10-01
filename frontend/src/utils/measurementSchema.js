@@ -1,40 +1,31 @@
-// Measurement schema for the React forms.
-// MUST mirror backend/app/logic/measurement_schema.py (field keys and default cm ranges);
-// backend test_measurement_contract checks the two files agree. The backend is always the
-// authority: this module gives instant feedback, the server re-validates everything
-// (including cross-field relationships) and returns field-level errors.
+// Measurement rules for the React forms. The list of fields and WHICH ONES A DESIGN NEEDS come from
+// config/measurement_requirements.json - the same file the backend validation, the saved profile and the
+// drafting engine use (backend/app/logic/measurement_schema.py). The backend re-validates everything.
+//
+// Values are kept exactly as the user typed them, together with the unit they were typed in. Switching the
+// display unit never rewrites a typed value, so nothing is converted twice or rounded away.
+import REQ from '../../../config/measurement_requirements.json';
 
 export const CANONICAL_UNIT = 'cm';
 export const CM_PER_INCH = 2.54;
 export const UNITS = ['cm', 'in'];
 
-export const MEASUREMENT_FIELDS = [
-  { key: 'bust_cm', label: 'Bust', min: 60, max: 160 },
-  { key: 'waist_cm', label: 'Waist', min: 45, max: 150 },
-  { key: 'hip_cm', label: 'Hip', min: 70, max: 170 },
-  { key: 'height_cm', label: 'Height', min: 130, max: 210 },
-  { key: 'neck_cm', label: 'Neck', min: 25, max: 55 },
-  { key: 'shoulder_cm', label: 'Shoulder length', min: 8, max: 20 },
-  { key: 'across_back_cm', label: 'Across-back width', min: 25, max: 50 },
-  { key: 'back_waist_length_cm', label: 'Back waist length', min: 30, max: 55 },
-  { key: 'armhole_depth_cm', label: 'Armhole depth', min: 15, max: 30 },
-  { key: 'garment_length_cm', label: 'Garment length', min: 20, max: 110 },
-  { key: 'bicep_cm', label: 'Bicep', min: 18, max: 50 },
-  { key: 'sleeve_cm', label: 'Sleeve length (full arm)', min: 40, max: 75 },
-  { key: 'wrist_cm', label: 'Wrist', min: 10, max: 25 },
-];
-
+export const MEASUREMENT_FIELDS = REQ.fields.map(({ key, label }) => ({ key, label }));
 export const FIELD_KEYS = MEASUREMENT_FIELDS.map((f) => f.key);
-export const CORE_FIELDS = ['bust_cm', 'waist_cm', 'hip_cm', 'height_cm'];
+export const LABELS = Object.fromEntries(MEASUREMENT_FIELDS.map((f) => [f.key, f.label]));
 
-const fmt = (n) => Number(n.toFixed(2)).toString();
-
-/** Bounds text in the user's unit, e.g. "60–160 cm (23.6–63.0 in)". */
-export function rangeText(field) {
-  return `${field.min}–${field.max} cm (${(field.min / CM_PER_INCH).toFixed(1)}–${(field.max / CM_PER_INCH).toFixed(1)} in)`;
+/** Measurement keys the confirmed design needs (FIELD_KEYS order). Same algorithm as the backend. */
+export function requiredFor(design) {
+  const attrs = design || {};
+  const need = new Set();
+  REQ.rules.forEach((rule) => {
+    const matches = Object.entries(rule.when).every(([head, allowed]) => allowed.includes(attrs[head]));
+    if (matches) rule.fields.forEach((f) => need.add(f));
+  });
+  return FIELD_KEYS.filter((k) => need.has(k));
 }
 
-/** Parse what a user typed. Returns { value } | { error } | { missing: true }. */
+/** Parse what a user typed. Returns { value } | { error } | { missing: true }. Decimals are fine. */
 export function parseEntry(raw) {
   if (raw === null || raw === undefined) return { missing: true };
   if (typeof raw === 'string' && raw.trim() === '') return { missing: true };
@@ -46,43 +37,47 @@ export function parseEntry(raw) {
   return { value };
 }
 
-export const toCm = (value, unit) => (unit === 'in' ? Math.round(value * CM_PER_INCH * 100) / 100 : value);
+/** Exact conversion to cm (1 in = 2.54 cm), no rounding. */
+export const toCm = (value, unit) => (unit === 'in' ? value * CM_PER_INCH : value);
 
 /**
- * Validate what the user typed (in `unit`) against required-ness, number-ness and the
- * plausible cm range. Returns { field: message } — empty object means valid.
- * `required` defaults to all 13 fields (needed to generate a pattern).
+ * What to show in an input for a value typed in `typedUnit` while the page shows `unit`.
+ * Same unit -> exactly what was typed. Other unit -> the converted number for display only (the typed value
+ * and its unit are what is saved).
  */
-export function validateMeasurements(values, unit = 'cm', required = FIELD_KEYS) {
+export function displayValue(raw, typedUnit, unit) {
+  const parsed = parseEntry(raw);
+  if (parsed.value === undefined || (typedUnit || unit) === unit) return raw ?? '';
+  const cm = toCm(parsed.value, typedUnit);
+  const shown = unit === 'in' ? cm / CM_PER_INCH : cm;
+  return String(Number(shown.toFixed(2)));
+}
+
+/** Canonical cm of every valid entered value: { key: cm }. */
+export function canonicalCm(values, typedUnits = {}, fallbackUnit = 'cm') {
+  const out = {};
+  FIELD_KEYS.forEach((key) => {
+    const parsed = parseEntry(values?.[key]);
+    if (parsed.value !== undefined) out[key] = toCm(parsed.value, typedUnits[key] || fallbackUnit);
+  });
+  return out;
+}
+
+/**
+ * Validate what the user typed: every REQUIRED field must be present, every entered value must be a
+ * finite number greater than 0. No plausibility ranges. Returns { field: message }.
+ */
+export function validateMeasurements(values, required = []) {
   const errors = {};
   MEASUREMENT_FIELDS.forEach((field) => {
     const parsed = parseEntry(values?.[field.key]);
     if (parsed.missing) {
-      if (required.includes(field.key)) errors[field.key] = `${field.label} is required.`;
+      if (required.includes(field.key)) errors[field.key] = `${field.label} is required for this design.`;
       return;
     }
-    if (parsed.error) {
-      errors[field.key] = parsed.error;
-      return;
-    }
-    const cm = toCm(parsed.value, unit);
-    if (cm < field.min || cm > field.max) {
-      errors[field.key] = `${field.label} ${fmt(parsed.value)} ${unit} is outside the plausible range ${rangeText(field)}.`;
-    }
+    if (parsed.error) errors[field.key] = parsed.error;
   });
   return errors;
-}
-
-/** Convert displayed numbers between units (used by the unit toggle). Blank stays blank. */
-export function convertDisplayValues(values, from, to) {
-  if (from === to) return { ...values };
-  const factor = from === 'cm' ? 1 / CM_PER_INCH : CM_PER_INCH;
-  const out = { ...values };
-  FIELD_KEYS.forEach((key) => {
-    const parsed = parseEntry(values?.[key]);
-    if (parsed.value !== undefined) out[key] = Math.round(parsed.value * factor * 100) / 100;
-  });
-  return out;
 }
 
 /**
@@ -103,12 +98,18 @@ export function parseFieldErrors(err) {
   return { _form: data?.error || 'Request failed. Please try again.' };
 }
 
-/** Numbers-only payload of the fields that were actually entered (nothing invented). */
-export function buildPayload(values, unit) {
-  const payload = { unit };
-  FIELD_KEYS.forEach((key) => {
+/**
+ * Payload of the fields that were actually entered (nothing invented), each with the unit it was typed in:
+ * { unit, units: {key: unit}, key: number }. `onlyKeys` limits it to the fields shown for the design.
+ */
+export function buildPayload(values, typedUnits = {}, fallbackUnit = 'cm', onlyKeys = FIELD_KEYS) {
+  const payload = { unit: fallbackUnit, units: {} };
+  onlyKeys.forEach((key) => {
     const parsed = parseEntry(values?.[key]);
-    if (parsed.value !== undefined) payload[key] = parsed.value;
+    if (parsed.value !== undefined) {
+      payload[key] = parsed.value;
+      payload.units[key] = typedUnits[key] || fallbackUnit;
+    }
   });
   return payload;
 }

@@ -7,7 +7,7 @@ const API = process.env.E2E_API_URL || 'http://127.0.0.1:5055/api';
 const PASSWORD = 'E2e-Passw0rd!';
 const MEAS = {
   bust_cm: 88, waist_cm: 70, hip_cm: 94, height_cm: 162, neck_cm: 36, shoulder_cm: 12, across_back_cm: 34,
-  back_waist_length_cm: 40, armhole_depth_cm: 20, garment_length_cm: 65, bicep_cm: 28, sleeve_cm: 55, wrist_cm: 16,
+  back_waist_length_cm: 40, armhole_depth_cm: 20, garment_length_cm: 65, bicep_cm: 28, sleeve_cm: 24, wrist_cm: 16,
 };
 
 async function uiSignIn(page, email) {
@@ -36,12 +36,13 @@ test('customer -> linked pattern -> saved pattern -> settings', async ({ page, r
 
   await uiSignIn(page, email);
 
-  // 1. customer created in the UI with the four core measurements
+  // 1. customer created in the UI; measurements are optional but must be numbers greater than 0
   await page.goto('/customers');
   await page.getByRole('button', { name: 'Add customer' }).click();
   await page.getByLabel('Full Name').fill('Walk-in A');
+  await page.getByLabel('Bust (cm)', { exact: true }).fill('0');
   await page.getByRole('button', { name: 'Save Customer' }).click();
-  await expect(page.getByTestId('customer-form-error')).toContainText('Bust is required');   // honest validation
+  await expect(page.getByTestId('customer-form-error')).toContainText('greater than 0');   // honest validation
   for (const [label, v] of [['Bust (cm)', 90], ['Waist (cm)', 72], ['Hip (cm)', 96], ['Height (cm)', 160]]) {
     await page.getByLabel(label, { exact: true }).fill(String(v));
   }

@@ -11,3 +11,6 @@ runs_v2/
 datasets/*/labels/
 datasets/*/data.yaml
 datasets/*/*.jsonl
+# raw dataset archives moved here by the project owner (large, licence: no redistribution)
+datasets/archive*/
+datasets/val_test2020/

@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "description": "Which body measurements a CONFIRMED design needs. Read by the backend (app/logic/measurement_schema.py: validation, saving, engine input) and by the frontend (src/utils/measurementSchema.js: which fields are shown and required). A field is required when every condition in a rule's `when` matches the confirmed design (an empty `when` always matches). Derived from what the drafting engine actually uses (backend/app/logic/drafting/): hip only shapes the side seam below the waist, height is used by no drafting equation, wrist only where the sleeve tapers to the wrist.",
+  "fields": [
+    {"key": "bust_cm", "label": "Bust"},
+    {"key": "waist_cm", "label": "Waist"},
+    {"key": "hip_cm", "label": "Hip"},
+    {"key": "height_cm", "label": "Height"},
+    {"key": "neck_cm", "label": "Neck"},
+    {"key": "shoulder_cm", "label": "Shoulder length"},
+    {"key": "across_back_cm", "label": "Across-back width"},
+    {"key": "back_waist_length_cm", "label": "Back waist length"},
+    {"key": "armhole_depth_cm", "label": "Armhole depth"},
+    {"key": "garment_length_cm", "label": "Garment length"},
+    {"key": "bicep_cm", "label": "Bicep"},
+    {"key": "sleeve_cm", "label": "Sleeve length"},
+    {"key": "wrist_cm", "label": "Wrist"}
+  ],
+  "rules": [
+    {"why": "bodice block: width, neck, shoulder, armhole and hem level",
+     "when": {},
+     "fields": ["bust_cm", "waist_cm", "neck_cm", "shoulder_cm", "across_back_cm", "back_waist_length_cm",
+                "armhole_depth_cm", "garment_length_cm"]},
+    {"why": "the hem is at or below the waist, so the side seam is shaped to the hip",
+     "when": {"garment_type": ["blouse", "t-shirt"]},
+     "fields": ["hip_cm"]},
+    {"why": "a sleeve is drafted: its width at the bicep and the wanted sleeve length",
+     "when": {"sleeve_length": ["short-sleeve", "long-sleeve"]},
+     "fields": ["bicep_cm", "sleeve_cm"]},
+    {"why": "a long plain or puff sleeve tapers to the wrist (a bell sleeve flares instead)",
+     "when": {"sleeve_length": ["long-sleeve"], "sleeve_style": ["regular-sleeve", "puff-sleeve"]},
+     "fields": ["wrist_cm"]}
+  ]
+}

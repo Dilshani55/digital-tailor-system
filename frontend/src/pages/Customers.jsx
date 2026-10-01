@@ -2,7 +2,10 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Filter, Pencil, Plus, Scissors, Search, Trash2, Users } from 'lucide-react';
 import { measurementsAPI, patternsAPI } from '../services/api';
-import { validateMeasurements, parseFieldErrors, buildPayload, CORE_FIELDS, MEASUREMENT_FIELDS, FIELD_KEYS } from '../utils/measurementSchema';
+import { validateMeasurements, parseFieldErrors, buildPayload, MEASUREMENT_FIELDS, FIELD_KEYS } from '../utils/measurementSchema';
+
+// quick-add fields on the customer form (all optional; the pattern wizard asks for what a design needs)
+const QUICK_FIELDS = ['bust_cm', 'waist_cm', 'hip_cm', 'height_cm'];
 import LoadingSpinner from '../components/LoadingSpinner';
 
 const FIELD_LABEL = Object.fromEntries(MEASUREMENT_FIELDS.map((f) => [f.key, f.label]));
@@ -50,9 +53,9 @@ export default function Customers() {
     e.preventDefault();
     setFormError('');
     if (!newClient.client_name.trim()) { setFormError('Please enter the customer name.'); return; }
-    const errs = validateMeasurements(newClient, 'cm', CORE_FIELDS);
+    const errs = validateMeasurements(newClient, []);
     if (Object.keys(errs).length) {
-      setFormError(CORE_FIELDS.filter((k) => errs[k]).map((k) => `${FIELD_LABEL[k]}: ${errs[k]}`).join(' '));
+      setFormError(QUICK_FIELDS.filter((k) => errs[k]).map((k) => `${FIELD_LABEL[k]}: ${errs[k]}`).join(' '));
       return;
     }
     try {
@@ -60,7 +63,7 @@ export default function Customers() {
         client_name: newClient.client_name.trim(),
         ...(newClient.email.trim() ? { email: newClient.email.trim() } : {}),
         ...(newClient.notes.trim() ? { notes: newClient.notes.trim() } : {}),
-        ...buildPayload(newClient, 'cm'),
+        ...buildPayload(newClient, {}, 'cm'),
         fabric_type: newClient.fabric_type,
       });
       setShowAdd(false);
@@ -137,7 +140,7 @@ export default function Customers() {
                         <tr key={p.measurement_id}>
                           <td><div className="name-cell"><span className="avatar">{initials(p.client_name)}</span><strong>{p.client_name}</strong></div></td>
                           <td>{p.email || <span className="muted">No e-mail recorded</span>}</td>
-                          <td>{measured(p)} of {FIELD_KEYS.length}{p.complete === false && <span className="pill warn" style={{ marginLeft: 8 }}>incomplete</span>}</td>
+                          <td>{measured(p)} entered</td>
                           <td data-testid={`pattern-count-${p.measurement_id}`}>{count(p) ?? '—'}</td>
                           <td>{p.created_at ? new Date(p.created_at).toLocaleDateString('en-GB') : '—'}</td>
                           <td>
@@ -186,7 +189,7 @@ export default function Customers() {
                        onChange={(e) => setNewClient({ ...newClient, email: e.target.value })} />
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                {CORE_FIELDS.map((key) => (
+                {QUICK_FIELDS.map((key) => (
                   <div className="form-field" key={key}>
                     <label className="form-label" htmlFor={`new-client-${key}`}>{FIELD_LABEL[key]} (cm)</label>
                     <input id={`new-client-${key}`} type="number" step="any" inputMode="decimal" className="form-input"

@@ -11,11 +11,12 @@ class MeasurementProfile(Document):
     notes = StringField(default="No notes.")
 
     # ALL *_cm fields hold CANONICAL centimetres (see app/logic/measurement_schema.py).
-    # Core circumference / stature — required to create a profile.
-    bust_cm = FloatField(required=True)
-    waist_cm = FloatField(required=True)
-    hip_cm = FloatField(required=True)
-    height_cm = FloatField(required=True)
+    # Every measurement is optional on the profile: which ones a pattern needs depends on the confirmed
+    # design (config/measurement_requirements.json). Nothing is ever defaulted.
+    bust_cm = FloatField()
+    waist_cm = FloatField()
+    hip_cm = FloatField()
+    height_cm = FloatField()
 
     # Drafting measurements. None == not measured. There are NO defaults on purpose:
     # a missing measurement must never be silently replaced by an invented value.

@@ -20,7 +20,6 @@ def _canonical_of(profile):
 
 def _profile_dict(profile):
     canonical = _canonical_of(profile)
-    missing = ms.missing_fields(canonical)
     payload = {
         "client_name": profile.client_name,
         "email": profile.email,
@@ -30,8 +29,9 @@ def _profile_dict(profile):
         "unit": profile.unit,
         "canonical_unit": ms.CANONICAL_UNIT,
         "original_values": getattr(profile, "original_values", None) or {},
-        "complete": not missing,
-        "missing_fields": missing,
+        # which measurements a pattern needs depends on the confirmed design, so a profile is never
+        # "complete" on its own; the wizard checks the design's required fields (required_for_design)
+        "entered_fields": [k for k in ms.FIELD_KEYS if canonical.get(k) is not None],
         "measurement_schema_version": getattr(profile, "measurement_schema_version", 1),
     }
     payload.update(canonical)
@@ -48,6 +48,23 @@ def _bad_request(errors):
     return jsonify(ms.error_response_body(errors)), 400
 
 
+def _design_required(data, errors):
+    """
+    Required measurement keys for the confirmed design sent with the request ("design": {garment_type,
+    neckline_type, sleeve_length, sleeve_style}); no design -> nothing is required (a customer profile may
+    hold any subset). An invalid design is an error, never guessed.
+    """
+    design = data.get("design")
+    if design is None:
+        return []
+    from app.logic import feature_schema as fs
+    clean, design_errors = fs.validate_attributes(design)
+    if design_errors:
+        errors["design"] = [{"code": "INVALID_DESIGN", "message": next(iter(design_errors.values()))["message"]}]
+        return []
+    return ms.required_for_design(clean)
+
+
 def _choice_errors(data, errors, existing=None):
     """Validate fabric_type / fit_preference when provided (or defaulting on create)."""
     fabric = data.get("fabric_type", None if existing else "woven")
@@ -61,7 +78,7 @@ def _choice_errors(data, errors, existing=None):
     return fabric, fit
 
 
-# ── SCHEMA (fields, canonical unit, ranges) ───────────────────────────────────
+# ── SCHEMA (fields, canonical unit, requirement rules) ───────────────────────────────────
 @measurements_bp.route("/schema", methods=["GET"])
 @jwt_required()
 def measurement_schema():
@@ -89,16 +106,14 @@ def save_measurements():
         errors["unit"] = [unit_err]
         return _bad_request(errors)
 
-    canonical, original, parse_errors = ms.convert_input(data, unit)
+    canonical, original, parse_errors = ms.convert_input(data, unit, data.get("units"))
     _merge(errors, parse_errors)
     fabric_type, fit_preference = _choice_errors(data, errors)
 
-    # A profile needs the core four; the remaining nine are needed to generate a pattern.
-    for key in ms.CORE_FIELDS:
-        if key not in canonical and key not in errors:
-            errors[key] = [{"code": "REQUIRED", "message": f"{ms.LABELS[key]} is required."}]
-
-    _merge(errors, ms.validate_canonical(canonical))
+    # The confirmed design decides which measurements are required (same rules as the form and engine).
+    for key, items in ms.missing_errors(canonical, _design_required(data, errors)).items():
+        if key not in errors:
+            errors[key] = items
     if errors:
         return _bad_request(errors)
 
@@ -224,14 +239,16 @@ def update_measurement(measurement_id):
     if unit_err:
         return _bad_request({"unit": [unit_err]})
 
-    canonical_new, original_new, parse_errors = ms.convert_input(data, unit)
+    canonical_new, original_new, parse_errors = ms.convert_input(data, unit, data.get("units"))
     _merge(errors, parse_errors)
     fabric_type, fit_preference = _choice_errors(data, errors, existing=profile)
 
-    # Validate the MERGED profile, but only report problems that involve edited fields.
+    # With a confirmed design, the MERGED profile must hold every measurement that design needs.
     merged = {k: v for k, v in _canonical_of(profile).items() if v is not None}
     merged.update(canonical_new)
-    _merge(errors, ms.validate_canonical(merged, only=set(canonical_new)))
+    for key, items in ms.missing_errors(merged, _design_required(data, errors)).items():
+        if key not in errors:
+            errors[key] = items
     if errors:
         return _bad_request(errors)
 
