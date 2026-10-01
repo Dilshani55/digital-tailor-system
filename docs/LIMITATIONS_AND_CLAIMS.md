@@ -34,7 +34,7 @@
 
 * An integrated prototype implements the full pipeline photo → AI suggestion → mandatory user confirmation → validated measurements → parametric pattern → seam allowances → automatic validation → polygon nesting → printable 1:1 PDF, verified by automated tests (see TESTING.md) and a real-browser end-to-end run.
 * The AI is used only for **design suggestion**; pattern generation is deterministic and explainable, and every non-derived constant is listed and labelled as an assumption.
-* The system **refuses instead of guessing**: unsupported combinations, contradictory garment length, incomplete/implausible measurements, invalid geometry and pieces wider than the fabric all produce explicit errors.
+* The system **refuses instead of guessing**: unsupported combinations, contradictory garment length, missing (for the design) or non-positive measurements, measurements that cannot be drafted, invalid geometry and pieces wider than the fabric all produce explicit errors.
 * Seam allowance is real offset geometry (woven and knit differ), with notches, grainlines, fold lines, darts and cut quantities on every piece; 66–90 automatic geometric checks pass for each of the six representative designs (evidence.json).
 * Printing: the PDF is genuine 1:1 A4 tiles with overlap, crop marks and a 5 cm calibration square; scale was verified by reading the PDF vector data.
 * Fabric estimates for 90, 114 and 150 cm cloth are produced from the actual cutting-line polygons, with exact overlap/bounds/fold/grain verification and a documented purchase allowance.

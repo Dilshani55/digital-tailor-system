@@ -20,7 +20,9 @@ decision. No head reaches 90 % on the independent test set.
 
 ## Test results (accuracy / macro-F1)
 
-Computed by `ai_training/scripts/v2/eval_m41.py` (uses `evaluate_m40.py` read-only and the detector-crop script);
+Metrics are reported separately: **accuracy** (share correct), **macro-F1** (unweighted mean F1 over the classes
+present), and, for automatic answers, **accuracy when answered** together with its **coverage** (share of images
+answered). Computed by `ai_training/scripts/v2/eval_m41.py` (uses `evaluate_m40.py` read-only and the detector-crop script);
 table: `ai_training/data/training_runs/m41_dmm_df2_fp_15class/evaluation/comparison_m41_vs_m40.md`.
 "Detector crop" is what the app does now; "GT crop" uses the dataset's own garment box (upper bound).
 
@@ -47,9 +49,10 @@ table: `ai_training/data/training_runs/m41_dmm_df2_fp_15class/evaluation/compari
 
 * **test_all is the fair comparison** (unchanged images, not from DMM). There M41's gains are small, garment type is
   within noise (n = 126), and neckline is worse.
-* **test_dmm is in-distribution for M41** (same source as 13,716 of its training images, although item-disjoint and
-  near-duplicate-filtered) and out-of-distribution for M40, so the large M41 gains there mostly show that M41 learned
-  that photo style. On test_dmm the garment-type labels are shop-category / navel-rule **proxies**, and M41's
+* **test_dmm is a valid held-out test of the same source** M41 was trained on (item-disjoint and near-duplicate-
+  filtered, so no leakage was found), but it is in-distribution for M41 and out-of-distribution for M40. Its large
+  M41 gains show that M41 handles that photo style; they do not show generalisation to other photos, and
+  **generalisation to user phone photos is not verified** for any model (no such labelled test set exists). On test_dmm the garment-type labels are shop-category / navel-rule **proxies**, and M41's
   neckline accuracy (0.815) is **below the majority baseline (0.850)** because almost all DMM necklines are round.
 * Sleeve design accuracy is dominated by "none" (sleeveless); macro-F1 is the meaningful number. Regular-sleeve still
   has **no trusted training or test data** and collared-neck has none either, so neither can be recognised.

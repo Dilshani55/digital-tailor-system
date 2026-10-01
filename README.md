@@ -10,7 +10,7 @@ A web system that turns a garment photo and a person's body measurements into a 
 Garment photo ─► AI suggests the design ─► YOU review and confirm it ─► body measurements (validated)
       ─► fabric & fit ─► parametric pattern drafting (deterministic maths, not AI)
       ─► seam allowances + notches ─► automatic geometry validation
-      ─► polygon nesting on 90 / 114 / 150 cm fabric ─► fabric quantity
+      ─► polygon nesting on 36" / 45" / 60" (91.44 / 114.3 / 152.4 cm) fabric ─► fabric quantity
       ─► printable 1:1 tiled A4 PDF ─► saved in your pattern library
 ```
 

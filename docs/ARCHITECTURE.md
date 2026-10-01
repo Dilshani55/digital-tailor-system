@@ -42,7 +42,7 @@ The analyse step times the classifier inference and the generate step times the 
 
 ## Cross-cutting rules
 
-* **Fail loudly, never substitute.** Unsupported design, contradictory garment length, implausible measurements, invalid geometry, a piece wider than the cloth: each is a structured 4xx with a reason, never a silently different result.
+* **Fail loudly, never substitute.** Unsupported design, contradictory garment length, missing or non-positive measurements, measurements that cannot be drafted, invalid geometry, a piece wider than the cloth: each is a structured 4xx with a reason, never a silently different result.
 * **Security.** JWT (24 h), bcrypt, ownership checks on every stored object, Google sign-in only via a Google-verified ID token, CORS allow-list, secrets from the environment (random per-process if unset), image content verification, JSON-only errors without internals, study-wide research data restricted to `RESEARCHER_EMAILS` and pseudonymised.
 * **Reproducibility of AI.** `ai_training/` holds the pipeline (manifests → training → evaluation → dataset audit → acceptance gate). Data and checkpoints stay outside Git; their SHA-256 checksums are recorded in [AI_EVIDENCE.md](AI_EVIDENCE.md).
 

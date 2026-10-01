@@ -4,11 +4,11 @@ Counts below are from the runs recorded in the final evidence report (see the la
 
 | Suite | Command (from the folder shown) | Count | Notes |
 |---|---|---|---|
-| Backend | `backend`: `venv\Scripts\python -m unittest discover -s tests -t .` | 384 | Database access is mocked; no MongoDB needed. `pymupdf` (requirements-dev.txt) is needed for the PDF tests — without it they skip visibly. |
-| Frontend | `frontend`: `npm test` | 125 | vitest + Testing Library, mocked API. |
+| Backend | `backend`: `venv\Scripts\python -m unittest discover -s tests -t .` | 401 | Database access is mocked; no MongoDB needed. `pymupdf` (requirements-dev.txt) is needed for the PDF tests — without it they skip visibly. |
+| Frontend | `frontend`: `npm test` | 128 | vitest + Testing Library, mocked API. |
 | Production build | `frontend`: `npm run build` | – | must finish without errors. |
 | AI pipeline | repo root: `$env:PYTHONPATH="."; backend\venv\Scripts\python -m unittest discover -s ai_training/tests` | 139 | manifests, labels, leakage helpers, taxonomy parity, gate logic, the future 15-class pipeline (masking, readiness, human decisions, training guard, isolation from production); the checkpoint test skips if the `.pt` file is absent. |
-| End-to-end | `frontend`: `npm run e2e` | 6 | Real Chrome → Vite → Flask → MongoDB → real M40 classifier → PDF: full workflow; out-of-scope design refusal; uncertain predictions pre-selected; ununcertain predictions flagged with manual confirmation (real benchmark photos); every page and sidebar link renders with no console/API errors; customer -> linked pattern -> saved pattern without research UI -> settings (model state). See below. |
+| End-to-end | `frontend`: `npm run e2e` | 6 | Real Chrome → Vite → Flask → MongoDB → real M40 classifier → PDF: full workflow; out-of-scope design refusal; M40 analysis with separate model scores, uncertain heads left as "please select" and manual confirmation (real benchmark photos); every page and sidebar link renders with no console/API errors; customer -> linked pattern -> saved pattern without research UI -> settings (model state). See below. |
 
 ## What the backend tests cover
 
@@ -39,7 +39,7 @@ cd frontend
 $env:E2E_API_URL="http://127.0.0.1:5055/api"; npm run e2e
 ```
 
-The browser test registers a user, signs in, uploads a real garment photo, lets the real classifier analyse it, edits and confirms the design, sees an inline error for an out-of-range measurement, saves valid measurements, gets fabric recommendations, generates and validates the pattern, checks the SVG shows cutting lines and notches, estimates fabric for 90 / 114 / 150 cm, creates and downloads the PDF (checks the `%PDF-` header and size), sends feedback and re-opens the saved pattern from the library. A second test proves an out-of-scope design (T-shirt + square neck) cannot be confirmed.
+The browser test registers a user, signs in, uploads a real garment photo, lets the real classifier analyse it, edits and confirms the design, sees only the measurements that design needs (no wrist/height for a short-sleeve blouse), sees an inline error for a non-positive value, checks the unit toggle keeps typed values, saves the measurements, gets fabric recommendations, generates and validates the pattern, checks the SVG shows cutting lines and notches, estimates fabric for 36" / 45" / 60" (91.44 / 114.3 / 152.4 cm), creates and downloads the PDF (checks the `%PDF-` header and size), sends feedback, opens later steps freely and sees that a changed measurement marks the pattern, estimate and PDF as needing regeneration, and re-opens the saved pattern from the library. A second test proves an out-of-scope design (T-shirt + square neck) cannot be confirmed.
 
 ## Reproducible evidence
 

@@ -32,7 +32,10 @@ The detector finds the garment so the classifier sees what it was trained on.
 ## Independent tests (never used for training, checkpoint selection or setting MIN_SCORE)
 
 **All test photos are shop, street or model photos from DeepFashion2 / DeepFashion-MultiModal / Fashionpedia.
-None are photos taken by users of this app with a phone; accuracy on real user uploads is not verified.**
+None are photos taken by users of this app with a phone; accuracy on real user uploads is not verified.** Held-out
+images from the same source as the training data are a valid test when they are disjoint and near-duplicate-filtered
+(as here), but they say nothing about other photo styles. Accuracy, macro-F1 and accuracy-when-answered (with its
+coverage) are reported as separate numbers.
 
 ### A. Does the app crop the right garment?  (`ai_training/scripts/v2/eval_detector.py`)
 

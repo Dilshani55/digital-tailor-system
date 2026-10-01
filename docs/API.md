@@ -18,7 +18,7 @@ Errors are always JSON and never contain stack traces or file paths:
 | 404 | Item not found |
 | 409 | The confirmed design sent by the client differs from the saved one (`CONFIRMED_DESIGN_MISMATCH`) |
 | 413 | Upload larger than 16 MB |
-| 422 | Valid request that cannot be processed: unsupported design (`UNSUPPORTED_DESIGN`), contradictory garment length (`DESIGN_MEASUREMENT_CONFLICT`), implausible measurements, failed pattern validation, a piece that does not fit the fabric (`PIECE_DOES_NOT_FIT`) |
+| 422 | Valid request that cannot be processed: unsupported design (`UNSUPPORTED_DESIGN`), contradictory garment length (`DESIGN_MEASUREMENT_CONFLICT`), missing measurements the design needs (`MEASUREMENTS_INCOMPLETE`), measurements that cannot be drafted into a valid block (`MEASUREMENTS_NOT_DRAFTABLE`), failed pattern validation, a piece that does not fit the fabric (`PIECE_DOES_NOT_FIT`) |
 | 503 | Database unavailable (`DATABASE_UNAVAILABLE`), AI model unavailable (`MODEL_UNAVAILABLE`) or Google sign-in not configured |
 | 500 | Unexpected server error (generic message only; details go to the server log) |
 
@@ -33,11 +33,11 @@ Errors are always JSON and never contain stack traces or file paths:
 
 ## Measurements `/api/measurements` 🔒
 
-* `GET /schema` – the 13 fields, canonical unit (cm), plausible ranges and rules.
-* `POST /` – create a customer profile. Send numbers in one `unit` (`"cm"` default or `"in"`; inches are converted once with 2.54). Required to save: bust, waist, hip, height; **all 13 are required to draft a pattern**. Optional: `client_name`, `fabric_type` (`woven`/`knit`), `fit_preference` (`close`/`standard`/`loose`). Response includes `measurement_id`, `complete`, `missing_fields`.
+* `GET /schema` – the 13 fields, canonical unit (cm), the inch factor (2.54) and the requirement rules (which fields a design needs; `config/measurement_requirements.json`).
+* `POST /` – create a customer profile. Send numbers with a `unit` (`"cm"` default or `"in"`) and optionally `units` ({field: unit}) when values were typed in different units; inches are converted once, exactly (× 2.54). Every value must be a finite number > 0 (decimals fine); there are **no plausibility ranges** and values are never clamped. With `design` (the confirmed {garment_type, neckline_type, sleeve_length, sleeve_style}) exactly the measurements that design needs are required (e.g. sleeveless: no sleeve fields; short sleeve: no wrist; height: never); without `design` nothing is required. Optional: `client_name`, `fabric_type` (`woven`/`knit`), `fit_preference` (`close`/`standard`/`loose`). Response includes `measurement_id` and `entered_fields`.
 * `GET /`, `GET /{id}`, `PUT /{id}` (partial update, merged and re-validated), `DELETE /{id}`.
 
-Fields (cm): `bust_cm, waist_cm, hip_cm, height_cm, neck_cm, shoulder_cm, across_back_cm, back_waist_length_cm, armhole_depth_cm, garment_length_cm, bicep_cm, sleeve_cm (full arm), wrist_cm`.
+Fields (cm): `bust_cm, waist_cm, hip_cm, height_cm, neck_cm, shoulder_cm, across_back_cm, back_waist_length_cm, armhole_depth_cm, garment_length_cm, bicep_cm, sleeve_cm (wanted sleeve length: shoulder tip to where the sleeve ends), wrist_cm`.
 
 ## Images and AI `/api/images` 🔒
 
