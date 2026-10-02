@@ -68,40 +68,54 @@ test('register -> upload -> AI review -> measurements -> fabric -> pattern -> es
   await page.getByRole('button', { name: 'Continue to measurements' }).click();
   mark('design edited, validated as in-scope and confirmed');
 
-  // 4. only the measurements this design needs; a non-positive value is rejected inline; units never double-convert
+  // 4. the wizard has no measurement form: a new customer is measured on the Measurements page (new tab) and shown here
   await shot('03-measurements-empty');
-  await expect(page.locator('#meas-sleeve_end_cm')).toHaveCount(1);     // the arm where this sleeve ends
-  await expect(page.locator('#meas-wrist_cm')).toHaveCount(0);          // old field: stored, never asked
-  await expect(page.locator('#meas-height_cm')).toHaveCount(0);         // no drafting calculation uses height
-  await expect(page.locator('#meas-neck_cm')).toHaveCount(0);           // nor the neck circumference
-  for (const g of ['body', 'arm', 'neck']) await expect(page.getByTestId(`meas-group-${g}`)).toBeVisible();
+  await expect(page.getByTestId('meas-none')).toBeVisible();
+  await expect(page.locator('#meas-bust_cm')).toHaveCount(0);
   await expect(page.getByText(/All 13 measurements|Open the 3D measuring guide|full arm/)).toHaveCount(0);
-  await page.locator('#meas-sleeve_cm').focus();
-  await expect(page.getByTestId('guide-sleeve_cm')).toContainText('How to measure');
-  await expect(page.getByTestId('guide-sleeve_cm')).toContainText('Common mistake:');
-  await expect(page.getByTestId('guide-line-sleeve_cm')).toHaveAttribute('data-active', 'yes');   // drawn on the figure
-  await page.locator('#meas-shoulder_width_cm').focus();
-  await expect(page.getByTestId('measure-figure')).toHaveAttribute('data-active-view', 'back');   // measured on the back
-  await page.locator('#meas-bust_cm').focus();
-  await expect(page.getByTestId('measure-figure')).toHaveAttribute('data-active-view', 'front');
-  await page.locator('#meas-bust_cm').fill('-5');
-  await page.getByRole('button', { name: 'Save and continue' }).click();
-  await expect(page.getByTestId('error-bust_cm')).toContainText(/greater than 0/);
-  await shot('03b-measurement-inline-error');
-  for (const [k, v] of Object.entries(MEAS)) {
-    if (await page.locator(`#meas-${k}`).count()) await page.locator(`#meas-${k}`).fill(String(v));
-  }
+  const [mpage] = await Promise.all([page.context().waitForEvent('page'), page.getByTestId('add-measurements').click()]);
+  await expect(mpage.locator('#profile-name')).toHaveValue('E2E Customer');            // the name typed in step 1
+  await expect(mpage.getByTestId('from-pattern-note')).toBeVisible();
+  for (const g of ['body', 'arm', 'neck']) await expect(mpage.getByTestId(`meas-group-${g}`)).toBeVisible();
+  for (const old of ['wrist_cm', 'height_cm', 'neck_cm']) await expect(mpage.locator(`#profile-${old}`)).toHaveCount(0);   // never asked
+  await mpage.locator('#profile-sleeve_cm').focus();
+  await expect(mpage.getByTestId('profile-guide-sleeve_cm')).toContainText('How to measure');
+  await expect(mpage.getByTestId('profile-guide-sleeve_cm')).toContainText('Common mistake:');
+  await expect(mpage.getByTestId('guide-line-sleeve_cm')).toHaveAttribute('data-active', 'yes');   // drawn on the figure
+  await mpage.locator('#profile-shoulder_width_cm').focus();
+  await expect(mpage.getByTestId('measure-figure')).toHaveAttribute('data-active-view', 'back');   // measured on the back
+  await mpage.locator('#profile-bust_cm').focus();
+  await expect(mpage.getByTestId('measure-figure')).toHaveAttribute('data-active-view', 'front');
+  await mpage.locator('#profile-bust_cm').fill('-5');
+  await mpage.getByRole('button', { name: 'Save measurements' }).click();
+  await expect(mpage.getByTestId('profile-error-bust_cm')).toContainText(/greater than 0/);
+  for (const [k, v] of Object.entries(MEAS)) await mpage.locator(`#profile-${k}`).fill(String(v));
   // design values left empty: the method's calculated value is shown, not saved as if it were measured
-  await expect(page.getByTestId('calculated-armhole_depth_cm')).toContainText('Calculated value');
-  await page.locator('#meas-bust_cm').fill('88.9');
+  await expect(mpage.getByTestId('calculated-armhole_depth_cm')).toContainText('Calculated value');
+  await mpage.locator('#profile-bust_cm').fill('88.9');
+  await mpage.getByTestId('page-unit-in').click();
+  await expect(mpage.locator('#profile-bust_cm')).toHaveValue('35');
+  await mpage.getByTestId('page-unit-cm').click();
+  await expect(mpage.locator('#profile-bust_cm')).toHaveValue('88.9');                 // exactly what was typed
+  if (process.env.E2E_SHOT_DIR) await mpage.screenshot({ path: path.join(process.env.E2E_SHOT_DIR, '03b-measurements-page.png'), fullPage: true });
+  await mpage.getByRole('button', { name: 'Save measurements' }).click();
+  await expect(mpage.getByText('New measurement profile saved.')).toBeVisible();
+  await mpage.close();
+  await page.getByTestId('refresh-measurements').click();
+  await expect(page.getByTestId('meas-summary')).toContainText('E2E Customer');        // the customer just measured is chosen
+  await expect(page.getByTestId('meas-value-bust_cm')).toContainText('88.9 cm');
+  await expect(page.getByTestId('meas-value-sleeve_end_cm')).toContainText('27 cm');   // the arm where this sleeve ends
+  await expect(page.getByTestId('meas-value-armhole_depth_cm')).toContainText('calculated');
+  await expect(page.getByTestId('meas-value-wrist_cm')).toHaveCount(0);
+  await expect(page.getByTestId('meas-missing')).toHaveCount(0);
   await page.getByTestId('unit-in').click();
-  await expect(page.locator('#meas-bust_cm')).toHaveValue('35');
+  await expect(page.getByTestId('meas-value-bust_cm')).toContainText('35 in');
   await page.getByTestId('unit-cm').click();
-  await expect(page.locator('#meas-bust_cm')).toHaveValue('88.9');      // exactly what was typed
-  await page.getByRole('button', { name: 'Save and continue' }).click();
+  await shot('03c-measurements-shown');
+  await page.getByRole('button', { name: 'Use these measurements' }).click();
   await expect(page.getByRole('heading', { name: 'Choose fabric and fit' })).toBeVisible();
   await shot('04-fabric-and-fit');
-  mark('only design measurements shown, non-positive value rejected inline, unit toggle kept typed values, saved');
+  mark('measurements typed on the Measurements page (new tab), shown read-only in the wizard for this design, unit switch only changes the display');
 
   // 5. recommended fabric with explanation, then generate
   await expect(page.getByText(/Cotton Poplin|Linen|Rayon|Jersey/).first()).toBeVisible({ timeout: 30_000 });
@@ -192,7 +206,14 @@ test('register -> upload -> AI review -> measurements -> fabric -> pattern -> es
   await page.getByRole('button', { name: 'Send feedback' }).click();
   await expect(page.getByText(/Thank you/)).toBeVisible();
   await page.getByRole('button', { name: /^Step 4: Measurements/ }).click();
-  await page.locator('#meas-bust_cm').fill('90');
+  const [editor] = await Promise.all([page.context().waitForEvent('page'), page.getByTestId('edit-measurements').click()]);
+  await expect(editor.locator('#profile-bust_cm')).toHaveValue('88.9');               // "Edit measurements" opens this customer
+  await editor.locator('#profile-bust_cm').fill('90');
+  await editor.getByRole('button', { name: 'Save measurements' }).click();
+  await expect(editor.getByText('Measurements updated.')).toBeVisible();
+  await editor.close();
+  await page.getByTestId('refresh-measurements').click();
+  await expect(page.getByTestId('meas-value-bust_cm')).toContainText('90 cm');
   await expect(page.getByRole('button', { name: /^Step 6: Pattern preview \(Needs update\)/ })).toBeVisible();
   await page.getByRole('button', { name: /^Step 6: Pattern preview/ }).click();
   await expect(page.getByTestId('step-empty')).toContainText(/generated again/);
@@ -237,9 +258,9 @@ test('out-of-scope design cannot be confirmed through the UI', async ({ page, re
   await page.getByRole('button', { name: 'Continue to measurements' }).click();       // navigation is free ...
   await expect(page.getByTestId('design-selector')).toBeVisible();                    // ... the step asks for the design
   await expect(page.getByTestId('design-selector').getByTestId('confirm-btn')).toBeDisabled();
-  await expect(page.locator('#meas-sleeve_cm')).toHaveCount(1);                       // every measurement can already be entered
-  await page.locator('#meas-bust_cm').fill('88');
-  await page.getByRole('button', { name: 'Save and continue' }).click();
+  await expect(page.locator('#meas-sleeve_cm')).toHaveCount(0);                       // measurements are not typed in the wizard
+  await expect(page.getByTestId('meas-none')).toBeVisible();
+  await page.getByRole('button', { name: 'Use these measurements' }).click();
   await expect(page.getByRole('alert')).toContainText(/confirm the design first/i);   // ... and nothing is saved or drafted
   await page.getByRole('button', { name: /^Step 5:/ }).click();
   await page.getByRole('button', { name: /generate pattern/i }).click();

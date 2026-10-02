@@ -55,10 +55,13 @@ the page shows that value as "Calculated value". A typed value replaces it, and 
 | short or long sleeve | + upper arm, sleeve length |
 | plain or puff sleeve | + sleeve end around |
 
-In the pattern wizard, before a design is confirmed, the measurement step shows every field (as the Measurements
-page does), so a new customer can be measured completely; fields only some designs need are marked "needed for
-some designs". The step also offers the saved customers' measurements and a link to the Measurements page (new
-tab). Once the design is confirmed, only the fields that design uses stay on screen.
+**Where measurements are typed.** Only on the Measurements page. The pattern wizard has no measurement form: its
+measurement step lets the user choose a saved customer and shows that customer's saved values for the confirmed
+design (read-only; a design value left empty is shown as "calculated"). "Edit measurements" opens that customer on
+the Measurements page and "Add a new customer's measurements" opens an empty profile with the customer's name -
+both in a new tab, so the pattern in progress is kept. Back in the wizard the saved values are read again (a
+customer who was just added is chosen automatically). A measurement the design needs and the profile lacks is
+listed as missing and the step cannot be completed until it is added; nothing is estimated.
 
 A sleeveless design asks for no sleeve measurement. Nothing else is required and nothing is filled in with a
 "standard" value: a missing required measurement is reported next to its field.

@@ -165,16 +165,14 @@ test('wizard: every step opened directly shows its controls; measurements in the
   await expect(page.getByRole('alert')).toContainText('Generate the pattern first');
   await shot(page, 'step8-no-pattern');
 
-  // step 4 without a design: design selector + every measurement, as on the Measurements page
+  // step 4 without a design or a customer: the design selector and the way to the Measurements page - nothing is typed here
   await step(4).click();
   await expect(page.getByTestId('design-selector')).toBeVisible();
-  await expect(page.locator('.meas-grid input')).toHaveCount(16);
-  await expect(page.getByTestId('meas-need-hip_cm')).toContainText('needed for some designs');
-  await expect(page.getByTestId('open-measurements-page')).toHaveAttribute('href', '/measurements');
-  await expect(page.locator('#saved-client-meas')).toBeVisible();
-  expect(await typeSlowly(page.locator('#meas-bust_cm'), '88,5')).toEqual(['8', '88', '88,', '88,5']);
+  await expect(page.getByTestId('meas-none')).toBeVisible();
+  await expect(page.locator('[id^="meas-"][id$="_cm"]')).toHaveCount(0);
+  await expect(page.getByTestId('add-measurements')).toHaveAttribute('href', /^\/measurements\?new=1&from=pattern/);
   await shot(page, 'step4-no-design');
-  await page.getByRole('button', { name: 'Save and continue' }).click();
+  await page.getByRole('button', { name: 'Use these measurements' }).click();
   await expect(page.getByRole('alert')).toContainText(/confirm the design first/i);
 
   // the knit jersey chosen earlier cannot be used for a woven blouse: it is cleared and explained, not swapped silently
@@ -183,49 +181,57 @@ test('wizard: every step opened directly shows its controls; measurements in the
   }
   await page.getByTestId('confirm-btn').click();
   await expect(page.getByTestId('design-selector')).toHaveCount(0);
-  await expect(page.locator('.meas-grid input')).toHaveCount(16);                    // long-sleeve blouse: all 11 measurements + 5 optional design values
-  await expect(page.getByTestId('meas-need-hip_cm')).toHaveCount(0);                 // now required by the confirmed design
-  await expect(page.locator('#meas-bust_cm')).toHaveValue('88,5');                   // kept through the design change
+  await page.getByRole('button', { name: 'Use these measurements' }).click();
+  await expect(page.getByRole('alert')).toContainText(/Choose a saved customer, or add the customer's measurements/);
 
-  // inches in the wizard: the sleeve guide line follows the value; toggling never rewrites what was typed
+  // the customer is measured elsewhere (here through the API, in inches; the sleeve end is not measured yet)
+  const inches = { bust_cm: 34.84, waist_cm: 27.5, hip_cm: 37, shoulder_width_cm: 14.5, back_waist_length_cm: 15.75, shoulder_to_bust_cm: 10,
+    waist_to_hip_cm: 8, garment_length_cm: 25.5, bicep_cm: 11, sleeve_cm: 23 };
+  const created = await request.post(`${API}/measurements/`, { headers: auth, data: { client_name: 'Wizard Customer', unit: 'in', fabric_type: 'woven', ...inches } });
+  expect(created.status()).toBe(201);
+  const id = (await created.json()).measurement_id;
+  await page.getByTestId('refresh-measurements').click();
+  await expect(page.locator('#saved-client-meas')).toHaveValue(id);                    // the customer just added is chosen
+  await expect(page.getByTestId('meas-summary')).toContainText('Wizard Customer');
+  await expect(page.getByTestId('meas-missing')).toContainText('This design also needs: Sleeve end around');
+  await expect(page.getByTestId('meas-value-sleeve_end_cm')).toHaveAttribute('data-state', 'missing');   // not estimated
+  await expect(page.getByTestId('meas-value-height_cm')).toHaveCount(0);
+  await expect(page.getByTestId('edit-measurements')).toHaveAttribute('href', `/measurements?profile=${id}&from=pattern`);
+  // the unit switch only changes how the saved values are shown
+  await expect(page.getByTestId('meas-value-sleeve_cm')).toContainText('58.42 cm');
   await page.getByTestId('unit-in').click();
-  await expect(page.locator('#meas-bust_cm')).toHaveValue('34.84');
-  const inches = { waist_cm: '27.5', hip_cm: '37', shoulder_width_cm: '14.5', back_waist_length_cm: '15.75', shoulder_to_bust_cm: '10',
-    waist_to_hip_cm: '8', garment_length_cm: '25.5', bicep_cm: '11', sleeve_cm: '8', sleeve_end_cm: '6.25' };
-  for (const [k, v] of Object.entries(inches)) await page.locator(`#meas-${k}`).fill(v);
-  await page.locator('#meas-sleeve_cm').focus();
-  const shortEnd = await page.getByTestId('sleeve-guide-line').getAttribute('data-end');
-  await page.locator('#meas-sleeve_cm').fill('23');
-  const longEnd = await page.getByTestId('sleeve-guide-line').getAttribute('data-end');
-  expect(Number(longEnd.split(',')[1])).toBeGreaterThan(Number(shortEnd.split(',')[1]));
-  await expect(page.getByTestId('guide-sleeve_cm')).toBeVisible();
+  await expect(page.getByTestId('meas-value-sleeve_cm')).toContainText('23 in');       // as it was typed
   await expect(page.getByText(/3D measuring guide/)).toHaveCount(0);
   await shot(page, 'step4-inches');
   await page.getByTestId('unit-cm').click();
-  await expect(page.locator('#meas-sleeve_cm')).toHaveValue('58.42');
-  await expect(page.locator('#meas-bust_cm')).toHaveValue('88,5');
-  await page.getByTestId('unit-in').click();
-  await expect(page.locator('#meas-sleeve_cm')).toHaveValue('23');
+  await page.getByRole('button', { name: 'Use these measurements' }).click();
+  await expect(page.getByRole('alert').first()).toContainText(/This design also needs: Sleeve end around/);
 
-  // a mistake beside its field; the rest stays
-  await page.locator('#meas-sleeve_end_cm').fill('-6');
-  await page.getByRole('button', { name: 'Save and continue' }).click();
-  await expect(page.getByTestId('error-sleeve_end_cm')).toContainText('greater than 0');
-  await expect(page.locator('#meas-waist_cm')).toHaveValue('27.5');
-  await page.locator('#meas-sleeve_end_cm').fill('6.25');
-  await page.getByRole('button', { name: 'Save and continue' }).click();
-  await expect(page.getByRole('alert')).toContainText(/customer name/);
-  await step(1).click();
-  await page.locator('#client-name').fill('Wizard Customer');
-  await step(4).click();
-  await expect(page.locator('#meas-waist_cm')).toHaveValue('27.5');                   // still there after leaving the step
-  await page.getByRole('button', { name: 'Save and continue' }).click();
+  // "Edit measurements" opens that profile on the Measurements page in a new tab; what is saved there is shown here
+  const [editor] = await Promise.all([page.context().waitForEvent('page'), page.getByTestId('edit-measurements').click()]);
+  await expect(editor.getByTestId('from-pattern-note')).toBeVisible();
+  await expect(editor.locator('#profile-name')).toHaveValue('Wizard Customer');
+  await editor.getByTestId('page-unit-in').click();
+  await expect(editor.locator('#profile-sleeve_cm')).toHaveValue('23');
+  await editor.locator('#profile-sleeve_end_cm').fill('-6');
+  await editor.getByRole('button', { name: 'Save measurements' }).click();
+  await expect(editor.getByTestId('profile-error-sleeve_end_cm')).toContainText('greater than 0');   // a mistake beside its field
+  await editor.locator('#profile-sleeve_end_cm').fill('6.25');
+  await editor.getByRole('button', { name: 'Save measurements' }).click();
+  await expect(editor.getByText('Measurements updated.')).toBeVisible();
+  await editor.close();
+  await page.getByTestId('refresh-measurements').click();
+  await expect(page.getByTestId('meas-missing')).toHaveCount(0);
+  await expect(page.getByTestId('meas-value-sleeve_end_cm')).toContainText(/15\.8[78] cm/);
+  await page.getByRole('button', { name: 'Use these measurements' }).click();
   await expect(page.getByRole('heading', { name: 'Choose fabric and fit' })).toBeVisible();
 
-  const saved = (await (await request.get(`${API}/measurements/`, { headers: auth })).json()).measurements[0];
-  expect(saved.bust_cm).toBe(88.5);
+  const all = (await (await request.get(`${API}/measurements/`, { headers: auth })).json()).measurements;
+  expect(all).toHaveLength(1);                                                         // the wizard created no second profile
+  const saved = all[0];
   expect(saved.sleeve_cm).toBeCloseTo(58.42, 9);
-  expect(saved.original_values.sleeve_cm).toEqual({ value: 23, unit: 'in' });
+  expect(saved.original_values.sleeve_cm).toEqual({ value: 23, unit: 'in' });         // still as it was typed
+  expect(saved.original_values.sleeve_end_cm).toEqual({ value: 6.25, unit: 'in' });
   expect(saved.height_cm ?? null).toBeNull();                                         // not needed by this design: not asked, not invented
   expect(saved.armhole_depth_cm ?? null).toBeNull();                                  // optional design value left empty: calculated, not stored
   expect(saved.neck_width_cm ?? null).toBeNull();

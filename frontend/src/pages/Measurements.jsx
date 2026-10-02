@@ -47,7 +47,13 @@ export default function Measurements() {
       .then((res) => {
         const list = res.data.measurements || [];
         setProfiles(list);
-        const wanted = location.state?.profile;
+        // ?profile=<id> opens that customer; ?new=1&name=... starts a new profile (links from the pattern wizard)
+        const params = new URLSearchParams(location.search);
+        if (params.get('new')) {
+          setFormData({ ...EMPTY, client_name: params.get('name') || '' });
+          return;
+        }
+        const wanted = location.state?.profile || list.find((p) => p.measurement_id === params.get('profile'));
         const first = wanted || list[0];
         if (first) {
           setSelectedProfileId(first.measurement_id);
@@ -134,6 +140,7 @@ export default function Measurements() {
 
   if (loading) return <LoadingSpinner message="Loading measurement profiles..." />;
 
+  const fromPattern = new URLSearchParams(location.search).get('from') === 'pattern';
   const activeDef = MEASUREMENT_FIELDS.find((f) => f.key === activeField);
   const missing = MEASUREMENT_FIELDS.filter((f) => f.kind === 'measurement' && (formData[f.key] === '' || formData[f.key] === null)).length;
   const cmValues = canonicalCm(formData, typedUnits);
@@ -168,6 +175,11 @@ export default function Measurements() {
         </div>
       </div>
 
+      {fromPattern && (
+        <div role="note" data-testid="from-pattern-note" style={{ padding: '12px 16px', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '13px', marginBottom: '20px' }}>
+          You came here from a pattern in progress. Save the measurements, then go back to the pattern tab: they are shown there.
+        </div>
+      )}
       {loadError && <div role="alert" className="dashboard-error" style={{ marginBottom: '20px', color: 'var(--danger)' }}>{loadError}</div>}
       {error && (
         <div role="alert" style={{ padding: '12px 16px', background: '#FEF2F2', border: '1px solid #FCA5A5', borderRadius: '8px', color: '#991B1B', fontSize: '13px', marginBottom: '20px' }}>{error}</div>

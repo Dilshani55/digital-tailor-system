@@ -2,7 +2,6 @@
 // pattern wizard. Every field has a plain-English name, a "how to measure" card with a common mistake, and the
 // unit next to the input. Design values (neckline width, neck depths, armhole depth, bust-point distance) are
 // optional: left empty, the value the drafting method calculates is used and shown as "calculated".
-// `conditional` = measurements that are not required yet but will be when the design uses them (hip, sleeve ...).
 import { Info } from 'lucide-react';
 import {
   MEASUREMENT_FIELDS, GROUPS, CM_PER_INCH, displayValue, calculatedValues, canonicalCm, softWarnings,
@@ -11,7 +10,7 @@ import {
 const show = (cm, unit) => `${Number((unit === 'in' ? cm / CM_PER_INCH : cm).toFixed(unit === 'in' ? 2 : 1))} ${unit}`;
 
 export default function MeasurementFields({
-  idPrefix, keys, required = [], conditional = [], values, units = {}, unit, errors = {}, active, onActive, onChange,
+  idPrefix, keys, required = [], values, units = {}, unit, errors = {}, active, onActive, onChange,
   errorTestId = (k) => `error-${k}`, guideTestId = (k) => `guide-${k}`, inputRefs = null, serverWarnings = [],
 }) {
   const cm = canonicalCm(values, units);
@@ -36,11 +35,7 @@ export default function MeasurementFields({
                 <div className={`meas-field${isActive ? ' active' : ''}`} key={key} data-kind={field.kind}>
                   <label className="form-label" htmlFor={`${idPrefix}-${key}`}>
                     {field.label}<span className="sr-only"> ({unit})</span>
-                    {optional && (
-                      <small style={{ fontWeight: 400, color: 'var(--text-muted, #6b7280)' }} data-testid={`${idPrefix}-need-${key}`}>
-                        {conditional.includes(key) ? ' · needed for some designs' : ' · optional'}
-                      </small>
-                    )}
+                    {optional && <small style={{ fontWeight: 400, color: 'var(--text-muted, #6b7280)' }}> · optional</small>}
                   </label>
                   <div className="input-suffix">
                     <input id={`${idPrefix}-${key}`} className="form-input" type="text" inputMode="decimal" autoComplete="off"
