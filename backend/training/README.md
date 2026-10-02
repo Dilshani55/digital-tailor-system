@@ -29,6 +29,25 @@ backend\venv\Scripts\python backend\training\evaluate_models.py      # test resu
 `evaluate_models.py neckline` evaluates one. Settings (epochs, patience, learning rates, seed 42) are constants at
 the top of `train_models.py`.
 
+## Part models (neck area, sleeves)
+
+A neckline or a sleeve is a small part of a garment photo. Fashionpedia marks every neckline, collar and sleeve with
+its own box and style label, so the neckline and sleeve-design models can be trained on that part alone, and a
+YOLOv8n **part detector** (classes `neck`, `sleeve`) finds the part inside the garment area in the app.
+
+```powershell
+backend\venv\Scripts\python backend\training\prepare_part_datasets.py                                   # datasets/parts/
+backend\venv\Scripts\python backend\training\train_models.py neckline_part sleeve_design_part part_detector
+backend\venv\Scripts\python backend\training\evaluate_models.py --candidate neckline sleeve_design     # runs/evaluation_candidate.md
+```
+
+The trained part models go to `runs/candidate_model/`, not to `backend/model/`.
+
+**Switching to a candidate (rule written on 2 Oct 2026, before the candidates were evaluated).** A candidate replaces
+the current model of a feature only if, on the same frozen test set and with the app's own pipeline ("detector
+crop"), its macro-F1 is higher **and** its accuracy is not lower. Otherwise the current model stays and the
+candidate's results are reported as an experiment. Thresholds are chosen on validation photos only, as before.
+
 ## Files
 
 | File | What it does |

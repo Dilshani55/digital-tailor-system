@@ -224,6 +224,16 @@ describe('uncertain predictions and honest score wording', () => {
     expect(screen.getByTestId('select-garment_type').value).toBe('blouse');         // certain heads still pre-selected
   });
 
+  it('says why when the neck area or the sleeve was not found in the photo', () => {
+    render(<PredictionReview garmentAttributes={make({
+      neckline_type: { ...p('v-neck', 0.97, true), part_found: false },
+      sleeve_style: { ...p('puff-sleeve', 0.9, true), part_found: false },
+    })} />);
+    expect(screen.getByTestId('select-neckline_type').value).toBe('');                // a high score does not help
+    expect(screen.getByTestId('low-confidence-neckline_type').textContent).toMatch(/neck area could not be found/);
+    expect(screen.getByTestId('low-confidence-sleeve_style').textContent).toMatch(/sleeve could not be found/);
+  });
+
   it('every head shows its own model score; a high score is not called "confident" or proof', () => {
     render(<PredictionReview garmentAttributes={make()} />);
     ['garment_type', 'neckline_type', 'sleeve_length', 'sleeve_style'].forEach((h) => {

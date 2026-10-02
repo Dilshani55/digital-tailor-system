@@ -2,6 +2,9 @@
 
     backend\\venv\\Scripts\\python backend\\training\\evaluate_models.py            # all four
     backend\\venv\\Scripts\\python backend\\training\\evaluate_models.py neckline   # one task
+    backend\\venv\\Scripts\\python backend\\training\\evaluate_models.py --candidate neckline sleeve_design
+        # the models in runs/candidate_model instead of backend/model -> runs/evaluation_candidate.json / .md
+        # (nothing in backend/model is touched; see "Switching to a candidate" in README.md)
 
 For every task the photos in datasets/attributes/<task>/eval.jsonl (never trained on) are run through the production
 inference code (app/ai/garment_models.py) in three ways, reported separately:
@@ -9,6 +12,13 @@ inference code (app/ai/garment_models.py) in three ways, reported separately:
     detector crop   whole photo -> garment detector -> box + 10 % -> model      (what the app does)
     dataset crop    the dataset's own garment box -> model                       (best case)
     whole photo     the photo as uploaded, no crop -> model                      (when the detector finds nothing)
+
+Garment model, part model or both (inputs.json). When a feature has a part model (neck area, sleeves) next to
+its garment model, the three ways of answering - the garment model, the part model, the average of both - are
+compared on the VALIDATION photos (detector crop, macro-F1; a tie keeps the simpler one) and the best is written to
+inputs.json in the model folder. Everything reported below, and the threshold, then uses that choice. The part comes
+from the part detector in every mode, exactly as in the app. With the part model alone, a photo whose part is not
+found still counts for accuracy (the garment model's guess) but is never an automatic answer.
 
 Thresholds: chosen on the VALIDATION photos with the detector crop - the smallest score at which the accepted
 validation answers are >= 90 % correct with >= 20 % coverage; none if that cannot be reached, or if a class has
@@ -22,6 +32,11 @@ import os
 import sys
 
 import numpy as np
+
+CANDIDATE = "--candidate" in sys.argv
+if CANDIDATE:                                   # must be set before the app code reads it
+    sys.argv.remove("--candidate")
+    os.environ["GARMENT_MODEL_DIR"] = os.path.abspath("backend/training/runs/candidate_model")
 
 sys.path.insert(0, "backend")
 sys.path.insert(0, "backend/training")
@@ -102,31 +117,60 @@ def picture(row, mode, cache):
 def evaluate(task, cache):
     head, classes = TASK_HEAD[task], C.TASKS[task]
     rows = [r for r in C.load_jsonl(f"{C.OUT}/{task}/eval.jsonl") if r["photo"] and os.path.exists(r["photo"])]
-    probs = {m: [] for m in MODES}
+    has_part = (head in gm.PART_FILES and os.path.isfile(os.path.join(gm.model_dir(), gm.PART_FILES[head]))
+                and gm.garment_parts.available(gm.model_dir()))
+    kinds = gm.input_kinds(head) if has_part else ("garment",)
+    answers = {m: [] for m in MODES}                      # per photo: what the garment model and the part model say
     for i, row in enumerate(rows, 1):
         for mode in MODES:
-            pairs = dict(gm._probabilities(head, picture(row, mode, cache)))
-            probs[mode].append([pairs[c] for c in classes])
+            image = picture(row, mode, cache)
+            answers[mode].append(gm.component_probabilities(head, image) if has_part else
+                                 {"garment": gm._probabilities(head, image), "part": None})
         if i % 500 == 0:
             print(f"  {task}: {i}/{len(rows)}", flush=True)
             json.dump(cache, open(DETECTOR_CACHE, "w"))
-    probs = {m: np.array(v) for m, v in probs.items()}
     labels = np.array([classes.index(r["label"]) for r in rows])
 
     def subset(set_name, tier=None):
         return np.array([i for i, r in enumerate(rows) if r["set"] == set_name and (tier is None or r["tier"] == tier)], dtype=int)
 
-    # threshold from validation, detector crop
+    def table(kind, mode):
+        """(probabilities in `classes` order, trusted) of every photo for one way of answering."""
+        out, trusted = [], []
+        for a in answers[mode]:
+            pairs, ok = gm.combine(kind, a)
+            pairs = dict(pairs)
+            out.append([pairs[c] for c in classes])
+            trusted.append(ok)
+        return np.array(out), np.array(trusted, dtype=bool)
+
+    # which model(s) answer this feature: chosen on validation, detector crop
     val = subset("val")
+    choice = {}
+    for kind in kinds:
+        pk, _ = table(kind, "detector_crop")
+        m = metrics([classes[k] for k in labels[val]], [classes[k] for k in pk[val].argmax(1)], classes)
+        choice[kind] = {"accuracy": m["accuracy"], "macro_f1": m["macro_f1"]}
+    chosen = max(kinds, key=lambda k: (choice[k]["macro_f1"], -kinds.index(k)))
+    probs, found = {}, {}
+    for mode in MODES:
+        probs[mode], found[mode] = table(chosen, mode)
+    # the score used for automatic answers: 0 when the answer is not trusted (part model alone, part not found)
+    score = {m: np.where(found[m], probs[m].max(1), 0.0) for m in MODES}
+    part_seen = {m: np.array([a["part"] is not None for a in answers[m]]) for m in MODES}
+
+    # threshold from validation, detector crop
     support = {c: int((labels[val] == k).sum()) for k, c in enumerate(classes)}
     thin = [c for c, n in support.items() if n < MIN_VAL_PER_CLASS]
     p = probs["detector_crop"][val]
-    threshold = None if thin or not len(val) else choose_threshold(p.max(1), p.argmax(1) == labels[val])
+    threshold = None if thin or not len(val) else choose_threshold(score["detector_crop"][val], p.argmax(1) == labels[val])
     reason = (f"classes with fewer than {MIN_VAL_PER_CLASS} validation photos: {thin}" if thin else
               None if threshold is not None else "no threshold reaches 90 % accepted accuracy at 20 % coverage on validation")
 
     result = {"task": task, "head": head, "classes": classes, "model_file": C.WEIGHTS[task],
               "model_sha256": gm._get(head)["sha256"], "architecture": gm.ARCHITECTURE[head],
+              "part_model_sha256": gm._get(head, part=True)["sha256"] if has_part else None,
+              "input": chosen, "input_choice_on_validation": choice,
               "threshold": {"value": threshold, "validation_support": support, "why_none": reason}, "sets": {}}
     groups = [("val", "val", None), ("test", "test", "trusted"), ("test_dmm", "test_dmm", None), ("bench60", "bench60", "trusted")]
     if task == "garment":
@@ -140,7 +184,8 @@ def evaluate(task, cache):
         for mode in MODES:
             pm = probs[mode][idx]
             m = metrics(y, [classes[k] for k in pm.argmax(1)], classes)
-            m["auto_answer"] = answered(pm.max(1), pm.argmax(1) == labels[idx], threshold)
+            m["auto_answer"] = answered(score[mode][idx], pm.argmax(1) == labels[idx], threshold)
+            m["part_found_share"] = round(float(part_seen[mode][idx].mean()), 4) if has_part else None
             entry[mode] = m
         result["sets"][name] = entry
     return result
@@ -165,6 +210,10 @@ def markdown(results):
             continue
         for c, v in test["detector_crop"]["per_class"].items():
             out.append(f"| {r['task']} | {c} | {v['support']} | {v['precision']} | {v['recall']} | {v['f1']} |")
+    out += ["", "## Which model answers (chosen on validation, detector crop: accuracy / macro-F1)", ""]
+    for r in results:
+        options = ", ".join(f"{k} {v['accuracy']:.3f} / {v['macro_f1']:.3f}" for k, v in r.get("input_choice_on_validation", {}).items())
+        out.append(f"* {r['task']}: **{r.get('input', 'garment')}**" + (f" ({options})" if options else ""))
     out += ["", "## Thresholds (from validation)", ""]
     for r in results:
         t = r["threshold"]
@@ -177,7 +226,8 @@ def main():
     tasks = sys.argv[1:] or list(C.TASKS)
     os.makedirs(OUT, exist_ok=True)
     cache = json.load(open(DETECTOR_CACHE)) if os.path.exists(DETECTOR_CACHE) else {}
-    path = f"{OUT}/evaluation.json"
+    name = "evaluation_candidate" if CANDIDATE else "evaluation"
+    path = f"{OUT}/{name}.json"
     done = {r["task"]: r for r in json.load(open(path))["results"]} if os.path.exists(path) else {}
     for task in tasks:
         print(f"evaluating {task} ...", flush=True)
@@ -190,9 +240,11 @@ def main():
     thresholds = {TASK_HEAD[r["task"]]: r["threshold"]["value"] for r in results}
     thresholds["_note"] = ("Score at or above which a suggestion is filled in automatically; null = always 'please select'. "
                            "Chosen on validation photos with the garment detector's crop (backend/training/evaluate_models.py).")
-    json.dump(thresholds, open(f"{C.MODEL_DIR}/thresholds.json", "w", encoding="utf-8"), indent=2)
+    json.dump(thresholds, open(f"{gm.model_dir()}/thresholds.json", "w", encoding="utf-8"), indent=2)
+    json.dump({TASK_HEAD[r["task"]]: r.get("input", "garment") for r in results},
+              open(f"{gm.model_dir()}/{gm.INPUTS_FILE}", "w", encoding="utf-8"), indent=2)
     md = markdown(results)
-    open(f"{OUT}/evaluation.md", "w", encoding="utf-8").write(md)
+    open(f"{OUT}/{name}.md", "w", encoding="utf-8").write(md)
     print(md)
 
 

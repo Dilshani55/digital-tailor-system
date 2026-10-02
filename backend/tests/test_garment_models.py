@@ -14,6 +14,7 @@ from PIL import Image
 
 from app import create_app
 from app.ai import garment_models as gm
+from app.ai import garment_parts
 from app.ai.preprocess import crop_box, load_rgb, square_pad, PAD_COLOUR
 from app.logic import feature_schema as fs
 
@@ -51,8 +52,8 @@ class _ModelDir(unittest.TestCase):
         self.answers = {h: list(v) for h, v in FAKE.items()}
         self.calls = []
 
-        def fake(head, image):
-            self.calls.append((head, image.size))
+        def fake(head, image, part=False):
+            self.calls.append((f"{head}:part" if part else head, image.size))
             if head not in self.answers:
                 raise gm.GarmentModelError(f"model file for {head} is missing")
             gm._cache[head] = {"sha256": f"{head}-sha"}
@@ -176,6 +177,124 @@ class TestSuggestions(_ModelDir):
     def test_all_models_see_the_same_square_picture(self):
         gm.predict_attributes(self.photo, bbox=[30, 40, 130, 240])
         self.assertEqual({size for _, size in self.calls}, {(200, 200)})
+
+
+class TestParts(_ModelDir):
+    """The neckline and the sleeve style can use a part model (neck area, sleeves). The part detector is replaced by
+    stand-in boxes and the part model files are empty stand-ins."""
+
+    def setUp(self):
+        super().setUp()
+        for name in gm.PART_FILES.values():
+            open(os.path.join(self.dir, name), "wb").close()
+        self.part_answers = {}                                         # head -> list of answers, one per part picture
+
+        def fake(head, image, part=False):
+            self.calls.append((f"{head}:part" if part else head, image.size))
+            if part:
+                gm._cache[f"{head}:part"] = {"sha256": f"{head}-part-sha"}
+                return self.part_answers[head].pop(0)
+            if head not in self.answers:
+                raise gm.GarmentModelError(f"model file for {head} is missing")
+            gm._cache[head] = {"sha256": f"{head}-sha"}
+            return self.answers[head]
+
+        self.probs.stop()
+        self.probs = patch.object(gm, "_probabilities", side_effect=fake)
+        self.probs.start()
+
+    def inputs(self, **values):
+        with open(os.path.join(self.dir, gm.INPUTS_FILE), "w", encoding="utf-8") as f:
+            json.dump(values, f)
+
+    def found(self, neck=None, sleeves=()):
+        p = patch.object(garment_parts, "find_parts", return_value={"neck": neck, "sleeves": list(sleeves)})
+        p.start()
+        self.addCleanup(p.stop)
+
+    def test_without_an_inputs_file_every_feature_uses_its_garment_model(self):
+        self.assertEqual(gm.load_inputs(), {h: "garment" for h in gm.HEADS})
+        self.inputs(neckline_type="garment+neck", sleeve_style="neck", garment_type="neck", sleeve_length=7)   # only valid kinds count
+        self.assertEqual(gm.load_inputs(), {"garment_type": "garment", "neckline_type": "garment+neck",
+                                            "sleeve_length": "garment", "sleeve_style": "garment"})
+        self.assertEqual(gm.input_kinds("sleeve_style"), ("garment", "sleeve", "garment+sleeve"))
+        self.assertEqual(gm.input_kinds("garment_type"), ("garment",))
+
+    def test_the_part_model_sees_the_neck_area_and_the_others_the_garment(self):
+        self.inputs(neckline_type="neck")
+        self.found(neck=[100, 20, 200, 80])                           # 100 x 60 in a 400 x 400 picture
+        self.part_answers["neckline_type"] = [[("round-neck", 0.1), ("v-neck", 0.2), ("square-neck", 0.6), ("collared-neck", 0.1)]]
+        p = gm.predict_attributes(self.photo)["predictions"]["neckline_type"]
+        sizes = dict(self.calls)
+        self.assertEqual(sizes["neckline_type:part"], (130, 130))     # 15 % margin on every side, padded square
+        self.assertNotIn("neckline_type", sizes)                      # the garment model is not asked
+        self.assertEqual(sizes["garment_type"], (400, 400))
+        self.assertEqual((p["label"], p["confidence"], p["part_found"]), ("square-neck", 0.6, True))
+
+    def test_the_scores_of_both_sleeves_are_averaged(self):
+        self.inputs(sleeve_style="sleeve")
+        self.found(sleeves=[[0, 100, 80, 300], [320, 100, 400, 300]])
+        self.part_answers["sleeve_style"] = [[("bell-sleeve", 0.1), ("puff-sleeve", 0.7), ("regular-sleeve", 0.2)],
+                                             [("bell-sleeve", 0.1), ("puff-sleeve", 0.5), ("regular-sleeve", 0.4)]]
+        p = gm.predict_attributes(self.photo)["predictions"]["sleeve_style"]
+        self.assertEqual((p["label"], p["confidence"], p["part_found"]), ("puff-sleeve", 0.6, True))
+
+    def test_part_only_a_part_that_is_not_found_is_never_an_automatic_answer(self):
+        self.inputs(neckline_type="neck", sleeve_style="sleeve")
+        self.thresholds(neckline_type=0.5, sleeve_style=0.4)
+        self.found(neck=None, sleeves=[])
+        out = gm.predict_attributes(self.photo)
+        for head in ("neckline_type", "sleeve_style"):
+            p = out["predictions"][head]
+            self.assertFalse(p["part_found"])
+            self.assertTrue(p["uncertain"], head)                      # 0.6 / 0.5 is above the threshold, still uncertain
+            self.assertEqual(p["label"], max(FAKE[head], key=lambda x: x[1])[0])   # the garment model's guess is shown
+        self.assertIn("neckline_type", out["low_confidence_heads"])
+
+    def test_both_models_their_answers_are_averaged_by_class_name(self):
+        self.inputs(neckline_type="garment+neck")
+        self.thresholds(neckline_type=0.5)
+        self.found(neck=[100, 20, 200, 80])
+        # the part model lists its classes in another order than the garment model
+        self.part_answers["neckline_type"] = [[("collared-neck", 0.05), ("round-neck", 0.10), ("square-neck", 0.05), ("v-neck", 0.80)]]
+        p = gm.predict_attributes(self.photo)["predictions"]["neckline_type"]
+        self.assertEqual((p["label"], p["confidence"], p["uncertain"]), ("v-neck", 0.7, False))      # (0.60 + 0.80) / 2
+        self.assertEqual(p["top_3"][1], {"class_name": "square-neck", "confidence": 0.15})            # (0.25 + 0.05) / 2
+
+    def test_both_models_without_the_part_the_garment_model_answers_alone(self):
+        self.inputs(neckline_type="garment+neck")
+        self.thresholds(neckline_type=0.5)
+        self.found(neck=None)
+        p = gm.predict_attributes(self.photo)["predictions"]["neckline_type"]
+        self.assertEqual((p["label"], p["confidence"], p["uncertain"]), ("v-neck", 0.6, False))      # as before the part models
+        self.assertNotIn("neckline_type:part", dict(self.calls))
+
+    def test_a_missing_part_model_file_falls_back_to_the_garment_model(self):
+        os.remove(os.path.join(self.dir, gm.PART_FILES["neckline_type"]))
+        self.inputs(neckline_type="garment+neck")
+        self.found(neck=[100, 20, 200, 80])
+        self.assertEqual(gm.predict_attributes(self.photo)["predictions"]["neckline_type"]["confidence"], 0.6)
+
+    def test_the_part_detector_is_asked_once_per_photo(self):
+        self.inputs(neckline_type="neck", sleeve_style="sleeve")
+        self.part_answers = {"neckline_type": [FAKE["neckline_type"]], "sleeve_style": [FAKE["sleeve_style"]]}
+        with patch.object(garment_parts, "find_parts", return_value={"neck": [100, 20, 200, 80], "sleeves": [[0, 100, 80, 300]]}) as find:
+            gm.predict_attributes(self.photo)
+        self.assertEqual(find.call_count, 1)
+
+    def test_without_a_detector_file_no_part_is_found(self):
+        self.assertFalse(garment_parts.available(self.dir))
+        self.assertEqual(garment_parts.find_parts(Image.new("RGB", (64, 64)), self.dir), {"neck": None, "sleeves": []})
+
+    def test_only_confident_boxes_are_used_one_neck_and_at_most_two_sleeves(self):
+        d = [{"class": "neck", "score": 0.34, "box_xyxy": [0, 0, 1, 1]},
+             {"class": "sleeve", "score": 0.9, "box_xyxy": [1, 1, 2, 2]}, {"class": "sleeve", "score": 0.5, "box_xyxy": [2, 2, 3, 3]},
+             {"class": "sleeve", "score": 0.6, "box_xyxy": [3, 3, 4, 4]}, {"class": "sleeve", "score": 0.2, "box_xyxy": [4, 4, 5, 5]}]
+        out = garment_parts.choose(d)
+        self.assertIsNone(out["neck"])                                 # 0.34 is below the fixed 0.35
+        self.assertEqual(out["sleeves"], [[1, 1, 2, 2], [3, 3, 4, 4]])
+        d.append({"class": "neck", "score": 0.35, "box_xyxy": [9, 9, 10, 10]})
+        self.assertEqual(garment_parts.choose(d)["neck"], [9, 9, 10, 10])
 
 
 class TestStatus(unittest.TestCase):

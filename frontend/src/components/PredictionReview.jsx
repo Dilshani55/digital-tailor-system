@@ -175,6 +175,8 @@ export default function PredictionReview({
                 {isLowConf && isEditing && (
                   <div role="note" className="head-note warn" data-testid={`low-confidence-${headKey}`} style={{ marginTop: 0, marginBottom: 6 }}>
                     Uncertain — please select this feature yourself.
+                    {headPred?.part_found === false
+                      ? ` The ${headKey === 'neckline_type' ? 'neck area' : 'sleeve'} could not be found clearly in the photo.` : ''}
                     {headPred?.label ? ` AI best guess: “${labelOf(headKey, headPred.label)}” (${rawConfPct}%).` : ''}
                   </div>
                 )}

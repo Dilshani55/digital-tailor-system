@@ -35,6 +35,17 @@ YOLO_SETTINGS = {
 }
 GARMENT = dict(epochs=14, patience=5, batch=32, lr_backbone=1e-4, lr_head=1e-3, weight_decay=1e-4)
 
+# Part models (data: prepare_part_datasets.py). They are written to a CANDIDATE folder, not to backend/model: the
+# app switches to them only after evaluate_models.py has compared them with the current models on the same test set.
+PARTS = f"{C.ROOT}/datasets/parts"
+CANDIDATE_DIR = f"{RUNS}/candidate_model"
+PRETRAINED_DETECTOR = f"{C.MODEL_DIR}/pretrained/yolov8n.pt"
+PART_CLASSIFIERS = {
+    "neckline_part": dict(data="neck", weights="neckline_part_yolov8.pt", epochs=20, patience=6, batch=32),
+    "sleeve_design_part": dict(data="sleeve", weights="sleeve_design_part_yolov8.pt", epochs=30, patience=8, batch=32),
+}
+PART_DETECTOR = dict(weights="part_detector.pt", epochs=8, patience=3, batch=16, imgsz=384)
+
 
 def train_yolo(task):
     from ultralytics import YOLO
@@ -48,6 +59,34 @@ def train_yolo(task):
     best = f"{RUNS}/{task}/weights/best.pt"
     os.makedirs(C.MODEL_DIR, exist_ok=True)
     shutil.copyfile(best, f"{C.MODEL_DIR}/{C.WEIGHTS[task]}")
+    return best
+
+
+def train_part_classifier(task):
+    """YOLOv8n-cls on the neck area / on single sleeves (same recipe as the garment-level classifiers)."""
+    from ultralytics import YOLO
+    s = PART_CLASSIFIERS[task]
+    model = YOLO(PRETRAINED_YOLO)
+    model.train(data=os.path.abspath(f"{PARTS}/{s['data']}"), imgsz=IMG, epochs=s["epochs"], patience=s["patience"], batch=s["batch"],
+                device="cpu", workers=4, seed=SEED, deterministic=True, project=os.path.abspath(RUNS), name=task, exist_ok=True,
+                scale=0.3, erasing=0.0, fliplr=0.5, auto_augment="randaugment", plots=False, verbose=False)
+    best = f"{RUNS}/{task}/weights/best.pt"
+    os.makedirs(CANDIDATE_DIR, exist_ok=True)
+    shutil.copyfile(best, f"{CANDIDATE_DIR}/{s['weights']}")
+    return best
+
+
+def train_part_detector():
+    """YOLOv8n detector (COCO-pretrained) that finds the neck area and the sleeves inside a garment crop."""
+    from ultralytics import YOLO
+    s = PART_DETECTOR
+    model = YOLO(PRETRAINED_DETECTOR)
+    model.train(data=os.path.abspath(f"{PARTS}/detector/data.yaml"), imgsz=s["imgsz"], epochs=s["epochs"], patience=s["patience"],
+                batch=s["batch"], device="cpu", workers=4, seed=SEED, deterministic=True, project=os.path.abspath(RUNS),
+                name="part_detector", exist_ok=True, plots=True, verbose=False)
+    best = f"{RUNS}/part_detector/weights/best.pt"
+    os.makedirs(CANDIDATE_DIR, exist_ok=True)
+    shutil.copyfile(best, f"{CANDIDATE_DIR}/{s['weights']}")
     return best
 
 
@@ -136,7 +175,8 @@ def main():
     for task in tasks:
         t0 = time.time()
         print(f"\n===== {task} =====", flush=True)
-        best = train_garment() if task == "garment" else train_yolo(task)
+        best = (train_garment() if task == "garment" else train_part_detector() if task == "part_detector" else
+                train_part_classifier(task) if task in PART_CLASSIFIERS else train_yolo(task))
         print(f"===== {task} done in {round((time.time() - t0) / 60, 1)} min -> {best}", flush=True)
 
 
