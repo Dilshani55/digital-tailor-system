@@ -298,8 +298,8 @@ def generate_pdf(pattern_id):
     one_way = bool(stored_rows[0].get("one_way_fabric")) if stored_rows else False
     body = request.get_json(silent=True) or {}
     part = body.get("part", "all")
-    if part not in ("all", "report", "pattern"):
-        return jsonify({"error": "part must be all, report or pattern.", "error_code": "INVALID_PDF_PART"}), 400
+    if part not in ("all", "overview", "report", "pattern"):
+        return jsonify({"error": "part must be all, overview, report or pattern.", "error_code": "INVALID_PDF_PART"}), 400
     unit = body.get("unit") or snapshot.get("display_unit") or "cm"
     if unit not in ("cm", "in"):
         return jsonify({"error": "unit must be cm or in.", "error_code": "INVALID_UNIT"}), 400
@@ -416,8 +416,10 @@ def generate_pdf(pattern_id):
             "pages":      generator.info["pages"],
             "part":       part,
             "unit":       unit,
-            "print_scale": ("1:1 (print at 100% / Actual size)" if part != "report"
-                            else "measurement report: drawings are NOT to scale"),
+            "print_scale": ("1:1 (print at 100% / Actual size)" if part in ("all", "pattern")
+                            else f"pattern overview at a reduced scale 1:{generator.info.get('overview_scale')}: NOT to scale 1:1"
+                            if part == "overview" else "measurement report: drawings are NOT to scale"),
+            "overview_scale": generator.info.get("overview_scale"),
             "download_url": f"/api/export/download/{str(pdf_export.id)}"
         }), 201
 

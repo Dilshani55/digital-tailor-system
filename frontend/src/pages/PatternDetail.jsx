@@ -31,7 +31,7 @@ export default function PatternDetail() {
     setError('');
     setBusy(true);
     try {
-      await exportAPI.pdf(patternId);
+      await exportAPI.pdf(patternId, { part: 'overview' });
       await load();
     } catch (e) {
       setError(friendlyError(e, 'The PDF could not be created. Please try again.'));

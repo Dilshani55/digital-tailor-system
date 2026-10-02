@@ -69,6 +69,8 @@ def verify(path):
         "front, back and sleeve block overviews (not to scale)": has(
             "FRONT block - measurement overview", "BACK block - measurement overview", "NOT TO SCALE"),
         "calculations listed (Why this size?)": has("Why this size?"),
+        "one-page pattern overview at a stated reduced scale": has("Measurement-based pattern overview", "REDUCED SCALE 1:",
+                                                                   "Not a cutting template"),
         "layout drawing is marked not to scale": has("NOT to scale"),
     }
     measured = sorted({s for page in per_page for s in page})

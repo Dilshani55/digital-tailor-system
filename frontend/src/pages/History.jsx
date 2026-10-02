@@ -69,7 +69,7 @@ export default function History() {
   });
 
   const createPdf = (p) => run(p, 'The PDF could not be created. Please try again.', async () => {
-    await exportAPI.pdf(p.pattern_id);
+    await exportAPI.pdf(p.pattern_id, { part: 'overview' });       // one page at a reduced scale; real size is chosen in the wizard
     await load();
   });
 

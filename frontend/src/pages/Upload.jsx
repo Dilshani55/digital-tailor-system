@@ -41,10 +41,12 @@ const FITS = [
   { value: 'loose', label: 'Relaxed fit', note: 'More ease: looser' },
 ];
 const PDF_PARTS = [
-  { value: 'all', label: 'Everything', note: 'Measurement report and the 1:1 cutting pattern' },
-  { value: 'report', label: 'Measurement report', note: 'Blocks with dimensions, calculations, fabric table (not to scale)' },
-  { value: 'pattern', label: 'Cutting pattern', note: 'Printing instructions and the 1:1 tiled pattern' },
+  { value: 'overview', label: 'Pattern overview', note: 'One page: the front, back and sleeve drawn at a reduced scale with their measurements written on them (not real size)' },
+  { value: 'report', label: 'Full measurement report', note: 'The overview plus every calculation, the piece list and the fabric layouts (not real size)' },
+  { value: 'pattern', label: 'Real-size cutting pattern', note: 'Printing instructions and the 1:1 pattern tiled on A4 pages' },
+  { value: 'all', label: 'Everything', note: 'The report and the real-size cutting pattern in one file' },
 ];
+const REAL_SIZE_PARTS = ['pattern', 'all'];
 
 const emptyMeas = {
   client_name: '', ...Object.fromEntries(FIELD_KEYS.map((k) => [k, ''])), fabric_type: 'woven', fit_preference: 'standard',
@@ -152,7 +154,7 @@ export default function Upload() {
   const [fabricWidth, setFabricWidth] = useState(() => getPreferences().fabricWidth);
   const [cuttingMode, setCuttingMode] = useState('auto');
   const [oneWay, setOneWay] = useState(false);              // nap / directional print: no piece is turned
-  const [pdfPart, setPdfPart] = useState('all');
+  const [pdfPart, setPdfPart] = useState('overview');
   const [yardageData, setYardageData] = useState(null);     // the selected width's layout
   const [estimates, setEstimates] = useState(null);         // 36" / 45" / 60" comparison rows
   const [yardageError, setYardageError] = useState(false);
@@ -1029,8 +1031,14 @@ export default function Upload() {
             <div className="export-layout">
               <section className="section-card" style={{ marginBottom: 0 }}>
                 <ul className="export-list">
-                  <li><span><Printer size={18} /></span><div><strong>A4 tiled pattern</strong><small>Print with the scale set to 100% / Actual size — never “fit to page”.</small></div></li>
-                  <li><span><Ruler size={18} /></span><div><strong>Calibration square 5 × 5 cm</strong><small>Measure it before you tape the pages together.</small></div></li>
+                  {REAL_SIZE_PARTS.includes(pdfPart) ? (
+                    <>
+                      <li><span><Printer size={18} /></span><div><strong>A4 tiled pattern</strong><small>Print with the scale set to 100% / Actual size — never “fit to page”.</small></div></li>
+                      <li><span><Ruler size={18} /></span><div><strong>Calibration square 5 × 5 cm</strong><small>Measure it before you tape the pages together.</small></div></li>
+                    </>
+                  ) : (
+                    <li data-testid="pdf-overview-note"><span><Ruler size={18} /></span><div><strong>Reduced-scale overview</strong><small>The front, back and sleeve drawn small on one page with their measurements. It is for reading, not for cutting: choose the real-size cutting pattern when you want to cut fabric.</small></div></li>
+                  )}
                   <li><span><Scissors size={18} /></span><div><strong>Fabric required {canEstimate && yardageData ? `${yardageData.purchasing_recommended_m} m` : '—'}</strong>
                     <small>{canEstimate && yardageData ? `For ${widthLabel(yardageData.fabric_width_cm)}; all three widths are in the PDF.` : 'Calculate the fabric estimate first.'}</small></div></li>
                   <li><span><Calendar size={18} /></span><div><strong>Test garment first</strong><small>Confirm the fit with a toile (test garment) before cutting the final fabric — this is a prototype pattern, not a fit-tested one.</small></div></li>
@@ -1060,7 +1068,8 @@ export default function Upload() {
                     </>
                   ) : (
                     <div data-testid="pdf-ready" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                      <span className="pill good" style={{ alignSelf: 'flex-start' }}><CheckCircle2 size={13} /> {pdfInfo?.pages} pages · A4 · {pdfInfo?.part === 'report' ? 'report, not to scale' : '1:1 scale'}</span>
+                      <span className="pill good" style={{ alignSelf: 'flex-start' }}><CheckCircle2 size={13} /> {pdfInfo?.pages} {pdfInfo?.pages === 1 ? 'page' : 'pages'} · A4 · {pdfInfo?.part === 'overview' ? `reduced scale 1:${pdfInfo?.overview_scale ?? '?'}, not real size`
+                        : pdfInfo?.part === 'report' ? 'report, not real size' : '1:1 scale'}</span>
                       <button type="button" className="btn btn-primary btn-lg btn-block" onClick={handleDownloadPDF}><Download size={18} /> Download PDF</button>
                     </div>
                   )}

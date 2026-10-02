@@ -155,9 +155,15 @@ test('register -> upload -> AI review -> measurements -> fabric -> pattern -> es
 
   // 7. printable PDF
   await page.getByRole('button', { name: 'Continue to PDF export' }).click();
-  await expect(page.getByTestId('pdf-part-all')).toBeChecked();         // report + 1:1 pattern in one file
+  await expect(page.getByTestId('pdf-part-overview')).toBeChecked();    // default: one page at a reduced scale, not real size
+  await expect(page.getByTestId('pdf-overview-note')).toBeVisible();
+  await page.getByRole('button', { name: 'Create printable PDF' }).click();
+  await expect(page.getByTestId('pdf-ready')).toContainText(/1 page · A4 · reduced scale 1:\d+, not real size/, { timeout: 120_000 });
+  await shot('07a-pdf-overview-ready');
   await expect(page.getByTestId('pdf-part-report')).toBeVisible();
   await expect(page.getByTestId('pdf-part-pattern')).toBeVisible();
+  await page.getByTestId('pdf-part-all').check();                       // the rest of this run checks the whole file, incl. the 1:1 pages
+  await expect(page.getByTestId('pdf-overview-note')).toHaveCount(0);
   await page.getByRole('button', { name: 'Create printable PDF' }).click();
   await expect(page.getByTestId('pdf-ready')).toBeVisible({ timeout: 120_000 });
   await shot('07-pdf-ready');

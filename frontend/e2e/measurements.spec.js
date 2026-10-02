@@ -14,7 +14,8 @@ function watch(page) {
   page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`));
   page.on('console', (m) => {
     if (m.type() !== 'error') return;
-    if (/accounts\.google|gsi\/client|Failed to load resource.*(google|gstatic)/i.test(m.text())) return;
+    // Google sign-in script and web fonts come from the internet; a slow network is not an app error
+    if (/accounts\.google|gsi\/client|Failed to load resource.*(google|gstatic)/i.test(`${m.text()} ${m.location().url}`)) return;
     problems.push(`console: ${m.text()} (${m.location().url})`);
   });
   page.on('response', (r) => { if (r.url().includes('/api/') && r.status() >= 400) problems.push(`api ${r.status()} ${r.url()}`); });

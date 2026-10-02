@@ -57,7 +57,7 @@ describe('Pattern library', () => {
     renderLibrary();
     fireEvent.click(await screen.findByRole('button', { name: 'Create PDF' }));
     await waitFor(() => expect(screen.getByTestId('pdf-status-p2')).toHaveTextContent('PDF ready'));
-    expect(exportAPI.pdf).toHaveBeenCalledWith('p2');
+    expect(exportAPI.pdf).toHaveBeenCalledWith('p2', { part: 'overview' });   // scaled-down overview, not real size
   });
 
   it('"Delete PDF only" removes the PDF records and keeps the pattern', async () => {

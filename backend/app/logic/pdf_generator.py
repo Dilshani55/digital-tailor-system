@@ -15,7 +15,11 @@ PART B - CUTTING PATTERN (true 1:1 scale)
     Printing instructions with a 5 cm calibration square
     The pattern tiled onto A4 sheets with an overlap, crop marks, tile labels and page numbers
 
-`part` = "all" (default), "report" (part A only) or "pattern" (part B only).
+PATTERN OVERVIEW (first page of part A, or alone)
+    The real front, back and sleeve side by side at one reduced scale 1:n, the important dimensions written
+    on them, the measurements entered. For reading, not a cutting template.
+
+`part` = "all" (default), "overview" (that one page), "report" (part A only) or "pattern" (part B only).
 Footer on every page: page x of N, pattern ID, customer, scale note, creation timestamp.
 
 Every piece shows: cutting line (solid), seam line (dashed), grainline, fold line, darts, notches, name, cut
@@ -68,7 +72,15 @@ KEY_POINTS = {"NECK_POINT": "NP", "SHOULDER_POINT": "SP", "UNDERARM": "UA", "WAI
 SOURCE_WORDS = {"measurement": "your measurement", "method": "drafting method", "figure": "drafting method (figure)",
                 "design": "design value", "ease": "ease", "seam": "seam allowance", "extension": "project rule"}
 DIM_COLOUR = colors.HexColor("#B45309")
-PARTS = ("all", "report", "pattern")
+PARTS = ("all", "overview", "report", "pattern")
+GREEN = colors.HexColor("#4F6F5B")
+PALE = colors.HexColor("#EAF0EB")
+OVERVIEW_FILL = colors.HexColor("#F7FAF7")
+# pattern overview page: the blocks side by side at one reduced scale 1:n
+OVERVIEW_SCALES = (4, 5, 6, 7, 8, 10, 12, 15, 20)
+OVERVIEW_LEFT_CM, OVERVIEW_WIDTH_CM, OVERVIEW_HEIGHT_CM = 1.0, 19.0, 11.0
+OVERVIEW_GUTTER_LEFT_CM = 0.85                    # room for the dimension lines left of a block
+OVERVIEW_GUTTER_CM = 1.9                          # left + right room per block
 
 
 def _fmt(v, nd=1):
@@ -157,8 +169,9 @@ class PDFGenerator:
         self.c = canvas.Canvas(output_path, pagesize=A4)
         self.c.setTitle(self.title)
         self.c.setAuthor("AI-Assisted Digital Tailor System")
-        self.c.setSubject("Printable 1:1 sewing pattern - tiled A4 - print at Actual Size (100%)" if part != "report"
-                          else "Measurement report - overview drawings are not to scale")
+        self.c.setSubject("Printable 1:1 sewing pattern - tiled A4 - print at Actual Size (100%)"
+                          if part in ("all", "pattern") else "Pattern overview at a reduced scale - not a cutting template"
+                          if part == "overview" else "Measurement report - overview drawings are not to scale")
         self.c.setKeywords("sewing pattern, 1:1, A4 tiled, actual size")
         self.placements, self.sheet_w, self.sheet_h = layout_sheet(self.pieces)
         self.cols, self.rows = tile_grid(self.sheet_w, self.sheet_h)
@@ -184,6 +197,8 @@ class PDFGenerator:
     def _plan(self):
         """[(kind, callable)] in print order; kind 'tile' marks the 1:1 pages."""
         plan = []
+        if self.part in ("all", "report", "overview") and self._block_pieces():
+            plan.append(("report", self._page_overview))
         if self.part in ("all", "report"):
             plan.append(("report", self._page_cover))
             plan.append(("report", self._page_measurements))
@@ -208,8 +223,9 @@ class PDFGenerator:
         self.page_no += 1
         c.setFont("Helvetica", 7.5)
         c.setFillColor(GRAY)
-        scale = ("Units cm - scale 1:1 - print at 100% Actual size" if getattr(self, "_on_pattern_page", False)
-                 else "Measurement report - drawings NOT to scale")
+        scale = (getattr(self, "_scale_note", None) or
+                 ("Units cm - scale 1:1 - print at 100% Actual size" if getattr(self, "_on_pattern_page", False)
+                  else "Measurement report - drawings NOT to scale"))
         parts = [f"Page {self.page_no} of {self.total_pages}", f"Pattern {self.ctx.get('pattern_id') or '-'}",
                  f"Customer {self.ctx.get('customer_name') or '-'}", scale, f"Created {self.created_at}"]
         c.drawCentredString(PAGE_W / 2, 0.45 * CM, "   |   ".join(parts))
@@ -367,6 +383,308 @@ class PDFGenerator:
                                      "Confirm the fit with a toile (test garment) before cutting the final fabric.", 8, False, RED)
         self._footer()
         c.showPage()
+
+    # ── pattern overview: front, back and sleeve on ONE page at a reduced scale ──
+    def _one(self, cm):
+        """A length in the chosen unit only (short enough for a label on a drawing)."""
+        if cm is None:
+            return "-"
+        return f"{units.cm_to_in(cm):.2f} in" if self.unit == "in" else f"{cm:.1f} cm"
+
+    def _overview_scale(self, blocks):
+        """The largest reduction 1:n at which the blocks fit side by side with room for their dimension lines."""
+        for n in OVERVIEW_SCALES:
+            width = sum(b["w"] for b in blocks) / n + OVERVIEW_GUTTER_CM * len(blocks)
+            if width <= OVERVIEW_WIDTH_CM and max(b["h"] for b in blocks) / n <= OVERVIEW_HEIGHT_CM:
+                return n
+        return OVERVIEW_SCALES[-1]
+
+    def _fit_text(self, text, width_pt, size, min_size=4.2, font="Helvetica"):
+        """(text, size) that fits the width: first a smaller size, then cut with '...'."""
+        text = str(text)
+        while size > min_size and self.c.stringWidth(text, font, size) > width_pt:
+            size -= 0.2
+        while len(text) > 4 and self.c.stringWidth(text, font, size) > width_pt:
+            text = text[:-4].rstrip() + "..."
+        return text, size
+
+    def _dim_h(self, xa, xb, y, label, sub=None, above=True):
+        c = self.c
+        c.setStrokeColor(DIM_COLOUR)
+        c.setFillColor(DIM_COLOUR)
+        c.setLineWidth(0.6)
+        c.line(xa, y, xb, y)
+        for x, sgn in ((xa, 1), (xb, -1)):
+            pth = c.beginPath()
+            pth.moveTo(x, y)
+            pth.lineTo(x + sgn * 3.2, y + 1.3)
+            pth.lineTo(x + sgn * 3.2, y - 1.3)
+            pth.close()
+            c.drawPath(pth, stroke=0, fill=1)
+        mid = (xa + xb) / 2
+
+        def write(text, yy, font, size, colour):
+            half = c.stringWidth(text, font, size) / 2 + 1.5              # a light patch keeps the text readable over lines
+            c.setFillColor(OVERVIEW_FILL)
+            c.rect(mid - half, yy - 1.2, 2 * half, size + 1.0, stroke=0, fill=1)
+            c.setFillColor(colour)
+            c.setFont(font, size)
+            c.drawCentredString(mid, yy, text)
+
+        write(label, y + 2.2 if above else y - 6.6, "Helvetica-Bold", 5.6, colors.black)
+        if sub:
+            txt, size = self._fit_text(sub, max(abs(xb - xa) - 4, 30), 5.0)
+            write(txt, y - 6.4 if above else y - 12.4, "Helvetica", size, GRAY)
+
+    def _dim_v(self, x, ya, yb, label, left=True):
+        """Vertical dimension line from ya (top) to yb (bottom); the label is written along it."""
+        c = self.c
+        c.setStrokeColor(DIM_COLOUR)
+        c.setFillColor(DIM_COLOUR)
+        c.setLineWidth(0.6)
+        c.line(x, ya, x, yb)
+        for y, sgn in ((ya, -1), (yb, 1)):
+            pth = c.beginPath()
+            pth.moveTo(x, y)
+            pth.lineTo(x - 1.3, y + sgn * 3.2)
+            pth.lineTo(x + 1.3, y + sgn * 3.2)
+            pth.close()
+            c.drawPath(pth, stroke=0, fill=1)
+        width = c.stringWidth(label, "Helvetica-Bold", 5.6)
+        # centred on the line; a label longer than its line hangs down from the line's top instead
+        top = ya if abs(ya - yb) < width else (ya + yb) / 2 + width / 2
+        c.saveState()
+        c.translate(x - 2.0 if left else x + 6.0, top - width)
+        c.rotate(90)
+        c.setFillColor(colors.black)
+        c.setFont("Helvetica-Bold", 5.6)
+        c.drawString(0, 0, label)
+        c.restoreState()
+
+    def _page_overview(self):
+        """
+        One page that can be read at a glance: the real front, back and sleeve side by side at the same reduced
+        scale 1:n, the important dimensions written on them with this customer's numbers, and the measurements
+        entered. It is an overview, not a cutting template.
+        """
+        c, ctx = self.c, self.ctx
+        attrs = self.pattern.get("design_attributes", {}) or {}
+        pretty = lambda v: str(v).replace("-", " ").capitalize() if v else "-"    # noqa: E731
+        c.setFillColor(GREEN)
+        c.setFont("Helvetica-Bold", 20)
+        c.drawCentredString(PAGE_W / 2, PAGE_H - 1.7 * CM, "DIGITAL TAILOR SYSTEM")
+        c.setFillColor(colors.black)
+        c.setFont("Helvetica-Bold", 12)
+        c.drawCentredString(PAGE_W / 2, PAGE_H - 2.4 * CM, "Measurement-based pattern overview")
+
+        # customer and design
+        left, right = OVERVIEW_LEFT_CM * CM, (OVERVIEW_LEFT_CM + OVERVIEW_WIDTH_CM) * CM
+        top = PAGE_H - 3.0 * CM
+        c.setFillColor(PALE)
+        c.roundRect(left, top - 3.5 * CM, 11.0 * CM, 3.5 * CM, 6, stroke=0, fill=1)
+        ease = (self.pattern.get("measurements_used") or {}).get("ease_profile") or {}
+        sleeve = pretty(attrs.get("sleeve_length"))
+        if attrs.get("sleeve_style") not in (None, "none"):
+            sleeve += " / " + pretty(attrs.get("sleeve_style")).lower()
+        y = top - 0.55 * CM
+        for label, value in (("Customer", ctx.get("customer_name")), ("Garment", pretty(attrs.get("garment_type"))),
+                             ("Neckline", pretty(attrs.get("neckline_type"))), ("Sleeve", sleeve),
+                             ("Fabric", self.fabric_name), ("Fit", ease.get("fit_label") or self.meas.get("fit_preference"))):
+            self._text(left + 0.4 * CM, y, f"{label}:", 8.5, True, GREEN)
+            self._text(left + 3.2 * CM, y, str(value or "-")[:46], 8.5)
+            y -= 0.5 * CM
+        c.setFillColor(PALE)
+        c.roundRect(left + 11.6 * CM, top - 0.7 * CM, right - left - 11.6 * CM, 0.7 * CM, 5, stroke=0, fill=1)
+        c.setFillColor(GREEN)
+        c.setFont("Helvetica-Bold", 8)
+        c.drawCentredString((left + 11.6 * CM + right) / 2, top - 0.47 * CM,
+                            "ALL MEASUREMENTS IN INCHES" if self.unit == "in" else "ALL MEASUREMENTS IN CM")
+        if ctx.get("image_path"):
+            try:
+                from reportlab.lib.utils import ImageReader
+                img = ImageReader(ctx["image_path"])
+                iw, ih = img.getSize()
+                bw, bh = right - left - 11.6 * CM, 2.6 * CM
+                r = min(bw / iw, bh / ih)
+                c.drawImage(img, left + 11.6 * CM + (bw - iw * r) / 2, top - 3.5 * CM + (bh - ih * r) / 2, iw * r, ih * r)
+            except Exception:                           # noqa: BLE001 - a missing/corrupt photo must not stop the PDF
+                pass
+
+        # the blocks, all at one scale
+        names = {"front_bodice": "FRONT", "back_bodice": "BACK", "sleeve": "SLEEVE"}
+        blocks = []
+        for piece in self._block_pieces():
+            xs_ = [q[0] for q in piece["outline"]]
+            ys_ = [q[1] for q in piece["outline"]]
+            blocks.append({"piece": piece, "min_x": min(xs_), "min_y": min(ys_), "w": max(xs_) - min(xs_), "h": max(ys_) - min(ys_)})
+        n = self._overview_scale(blocks)
+        k = CM / n                                                         # points on the page per cm of pattern
+        self.overview_scale = n
+        spare = OVERVIEW_WIDTH_CM - sum(b["w"] for b in blocks) / n - OVERVIEW_GUTTER_CM * len(blocks)
+        gap = max(spare, 0.0) / len(blocks) * CM
+        bar_top = top - 4.1 * CM
+        y0 = bar_top - 1.6 * CM                                            # top of every block
+        lowest = y0
+        cursor = left
+        for b in blocks:
+            piece, kind = b["piece"], b["piece"].get("piece_type")
+            panel_w = b["w"] * k + OVERVIEW_GUTTER_CM * CM + gap
+            x0 = cursor + OVERVIEW_GUTTER_LEFT_CM * CM + gap / 2
+
+            def P(q, x0=x0, b=b):
+                return x0 + (q[0] - b["min_x"]) * k, y0 - (q[1] - b["min_y"]) * k
+
+            c.setFillColor(GREEN)
+            c.roundRect(cursor + 2, bar_top - 0.6 * CM, panel_w - 4, 0.6 * CM, 4, stroke=0, fill=1)
+            c.setFillColor(colors.white)
+            c.setFont("Helvetica-Bold", 9)
+            c.drawCentredString(cursor + panel_w / 2, bar_top - 0.42 * CM, names[kind])
+
+            pth = c.beginPath()
+            pth.moveTo(*P(piece["outline"][0]))
+            for q in piece["outline"][1:]:
+                pth.lineTo(*P(q))
+            pth.close()
+            c.setStrokeColor(colors.black)
+            c.setFillColor(OVERVIEW_FILL)
+            c.setLineWidth(1.0)
+            c.drawPath(pth, stroke=1, fill=1)
+            if piece.get("fold_line"):
+                c.setDash(3, 2)
+                c.setLineWidth(0.9)
+                c.line(*P(piece["fold_line"]["start"]), *P(piece["fold_line"]["end"]))
+                c.setDash()
+            c.setStrokeColor(colors.HexColor("#8A8F94"))
+            c.setLineWidth(0.5)
+            for d in piece.get("darts") or []:
+                for leg in ("leg_a", "leg_b"):
+                    c.line(*P(d["apex"]), *P(d[leg]))
+                    if "lower_apex" in d:
+                        c.line(*P(d["lower_apex"]), *P(d[leg]))
+
+            block_right = x0 + b["w"] * k
+            below = []
+            for d in piece.get("dimensions") or []:
+                a, e = P(d["a"]), P(d["b"])
+                value = self._one(d["value_cm"])
+                formula = str((self.trace.get(d.get("trace")) or {}).get("formula") or "").split(";")[0].strip()
+                sub = (("cm: " if self.unit == "in" else "") + formula) if formula and any(ch.isdigit() for ch in formula) else None
+                did = d["id"]
+                if did == "neck_width":
+                    self._dim_h(a[0], e[0], y0 + 0.45 * CM, f"Neck {value}")
+                elif did == "shoulder":
+                    c.saveState()
+                    c.translate((a[0] + e[0]) / 2, (a[1] + e[1]) / 2)
+                    c.rotate(math.degrees(math.atan2(e[1] - a[1], e[0] - a[0])))
+                    c.setFillColor(colors.black)
+                    c.setFont("Helvetica-Bold", 5.2)
+                    c.drawCentredString(0, 2.4, f"Shoulder {value}")
+                    c.restoreState()
+                elif did == "neck_depth":
+                    self._dim_v(x0 - 0.3 * CM, a[1], e[1], f"{d['label']} {value}")
+                elif did == "shoulder_to_waist":
+                    self._dim_v(x0 - 0.65 * CM, a[1], e[1], f"Length to waist {value}")
+                elif did == "armhole_depth":
+                    self._dim_v(block_right + 0.3 * CM, a[1], e[1], f"Armhole depth {value}", left=False)
+                elif did == "garment_length":
+                    self._dim_v(block_right + 0.7 * CM, a[1], e[1], f"Garment length {value}", left=False)
+                elif did in ("bust_width", "waist_width", "hip_width", "sleeve_width"):
+                    self._dim_h(a[0], e[0], a[1], f"{d['label']} {value}", sub)
+                elif did == "sleeve_length":
+                    self._dim_v(x0 - 0.3 * CM, a[1], e[1], f"Sleeve length {value}")
+                elif did == "cap_height":
+                    self._dim_v(block_right + 0.3 * CM, a[1], e[1], f"Cap height {value}", left=False)
+                elif did == "sleeve_end":
+                    self._dim_h(a[0], e[0], a[1] - 0.3 * CM, f"Sleeve end {value}", sub, above=False)
+                else:                                                      # short or curved: listed under the block
+                    below.append(f"{d['label']}: {value}")
+            if kind == "sleeve":
+                yy = y0 - b["h"] * k + 0.3 * CM
+                c.setFillColor(GRAY)
+                c.setFont("Helvetica", 5.2)
+                c.drawCentredString(x0 + b["w"] * k * 0.34, yy, "front")
+                c.drawCentredString(x0 + b["w"] * k * 0.66, yy, "back")
+            yy = y0 - b["h"] * k - (1.15 if kind == "sleeve" else 0.5) * CM
+            for line in below:
+                self._text(x0, yy, line, 6.2, False, colors.HexColor("#333333"))
+                yy -= 0.3 * CM
+            if kind == "sleeve":
+                yy = self._overview_sleeve_check(cursor + 0.2 * CM, yy - 0.25 * CM, panel_w - 0.4 * CM)
+            lowest = min(lowest, yy)
+            cursor += panel_w
+        if not any(b["piece"].get("piece_type") == "sleeve" for b in blocks):
+            self._text(left, lowest - 0.1 * CM, "Sleeveless design: no sleeve piece.", 7, False, GRAY)
+
+        # measurements entered (those this design uses)
+        table_top = 7.7 * CM
+        c.setFillColor(PALE)
+        c.roundRect(left, table_top - 0.1 * CM, right - left, 0.6 * CM, 4, stroke=0, fill=1)
+        self._text(left + 0.3 * CM, table_top + 0.08 * CM, "MEASUREMENTS ENTERED", 9, True, GREEN)
+        entered = ctx.get("original_values") or {}
+        needed = set(ms.required_for_design(attrs))                        # a sleeveless design lists no sleeve values
+        rows = []
+        for f in ms.REQUIREMENTS["fields"]:
+            v = self.meas.get(f["key"])
+            if v is None or (f["kind"] != "design" and f["key"] not in needed):
+                continue
+            e = entered.get(f["key"]) or {}
+            typed = f"{e['value']:g} {e.get('unit', '')}".strip() if isinstance(e.get("value"), (int, float)) else None
+            shown = self._one(v)
+            other_unit = typed and e.get("unit") in ("cm", "in") and e.get("unit") != self.unit
+            rows.append((f["label"], f"{shown}  (typed {typed})" if other_unit else shown))   # only when typed in the other unit
+        half = max((len(rows) + 1) // 2, 1)
+        col_w = (right - left) / 2
+        c.setStrokeColor(colors.HexColor("#C9D3CC"))
+        c.setLineWidth(0.4)
+        for i, (label, value) in enumerate(rows):
+            col, row = divmod(i, half)
+            x, y = left + col * col_w, table_top - 0.55 * CM - row * 0.42 * CM
+            self._text(x + 0.3 * CM, y, label, 7.8, True)
+            self._text(x + 5.0 * CM, y, value, 7.8)
+            c.line(x + 0.2 * CM, y - 0.12 * CM, x + col_w - 0.2 * CM, y - 0.12 * CM)
+
+        # what this page is
+        c.setFillColor(PALE)
+        c.roundRect(left, 0.9 * CM, right - left, 2.3 * CM, 6, stroke=0, fill=1)
+        c.setFillColor(colors.black)
+        c.setFont("Helvetica-Bold", 11)
+        c.drawCentredString(PAGE_W / 2, 2.6 * CM, f"REDUCED SCALE 1:{n}  -  Overview  -  Not a cutting template")
+        c.setFont("Helvetica", 7.4)
+        for i, line in enumerate((
+                f"Drawn 1:{n} when printed at 100 %: 1 cm on this page is {n} cm of the pattern. The real-size pattern is a separate download.",
+                "Dimensions are on the sewing line: ease is included, seam allowance is not. Neck width and neck depths are design values you can change.",
+                "The values come from a geometric calculation; the fit has not been tested. Sew a test garment before cutting good fabric.")):
+            c.drawCentredString(PAGE_W / 2, (2.15 - 0.36 * i) * CM, line)
+        self._scale_note = f"Overview at reduced scale 1:{n} - not a cutting template"
+        self._footer()
+        self._scale_note = None
+        c.showPage()
+
+    def _overview_sleeve_check(self, x, y, width):
+        """Armhole against sleeve cap, and the fabric to buy, in the free space under the sleeve block."""
+        cap = self.pattern.get("sleeve_cap") or {}
+        if cap.get("has_sleeve"):
+            status = cap.get("status", "-")
+            self._text(x, y, "Sleeve cap against armhole", 7.2, True, GREEN)
+            y -= 0.36 * CM
+            for label, value in (("Armhole (front + back)", self._one(cap.get("bodice_armhole_seam_cm"))),
+                                 ("Sleeve cap", self._one(cap.get("sleeve_cap_seam_cm"))),
+                                 (str(cap.get("difference_is", "ease")).capitalize(), self._one(cap.get("difference_cm")))):
+                self._text(x, y, f"{label}: {value}", 6.6)
+                y -= 0.3 * CM
+            self._text(x, y, f"Result: {status}", 7.2, True, RED if status == "REVIEW" else colors.HexColor("#1B5E20"))
+            y -= 0.55 * CM
+        rows = self.ctx.get("width_estimates") or []
+        if rows:
+            self._text(x, y, "Fabric to buy", 7.2, True, GREEN)
+            y -= 0.36 * CM
+            for r in rows:
+                txt = (f"{r['fabric_width_in']} in wide: {r['recommended_purchase_m']} m / {r.get('recommended_purchase_yd', '-')} yd"
+                       if r.get("fits") else f"{r['fabric_width_in']} in wide: does not fit")
+                self._text(x, y, txt, 6.6)
+                y -= 0.3 * CM
+            y = self._para(x, y, "From the full-size layout of the pieces.", width, 6, color=GRAY, leading=0.28)
+        return y
 
     # ── page 2: printing ────────────────────────────────────────────────────
     def _page_print(self):
@@ -937,7 +1255,8 @@ class PDFGenerator:
             self._on_pattern_page = False
             draw()
         self.c.save()
-        self.info = {"pages": self.page_no, "tiles": len(self.tiles) if self.part != "report" else 0,
+        self.info = {"pages": self.page_no, "tiles": len(self.tiles) if self.part in ("all", "pattern") else 0,
+                     "overview_scale": getattr(self, "overview_scale", None),
                      "grid": (self.cols, self.rows), "part": self.part, "report_pages": self.front_pages,
                      "sheet_cm": (round(self.sheet_w, 2), round(self.sheet_h, 2))}
         return self.out

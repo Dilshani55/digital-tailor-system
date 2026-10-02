@@ -29,7 +29,7 @@ mismatch** (see [THESIS_RECONCILIATION.md](THESIS_RECONCILIATION.md)).
 | Fit validity | Pending human validation | no muslin / body fit trial; sheet in [HUMAN_VALIDATION.md](HUMAN_VALIDATION.md) |
 | Fabric recommendation (rule-based, explained) | Complete | `FabricRecommendation.test.jsx`, `test_fabric_selection_and_widths.py` |
 | Nesting + fabric requirement for 36" / 45" / 60" (heuristic, exact checks; m, yd, m², yd²; one-way fabric option) | Complete (extended) | [fabric-calculation.md](fabric-calculation.md); `test_nesting.py`, `test_design_matrix.py`; heuristic, not a minimum |
-| PDF: measurement report (block overviews NOT TO SCALE, calculations, fabric table) + printable 1:1 tiled pattern, together or separately | Complete (extended) | `test_pdf_export.py`; `backend/tools/verify_pdf.py` checks a produced file (A4, 5.00 cm square, sections) and runs inside the browser test |
+| PDF: one-page pattern overview (the real blocks at a reduced scale 1:n with their measurements; the app's default), measurement report (calculations, fabric table) + printable 1:1 tiled pattern, together or separately | Complete (extended) | `test_pdf_export.py`; `backend/tools/verify_pdf.py` checks a produced file (A4, 5.00 cm square, sections) and runs inside the browser test |
 | Printed scale on a real printer | Pending human validation | sheet in [HUMAN_VALIDATION.md](HUMAN_VALIDATION.md) |
 | Fabric consumption against a tailor / cloth really used | Pending human validation | no estimates collected |
 | Usability study | Pending human validation | in-app rating exists; no participants |
@@ -43,7 +43,7 @@ mismatch** (see [THESIS_RECONCILIATION.md](THESIS_RECONCILIATION.md)).
 
 | Suite | Result |
 |---|---|
-| Backend unittest | 472 passed, 0 skipped |
+| Backend unittest | 474 passed, 0 skipped |
 | Frontend vitest | 164 passed |
 | ESLint | 0 errors, 0 warnings |
 | Production build | succeeds |

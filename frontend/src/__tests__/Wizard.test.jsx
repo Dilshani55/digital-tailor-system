@@ -143,11 +143,20 @@ describe('creation wizard — full workflow', () => {
 
     fireEvent.click(screen.getByText('Continue to PDF export'));
     await heading('Printable pattern (PDF)');
-    expect(screen.getByText(/100% \/ Actual size/)).toBeTruthy();
     expect(screen.getByTestId('tile-preview')).toBeTruthy();
+    // default: the one-page overview at a reduced scale - nothing about real-size printing is promised
+    expect(screen.getByTestId('pdf-part-overview').checked).toBe(true);
+    expect(screen.getByTestId('pdf-overview-note').textContent).toMatch(/not for cutting/);
+    expect(screen.queryByText(/100% \/ Actual size/)).toBeNull();
     fireEvent.click(screen.getByText('Create printable PDF'));
     await screen.findByTestId('pdf-ready');
-    expect(exportAPI.pdf).toHaveBeenCalledWith('p1', { part: 'all', unit: 'cm' });
+    expect(exportAPI.pdf).toHaveBeenCalledWith('p1', { part: 'overview', unit: 'cm' });
+    fireEvent.click(screen.getByTestId('pdf-part-all'));              // the real-size pattern is still one click away
+    expect(screen.getByText(/100% \/ Actual size/)).toBeTruthy();
+    expect(screen.queryByTestId('pdf-overview-note')).toBeNull();
+    fireEvent.click(screen.getByText('Create printable PDF'));
+    await screen.findByTestId('pdf-ready');
+    expect(exportAPI.pdf).toHaveBeenLastCalledWith('p1', { part: 'all', unit: 'cm' });
     expect(screen.getByTestId('pdf-ready').textContent).toMatch(/14 pages/);
     fireEvent.click(screen.getByTestId('pdf-part-report'));           // another content needs another PDF
     expect(screen.queryByTestId('pdf-ready')).toBeNull();
@@ -205,7 +214,10 @@ describe('creation wizard — full workflow', () => {
 
     fireEvent.click(stepButton('Download PDF'));                       // PDF contents + the create button explains
     expect(screen.getByTestId('step-empty').textContent).toMatch(/No pattern to export yet/);
+    expect(screen.getByText(/Reduced-scale overview/)).toBeTruthy();   // the default PDF: one page, not real size
+    fireEvent.click(screen.getByTestId('pdf-part-pattern'));
     expect(screen.getByText(/Calibration square 5 × 5 cm/)).toBeTruthy();
+    fireEvent.click(screen.getByTestId('pdf-part-overview'));
     expect(screen.getByTestId('pdf-placeholder')).toBeTruthy();
     expect(screen.getByTestId('readiness').querySelectorAll('li')).toHaveLength(5);
     fireEvent.click(screen.getByText('Create printable PDF'));

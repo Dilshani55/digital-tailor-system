@@ -1,6 +1,7 @@
 """Printable 1:1 tiled PDF + export routes (fabric estimate, PDF) - vector-level verification with PyMuPDF."""
 import copy
 import os
+import re
 import tempfile
 import unittest
 from unittest.mock import MagicMock, patch
@@ -55,9 +56,9 @@ class TestPrintablePdf(unittest.TestCase):
     def test_pages_and_a4(self):
         self.assertEqual(len(self.doc), self.gen.info["pages"])
         self.assertEqual(len(self.doc), self.gen.front_pages + len(self.gen.tiles))
-        # cover, measurements, front, back, sleeve, why this size (2), pieces, fabric + printing instructions
-        self.assertEqual(self.gen.front_pages, 10)
-        self.assertEqual([k for k, _ in self.gen.plan].count("report"), 9)
+        # overview, cover, measurements, front, back, sleeve, why this size (2), pieces, fabric + printing instructions
+        self.assertEqual(self.gen.front_pages, 11)
+        self.assertEqual([k for k, _ in self.gen.plan].count("report"), 10)
         for page in self.doc:
             self.assertAlmostEqual(page.rect.width, 595.28, delta=0.5)
             self.assertAlmostEqual(page.rect.height, 841.89, delta=0.5)
@@ -85,7 +86,7 @@ class TestPrintablePdf(unittest.TestCase):
         self.assertGreaterEqual(on_tiles, 1, "no tile carries the calibration square")
 
     def test_summary_page_contents(self):
-        cover = self.doc[0].get_text()
+        cover = self.doc[1].get_text()                                   # page 1 is the pattern overview
         meas = _page(self.doc, "Measurements").get_text()
         pieces = _page(self.doc, "Pattern pieces").get_text()
         for word in ("Cotton Poplin", "Round Neck", "Confirmed design", "Regular fit", "Drafting method", "toile"):
@@ -140,11 +141,13 @@ class TestPrintablePdf(unittest.TestCase):
     def test_report_and_cutting_pattern_can_be_made_separately(self):
         report, _, _ = _generate(os.path.join(self.tmp, "r.pdf"), part="report")
         doc = pymupdf.open(os.path.join(self.tmp, "r.pdf"))
-        self.assertEqual(len(doc), 9)
+        self.assertEqual(len(doc), 10)
         self.assertEqual(report.info["tiles"], 0)
-        for page in doc:
-            self.assertIn("NOT to scale", page.get_text())                  # nothing in the report claims to be 1:1
-            self.assertNotIn("scale 1:1", page.get_text())
+        self.assertIn("Not a cutting template", doc[0].get_text())          # the overview page comes first
+        for page in list(doc)[1:]:
+            self.assertIn("NOT to scale", page.get_text())
+        for page in doc:                                                    # nothing in the report claims to be 1:1
+            self.assertIsNone(re.search(r"scale 1:1(?![0-9])", page.get_text()))
         pattern, _, _ = _generate(os.path.join(self.tmp, "c.pdf"), part="pattern")
         doc = pymupdf.open(os.path.join(self.tmp, "c.pdf"))
         self.assertEqual(len(doc), 1 + len(pattern.tiles))
@@ -153,6 +156,47 @@ class TestPrintablePdf(unittest.TestCase):
             self.assertIn("scale 1:1", page.get_text())
         with self.assertRaises(ValueError):
             pg.PDFGenerator(self.data, self.nest, {}, {}, os.path.join(self.tmp, "bad.pdf"), part="everything")
+
+    def test_overview_is_one_page_with_the_real_blocks_at_a_stated_reduced_scale(self):
+        gen, data, _ = _generate(os.path.join(self.tmp, "o.pdf"), part="overview")
+        doc = pymupdf.open(os.path.join(self.tmp, "o.pdf"))
+        self.assertEqual((len(doc), gen.info["tiles"]), (1, 0))             # no real-size pages at all
+        text = doc[0].get_text()
+        n = gen.info["overview_scale"]
+        self.assertIn(n, pg.OVERVIEW_SCALES)
+        self.assertGreater(n, 1)                                            # reduced, never real size
+        for word in ("Measurement-based pattern overview", "FRONT", "BACK", "SLEEVE", f"REDUCED SCALE 1:{n}",
+                     "Not a cutting template", "MEASUREMENTS ENTERED", "ALL MEASUREMENTS IN CM", "Sleeve cap against armhole"):
+            self.assertIn(word, text)
+        self.assertNotIn("Actual size", text)
+        self.assertEqual(self._squares(doc[0]), [])                         # no calibration square: nothing here is 1:1
+        dims = {p["piece_type"]: {d["id"]: d["value_cm"] for d in p["dimensions"]} for p in data["pattern_pieces"]
+                if p.get("dimensions")}
+        for label, value in (("Bust width", dims["front_bodice"]["bust_width"]), ("Bust width", dims["back_bodice"]["bust_width"]),
+                             ("Garment length", dims["back_bodice"]["garment_length"]), ("Sleeve width", dims["sleeve"]["sleeve_width"]),
+                             ("Front neck depth", dims["front_bodice"]["neck_depth"])):
+            self.assertIn(f"{label} {value:.1f} cm", text)                  # this pattern's own numbers, not sample values
+        self.assertNotEqual(dims["front_bodice"]["bust_width"], dims["back_bodice"]["bust_width"])
+        # the real block, really drawn at 1:n - the front's sewing line is as tall as the piece divided by n
+        front = next(p for p in data["pattern_pieces"] if p["piece_type"] == "front_bodice")
+        ys = [q[1] for q in front["outline"]]
+        want = (max(ys) - min(ys)) / n * pg.CM
+        heights = [d["rect"].height for d in doc[0].get_drawings() if d.get("fill") and d["rect"].height > 100]
+        self.assertTrue(any(abs(h - want) < 1.0 for h in heights), (want, heights))
+
+    def test_overview_in_inches_and_for_a_sleeveless_design(self):
+        _generate(os.path.join(self.tmp, "oi.pdf"), part="overview", context={"unit": "in"})
+        text = pymupdf.open(os.path.join(self.tmp, "oi.pdf"))[0].get_text()
+        self.assertIn("ALL MEASUREMENTS IN INCHES", text)
+        back = next(p for p in self.data["pattern_pieces"] if p["piece_type"] == "back_bodice")
+        bust = next(d for d in back["dimensions"] if d["id"] == "bust_width")["value_cm"]
+        self.assertIn(f"Bust width {bust / 2.54:.2f} in", text)
+        path = os.path.join(self.tmp, "os.pdf")
+        _generate(path, part="overview", sleeve="sleeveless")
+        text = pymupdf.open(path)[0].get_text()
+        self.assertIn("Sleeveless design: no sleeve piece.", text)
+        self.assertNotIn("SLEEVE", [ln.strip() for ln in text.splitlines()])    # no sleeve panel is invented
+        self.assertNotIn("Sleeve length", text)                             # nor sleeve measurements the design does not use
 
     def test_lengths_follow_the_selected_unit(self):
         _generate(os.path.join(self.tmp, "in.pdf"), part="report", context={"unit": "in"})
@@ -351,13 +395,16 @@ class TestExportRoutes(unittest.TestCase):
         body = r.get_json()
         self.assertEqual(r.status_code, 201, body)
         doc = pymupdf.open(os.path.join(out, body["filename"]))
-        cover = doc[0].get_text()
+        cover = doc[1].get_text()                                        # page 1 is the pattern overview
         for word in ("Amara Silva", "amara@example.com", "Wedding blouse", "65f0c0ffee00000000000001", "2026-09-30",
                      "Corrected by user", "V Neck (42.0 %)", "AI prediction confirmed", "Blouse (91.0 %)", "Cotton Poplin",
                      "Fabric requirement"):
             self.assertIn(word, cover)
         self.assertTrue(doc[0].get_images(), "the customer's design image is not embedded")
         self.assertIn("34.65 in", _page(doc, "Measurements").get_text())   # value as entered
+        overview = doc[0].get_text()
+        self.assertIn("(typed 34.65 in)", overview)                        # typed in the other unit: shown next to the cm value
+        self.assertEqual(overview.count("(typed"), 1)                      # values typed in cm are not repeated
         fabric = _page(doc, "Fabric requirement").get_text()
         for word in ("36 in / 91.44 cm", "45 in / 114.3 cm *", "60 in / 152.4 cm", "the width chosen", "Need to buy",
                      "Pattern area", "Fabric bought", "Waste", "Fabric use", " yd", " m2", " yd2",
@@ -367,14 +414,15 @@ class TestExportRoutes(unittest.TestCase):
             t = page.get_text()
             self.assertIn("Pattern 65f0c0ffee00000000000001", t)
             self.assertIn("Customer Amara Silva", t)
-            self.assertTrue(("Units cm - scale 1:1" in t) != ("drawings NOT to scale" in t))   # one or the other
+            kinds = ("Units cm - scale 1:1" in t, "drawings NOT to scale" in t, "Overview at reduced scale 1:" in t)
+            self.assertEqual(sum(kinds), 1, kinds)                           # every page says exactly which it is
 
     @unittest.skipIf(pymupdf is None, "SKIPPED: pymupdf not installed")
     def test_report_only_and_pattern_only_downloads(self):
         out = tempfile.mkdtemp()
         self.app.config["OUTPUT_FOLDER"] = out
         pages = {}
-        for part in ("report", "pattern", "all"):
+        for part in ("overview", "report", "pattern", "all"):
             with patch("app.routes.export.PatternResult") as pr, patch("app.routes.export.PdfExport") as pe:
                 pr.objects.return_value.first.return_value = self._pattern()
                 pe.return_value.id = "e1"
@@ -383,7 +431,9 @@ class TestExportRoutes(unittest.TestCase):
             self.assertEqual(r.status_code, 201, body)
             self.assertEqual((body["part"], body["unit"]), (part, "in"))
             pages[part] = body["pages"]
-            self.assertEqual("NOT to scale" in body["print_scale"], part == "report")
+            self.assertEqual("NOT to scale" in body["print_scale"], part in ("report", "overview"))
+            self.assertEqual(body["overview_scale"] is None, part == "pattern")
+        self.assertEqual(pages["overview"], 1)                               # one page, reduced scale
         self.assertEqual(pages["report"] + pages["pattern"], pages["all"])
         for bad in ({"part": "everything"}, {"unit": "mm"}):
             with patch("app.routes.export.PatternResult") as pr:

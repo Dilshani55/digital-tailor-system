@@ -75,9 +75,11 @@ Full description and a worked example: [fabric-calculation.md](fabric-calculatio
 
 ## Printable PDF (`logic/pdf_generator.py`)
 
-Built **only from stored data** — the validated pieces saved with the pattern, the measurement snapshot and the drafting information saved at generation time; the pattern is never re-drafted for the PDF. It has two parts, which can also be exported separately (`part`: `all`, `report`, `pattern`).
+Built **only from stored data** — the validated pieces saved with the pattern, the measurement snapshot and the drafting information saved at generation time; the pattern is never re-drafted for the PDF. It has two parts, which can also be exported separately (`part`: `all`, `overview`, `report`, `pattern`). The app creates the one-page **overview** unless the user chooses another part; the real-size pattern is never the default.
 
-**Report (not to scale)**
+**Pattern overview (reduced scale, one page)** – the real front, back and sleeve outlines side by side at the same scale 1:n (the largest of 1:4 … 1:20 that fits; 1:7 for a medium blouse), so 1 cm on the page is n cm of the pattern when printed at 100 %. The main dimensions are written on the blocks with this customer's numbers and, for the widths, the calculation; shorter values (darts, curve lengths) are listed under each block. The page also shows the customer and design, the sleeve-cap check, the fabric to buy and the measurements entered. It is for reading, not a cutting template, and says so.
+
+**Report (not to scale)** – starts with the overview page, then:
 
 1. **Project summary** – customer, design/project name, pattern ID, date, the design image, the confirmed garment type / neckline / sleeve length / sleeve style with the AI prediction and whether the user confirmed or corrected it, fabric, fit and ease, the drafting method, and the 36"/45"/60" fabric summary.
 2. **Measurements** – every value used, in the chosen unit and the other one, and the value exactly as entered.
