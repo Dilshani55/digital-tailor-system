@@ -3,22 +3,12 @@ import { useLocation } from 'react-router-dom';
 import { measurementsAPI } from '../services/api';
 import LoadingSpinner from '../components/LoadingSpinner';
 import {
-  MEASUREMENT_FIELDS, FIELD_KEYS, validateMeasurements, displayValue, parseFieldErrors, buildPayload, storedEntries,
+  MEASUREMENT_FIELDS, FIELD_KEYS, DESIGN_KEYS, validateMeasurements, parseFieldErrors, buildPayload, storedEntries, canonicalCm,
 } from '../utils/measurementSchema';
-import { GUIDES } from '../utils/measurementGuides';
+import { GUIDES, MISTAKES } from '../utils/measurementGuides';
 import { friendlyError } from '../utils/friendlyError';
-
-// Positions on the body diagram (only for the measurements it can show).
-const DIAGRAM = {
-  bust_cm: { n: 1, line: [28, 56, 72, 56], dot: [28, 56] },
-  waist_cm: { n: 2, line: [34, 78, 66, 78], dot: [34, 78] },
-  hip_cm: { n: 3, line: [30, 98, 70, 98], dot: [30, 98] },
-  shoulder_cm: { n: 4, line: [54, 25, 63, 28], dot: [63, 28] },
-  neck_cm: { n: 5, ellipse: [50, 25, 5, 2.5], dot: [50, 23] },
-  armhole_depth_cm: { n: 6, line: [36, 28, 36, 56], dot: [36, 42] },
-  sleeve_cm: { n: 7, path: 'M 63 28 C 65 35, 68 45, 68 55 C 68 62, 67 66, 65 72', dot: [68, 55] },
-  garment_length_cm: { n: 8, line: [45, 28, 45, 92], dot: [45, 92] },
-};
+import MeasureFigure from '../components/MeasureFigure';
+import MeasurementFields from '../components/MeasurementFields';
 
 const EMPTY = { client_name: '', fabric_type: 'woven', ...Object.fromEntries(FIELD_KEYS.map((k) => [k, ''])) };
 
@@ -41,6 +31,7 @@ export default function Measurements() {
   const [fieldErrors, setFieldErrors] = useState({});
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [serverWarnings, setServerWarnings] = useState([]);
   const inputs = useRef({});
 
   const loadProfile = (p) => {
@@ -108,15 +99,19 @@ export default function Measurements() {
       return;
     }
     const payload = { client_name: formData.client_name.trim(), ...buildPayload(formData, typedUnits, 'cm'), fabric_type: formData.fabric_type };
+    // a design value that was emptied goes back to its calculated value
+    const cleared = DESIGN_KEYS.filter((k) => formData[k] === '' || formData[k] === null || formData[k] === undefined);
     try {
+      let res;
       if (selectedProfileId) {
-        await measurementsAPI.update(selectedProfileId, payload);
+        res = await measurementsAPI.update(selectedProfileId, { ...payload, clear: cleared });
         setSuccess('Measurements updated.');
       } else {
-        const res = await measurementsAPI.save(payload);
+        res = await measurementsAPI.save(payload);
         if (res.data?.measurement_id) setSelectedProfileId(res.data.measurement_id);
         setSuccess('New measurement profile saved.');
       }
+      setServerWarnings(res?.data?.warnings || []);
       try {
         const updated = await measurementsAPI.getAll();
         setProfiles(updated.data.measurements || []);
@@ -137,15 +132,11 @@ export default function Measurements() {
 
   const reset = () => (selectedProfileId ? selectProfile(selectedProfileId) : loadProfile(null));
 
-  const focusField = (key) => {
-    setActiveField(key);
-    inputs.current[key]?.focus();
-  };
-
   if (loading) return <LoadingSpinner message="Loading measurement profiles..." />;
 
   const activeDef = MEASUREMENT_FIELDS.find((f) => f.key === activeField);
-  const missing = MEASUREMENT_FIELDS.filter((f) => formData[f.key] === '' || formData[f.key] === null).length;
+  const missing = MEASUREMENT_FIELDS.filter((f) => f.kind === 'measurement' && (formData[f.key] === '' || formData[f.key] === null)).length;
+  const cmValues = canonicalCm(formData, typedUnits);
 
   return (
     <div style={{ padding: 'clamp(12px, 3vw, 24px)', maxWidth: '1400px', margin: '0 auto' }}>
@@ -198,27 +189,14 @@ export default function Measurements() {
                      onChange={(e) => setField('client_name', e.target.value)} placeholder="e.g. Amara Silva" />
             </div>
 
-            {MEASUREMENT_FIELDS.map((field) => {
-              const key = field.key;
-              const message = fieldErrors[key];
-              return (
-                <div key={key} className="form-field" onMouseEnter={() => setActiveField(key)}
-                     style={{ borderLeft: `3px solid ${activeField === key ? 'var(--text-accent)' : 'transparent'}`, paddingLeft: '8px' }}>
-                  <label className="form-label" htmlFor={`profile-${key}`}>
-                    {DIAGRAM[key] ? `${DIAGRAM[key].n}. ` : ''}{field.label} ({unit})
-                  </label>
-                  <input
-                    id={`profile-${key}`} ref={(el) => { inputs.current[key] = el; }}
-                    type="text" inputMode="decimal" autoComplete="off" className="form-input"
-                    value={displayValue(formData[key], typedUnits[key] || 'cm', unit)} aria-invalid={message ? 'true' : 'false'}
-                    style={message ? { borderColor: '#B23B3B' } : undefined}
-                    onFocus={() => setActiveField(key)} onChange={(e) => setField(key, e.target.value)}
-                  />
-                  {message && <div role="alert" data-testid={`profile-error-${key}`} style={{ color: '#9B2C2C', fontSize: '12px' }}>{message}</div>}
-                </div>
-              );
-            })}
+          </div>
 
+          <MeasurementFields idPrefix="profile" keys={FIELD_KEYS} required={[]} values={formData} units={typedUnits} unit={unit}
+                             errors={fieldErrors} active={activeField} onActive={setActiveField} onChange={setField}
+                             errorTestId={(k) => `profile-error-${k}`} guideTestId={(k) => `profile-guide-${k}`}
+                             inputRefs={inputs} serverWarnings={serverWarnings} />
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(150px, 100%), 1fr))', gap: '14px 18px' }}>
             <div className="form-field">
               <label className="form-label" htmlFor="profile-fabric">Usual fabric construction</label>
               <select id="profile-fabric" className="form-select" value={formData.fabric_type} onChange={(e) => setField('fabric_type', e.target.value)}>
@@ -228,7 +206,7 @@ export default function Measurements() {
             </div>
           </div>
 
-          <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '14px' }}>Every value must be a number greater than 0; decimals are fine. Inches are converted exactly (1 in = 2.54 cm).</p>
+          <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '14px' }}>Every value must be a number greater than 0; decimals are fine. Inches are converted exactly (1 in = 2.54 cm). An unusual value is never refused: it only shows a &quot;please check&quot; note.</p>
           <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '16px', borderTop: '1px solid var(--border)', paddingTop: '16px' }}>
             <button type="button" className="btn btn-outline" onClick={reset}>Reset</button>
             <button type="submit" className="btn btn-primary">Save measurements</button>
@@ -239,32 +217,19 @@ export default function Measurements() {
           <h2 style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)', margin: 0, borderBottom: '1px solid var(--border)', paddingBottom: '12px' }}>
             How to measure
           </h2>
-          <div style={{ width: '100%', height: '340px', background: 'radial-gradient(circle at center, #1C2E24 0%, #111111 100%)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-            <svg viewBox="0 0 100 200" style={{ width: '100%', height: '92%' }} role="img" aria-label="Body diagram with numbered measurement positions">
-              <path d="M 50 15 C 53 15, 54 22, 54 24 C 54 24, 62 26, 64 28 C 66 30, 68 44, 68 55 C 68 62, 65 65, 63 68 C 61 70, 58 74, 58 84 C 58 94, 61 104, 62 110 C 63 116, 61 125, 59 135 L 59 190 L 52 190 L 51 145 L 49 145 L 48 190 L 41 190 L 41 135 C 39 125, 37 116, 38 110 C 39 104, 42 94, 42 84 C 42 74, 39 70, 37 68 C 35 65, 32 62, 32 55 C 32 44, 34 30, 36 28 C 38 26, 46 24, 46 24 C 46 22, 47 15, 50 15 Z"
-                    fill="none" stroke="#6B7280" strokeWidth="1.2" />
-              <circle cx="50" cy="18" r="4.5" fill="none" stroke="#6B7280" strokeWidth="1.2" />
-              {Object.entries(DIAGRAM).map(([key, d]) => {
-                const on = activeField === key;
-                const stroke = on ? '#7fd1a8' : '#4B5563';
-                return (
-                  <g key={key} style={{ cursor: 'pointer' }} onClick={() => focusField(key)}>
-                    {d.line && <line x1={d.line[0]} y1={d.line[1]} x2={d.line[2]} y2={d.line[3]} stroke={stroke} strokeWidth={on ? 2 : 1} />}
-                    {d.ellipse && <ellipse cx={d.ellipse[0]} cy={d.ellipse[1]} rx={d.ellipse[2]} ry={d.ellipse[3]} fill="none" stroke={stroke} strokeWidth={on ? 2 : 1} />}
-                    {d.path && <path d={d.path} fill="none" stroke={stroke} strokeWidth={on ? 2 : 1} />}
-                    <circle cx={d.dot[0]} cy={d.dot[1]} r={on ? 5 : 4} fill={on ? '#2d7a55' : '#374151'} />
-                    <text x={d.dot[0]} y={d.dot[1] + 3} fill="#FFF" fontSize="8" textAnchor="middle" fontWeight="bold">{d.n}</text>
-                  </g>
-                );
-              })}
-            </svg>
-          </div>
+          <MeasureFigure active={activeField} sleeveCm={cmValues.sleeve_cm} />
           <div style={{ background: 'var(--surface-2)', padding: '14px 16px', borderRadius: '8px', border: '1px solid var(--border)' }} data-testid="measure-guide">
             <span style={{ fontSize: '11px', fontWeight: 'bold', color: 'var(--text-accent)', display: 'block', textTransform: 'uppercase', marginBottom: '4px' }}>
-              {DIAGRAM[activeField] ? `${DIAGRAM[activeField].n}. ` : ''}{activeDef?.label}
+              {activeDef?.label}
             </span>
             <p style={{ margin: 0, fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.45 }}>{GUIDES[activeField]}</p>
+            <p style={{ margin: '6px 0 0', fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.45 }}>
+              <strong>Common mistake:</strong> {MISTAKES[activeField]}
+            </p>
           </div>
+          <p style={{ margin: 0, fontSize: '11px', color: 'var(--text-muted)' }}>
+            Select a measurement to see where it is taken on the front or back view. The drawing is a guide, not a body model.
+          </p>
         </div>
       </div>
     </div>

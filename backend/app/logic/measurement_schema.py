@@ -12,17 +12,26 @@ is an error.
 
 Validation
 ----------
-A provided value must be a finite number greater than 0 (decimals are fine). There are NO plausibility
-ranges or ratio rules: values are never clamped or changed. Measurements that cannot be drawn into a valid
-block are reported by the drafting engine itself (geometry feasibility), field by field.
+A provided value must be a finite number greater than 0 (decimals are fine). Values are never clamped, changed
+or rejected for being unusual: a value outside the usual range of a field only produces a WARNING
+(measurement_warnings) so a typing or unit mistake can be noticed. Measurements that cannot be drawn into a
+valid block are reported by the drafting engine itself (geometry feasibility), field by field.
 Required fields depend on the confirmed design (required_for_design); missing values are never invented.
+
+Kinds of field
+--------------
+measurement  taken on the body.
+design       a design value with a calculated default from the drafting method (neck width, neck depths, armhole
+             depth, bust-point distance). Empty = the calculated value is used, and shown as "calculated".
+legacy       measurements earlier versions asked for and the drafting method does not use (neck around, height,
+             one-shoulder length, across-back, wrist). They stay stored on old profiles and are never required.
 """
 
 import json
 import math
 import os
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 CANONICAL_UNIT = "cm"
 UNITS = ("cm", "in")
 CM_PER_INCH = 2.54
@@ -35,25 +44,18 @@ _REQ_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", 
 with open(_REQ_PATH, encoding="utf-8") as _f:
     REQUIREMENTS = json.load(_f)
 
-# how to measure (short); the full guide text lives in the frontend
-DESCRIPTIONS = {
-    "bust_cm": "Fullest part of the bust, tape horizontal",
-    "waist_cm": "Natural waist, narrowest point",
-    "hip_cm": "Fullest part of hips/seat",
-    "height_cm": "Total body height, barefoot (not used by any drafting calculation)",
-    "neck_cm": "Circumference at the base of the neck",
-    "shoulder_cm": "Side-neck point to shoulder tip",
-    "across_back_cm": "Between the two back armhole creases",
-    "back_waist_length_cm": "Nape to natural waist along the spine",
-    "armhole_depth_cm": "Shoulder line down to the underarm level",
-    "garment_length_cm": "Desired finished length from the high shoulder",
-    "bicep_cm": "Fullest part of the upper arm",
-    "sleeve_cm": "From the shoulder tip to where the sleeve should end (the wanted sleeve length)",
-    "wrist_cm": "Circumference at the wrist bone",
-}
+_FIELDS = REQUIREMENTS["fields"]
+DESCRIPTIONS = {f["key"]: f["guide"] for f in _FIELDS}           # how to measure
+KIND = {f["key"]: f["kind"] for f in _FIELDS}                    # measurement | design
+USUAL_CM = {f["key"]: tuple(f["usual_cm"]) for f in _FIELDS}     # only for warnings
 
-FIELD_KEYS = tuple(f["key"] for f in REQUIREMENTS["fields"])
-LABELS = {f["key"]: f["label"] for f in REQUIREMENTS["fields"]}
+LEGACY_KEYS = tuple(REQUIREMENTS["legacy_fields"])
+_LEGACY_LABELS = {"neck_cm": "Neck around", "height_cm": "Height", "shoulder_cm": "Shoulder length",
+                  "across_back_cm": "Across-back width", "wrist_cm": "Wrist around"}
+
+ACTIVE_KEYS = tuple(f["key"] for f in _FIELDS)                   # what the drafting method can use
+FIELD_KEYS = ACTIVE_KEYS + LEGACY_KEYS                           # everything a profile can store
+LABELS = {**{f["key"]: f["label"] for f in _FIELDS}, **_LEGACY_LABELS}
 
 # Accepted input aliases -> canonical key (older clients sent armhole_cm)
 ALIASES = {"armhole_cm": "armhole_depth_cm"}
@@ -79,9 +81,12 @@ def schema_payload():
         "canonical_unit": CANONICAL_UNIT,
         "accepted_units": list(UNITS),
         "cm_per_inch": CM_PER_INCH,
-        "fields": [{"key": k, "label": LABELS[k], "description": DESCRIPTIONS.get(k, "")} for k in FIELD_KEYS],
+        "fields": [{"key": f["key"], "label": f["label"], "description": f["guide"], "group": f["group"],
+                    "kind": f["kind"], "view": f["view"], "common_mistake": f["mistake"]} for f in _FIELDS],
+        "groups": REQUIREMENTS["groups"],
+        "legacy_fields": list(LEGACY_KEYS),
         "requirement_rules": REQUIREMENTS["rules"],
-        "validation": "every provided value must be a finite number greater than 0; no plausibility ranges",
+        "validation": "every provided value must be a finite number greater than 0; unusual values only warn",
         "fabric_types": list(FABRIC_TYPES),
         "fit_preferences": list(FIT_PREFERENCES),
     }
@@ -158,6 +163,43 @@ def convert_input(data, unit, units=None):
     return canonical, original, errors
 
 
+# ── warnings (never errors) ──────────────────────────────────────────────────
+def measurement_warnings(canonical):
+    """
+    [{field, code, message}] for values that may be a typing or unit mistake. A warning never blocks saving or
+    drafting and makes no judgement about the body: it only asks the user to look at the number again.
+    """
+    out = []
+
+    def warn(field, code, message):
+        out.append({"field": field, "code": code, "message": message})
+
+    for key in ACTIVE_KEYS:
+        v = canonical.get(key)
+        if v is None:
+            continue
+        lo, hi = USUAL_CM[key]
+        if v < lo or v > hi:
+            warn(key, "UNUSUAL_VALUE",
+                 f"{LABELS[key]} {v:g} cm is outside the usual range ({lo:g}-{hi:g} cm). "
+                 f"Please check the number and the unit (cm / inch).")
+    c = canonical.get
+    if c("shoulder_width_cm") and c("bust_cm") and c("shoulder_width_cm") >= c("bust_cm") / 2.0:
+        warn("shoulder_width_cm", "CHECK_PROPORTION",
+             "Shoulder to shoulder is at least half of the bust around. It is measured straight across the back, "
+             "from shoulder tip to shoulder tip.")
+    if c("sleeve_end_cm") and c("bicep_cm") and c("sleeve_end_cm") > c("bicep_cm") + 1e-9:
+        warn("sleeve_end_cm", "CHECK_PROPORTION",
+             "Sleeve end around is larger than the upper arm around. Please check both numbers.")
+    if c("shoulder_to_bust_cm") and c("back_waist_length_cm") and c("shoulder_to_bust_cm") >= c("back_waist_length_cm"):
+        warn("shoulder_to_bust_cm", "CHECK_PROPORTION",
+             "Shoulder to bust point is not shorter than back neck to waist. Please check both numbers.")
+    if c("garment_length_cm") and c("back_waist_length_cm") and c("garment_length_cm") < c("back_waist_length_cm"):
+        warn("garment_length_cm", "CHECK_PROPORTION",
+             "Garment length is shorter than back neck to waist: the garment would end above the waist.")
+    return out
+
+
 # ── required fields ──────────────────────────────────────────────────────────
 def missing_fields(canonical, required):
     return [k for k in required if canonical.get(k) is None]
@@ -191,10 +233,14 @@ def engine_measurements(profile, attributes):
     """
     required = required_for_design(attributes)
     canonical, errors = {}, {}
+    long_sleeve = (attributes or {}).get("sleeve_length") == "long-sleeve"
     for key in FIELD_KEYS:
         value = getattr(profile, key, None)
+        if key == "sleeve_end_cm" and value is None and long_sleeve:
+            # a long sleeve ends at the wrist: an older profile's wrist measurement IS its sleeve-end measurement
+            value = getattr(profile, "wrist_cm", None)
         if key == "armhole_depth_cm" and value is None:
-            value = getattr(profile, "armhole_cm", None)
+            value = getattr(profile, "armhole_cm", None)          # oldest profiles stored it under this name
         if value is None:
             canonical[key] = None
             if key in required:
@@ -221,7 +267,6 @@ def engine_measurements(profile, attributes):
         return None, "MEASUREMENTS_INVALID", errors
 
     measurements = dict(canonical)
-    measurements["armhole_cm"] = canonical["armhole_depth_cm"]   # legacy alias read by the engine
     measurements["fabric_type"] = fabric
     measurements["fit_preference"] = fit
     measurements["required_fields"] = required

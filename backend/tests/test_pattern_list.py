@@ -172,6 +172,27 @@ class TestMissingReferences(_Routes):
             self.assertEqual(c.get("/api/patterns/p1", headers=self.h).status_code, 403)
             self.assertEqual(c.delete("/api/patterns/p1", headers=self.h).status_code, 404)
 
+    def test_saved_pattern_returns_its_stored_calculations_and_old_records_return_none(self):
+        info = {"drafting_method": {"name": "Direct-measurement draft"}, "why_this_size": [{"id": "front_bust_width"}],
+                "armhole_lengths": {"front_armhole_curve_cm": 21.0, "back_armhole_curve_cm": 20.0, "total_armhole_cm": 41.0},
+                "sleeve_cap": {"status": "PASS"}, "ease": {"bust_cm": 8.89}, "seam_allowances_cm": {"side": 1.5},
+                "drafting_block": {"id": "woven_bodice"}, "warnings": []}
+        for stored in (info, None):                                                # None: a pattern saved before this version
+            pattern = SimpleNamespace(
+                id="p1", session_id=SimpleNamespace(user_id=SimpleNamespace(id="u1")), garment_type="blouse",
+                yardage_metres=1.2, selected_fabric_id="cotton-poplin", selected_fabric_name="Cotton Poplin",
+                nesting_summary={}, pattern_coordinates=[], design_spec={}, validation_report={}, validation_passed=True,
+                measurements_snapshot={"display_unit": "in"}, drafting_info=stored, generated_at="2026-10-02 10:00:00")
+            with patch("app.routes.patterns.PatternResult") as P, patch("app.routes.patterns.PdfExport") as E:
+                P.objects.return_value.first.return_value = pattern
+                E.objects.return_value.order_by.return_value = []
+                r = self.app.test_client().get("/api/patterns/p1", headers=self.h)
+            self.assertEqual(r.status_code, 200, r.get_json())
+            body = r.get_json()
+            for key, value in info.items():
+                self.assertEqual(body[key], value if stored else None, key)        # never invented for an old record
+            self.assertEqual(body["measurements_snapshot"]["display_unit"], "in")
+
     def test_pdf_whose_pattern_is_gone_is_404_for_download_and_delete(self):
         orphan = _Broken(id="e1", file_path="pattern_x.pdf")
         orphan.delete = MagicMock()

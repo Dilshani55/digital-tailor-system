@@ -60,14 +60,21 @@ def _summary_of(nesting):
     return {key: nesting[key] for key in _SUMMARY_KEYS}
 
 
-def width_estimate(pieces, width_cm, width_in, cutting_mode, fabric_type):
+AREA_KEYS = ("layout_length_m", "layout_length_yd", "purchase_length_m", "purchase_length_yd",
+             "pattern_area_m2", "pattern_area_yd2", "layout_area_m2", "layout_area_yd2",
+             "purchase_area_m2", "purchase_area_yd2", "waste_area_m2", "waste_area_yd2",
+             "one_way_fabric", "placement_order")
+
+
+def width_estimate(pieces, width_cm, width_in, cutting_mode, fabric_type, one_way=False):
     """
     One row of the standard-width comparison, computed from the stored pattern pieces by the real nesting.
     A width where a piece cannot be placed is reported as not fitting (with the reason) — never a number.
     """
-    row = {"fabric_width_in": width_in, "fabric_width_cm": width_cm, "requested_cutting_mode": cutting_mode}
+    row = {"fabric_width_in": width_in, "fabric_width_cm": width_cm, "requested_cutting_mode": cutting_mode,
+           "one_way_fabric": bool(one_way)}
     try:
-        n = estimate_fabric(pieces, width_cm, cutting_mode, fabric_type)
+        n = estimate_fabric(pieces, width_cm, cutting_mode, fabric_type, one_way=one_way)
     except NestingError as err:
         row.update(fits=False, error=err.message, error_code=err.error_code, details=err.details)
         return row
@@ -91,6 +98,7 @@ def width_estimate(pieces, width_cm, width_in, cutting_mode, fabric_type):
         placed_pieces=n["placed_pieces"],
         validation_checks=n["validation_checks"],
         warnings=warnings,
+        **{k: n[k] for k in AREA_KEYS},
     )
     return row, n
 
@@ -134,8 +142,11 @@ def estimate_standard_widths(pattern_id):
         return jsonify({"error": "selected_width_cm must be one of 91.44, 114.3, 152.4 (36\", 45\", 60\").",
                         "error_code": "INVALID_FABRIC_WIDTH"}), 400
 
+    one_way = data.get("one_way", False)
+    if not isinstance(one_way, bool):
+        return jsonify({"error": "one_way must be true or false.", "error_code": "INVALID_ONE_WAY"}), 400
     fabric_type = (getattr(pattern, "measurements_snapshot", None) or {}).get("fabric_type", "woven")
-    results = {w: width_estimate(pattern.pattern_coordinates, w, w_in, mode, fabric_type)
+    results = {w: width_estimate(pattern.pattern_coordinates, w, w_in, mode, fabric_type, one_way)
                for w, w_in in zip(STANDARD_FABRIC_WIDTHS, STANDARD_WIDTHS_IN)}
     rows = [_row(r) for r in results.values()]
     if selected is None:                                   # default: the shortest purchase among widths that fit
@@ -155,9 +166,13 @@ def estimate_standard_widths(pattern_id):
         "pattern_id": str(pattern.id),
         "selected_width_cm": selected,
         "cutting_mode_requested": mode,
+        "one_way_fabric": one_way,
         "estimates": rows,
-        "method": "Bottom-Left-Fill nesting of the stored cutting-line polygons (grain kept: 0/180 degrees only; "
-                  "cut-on-fold pieces on the fold). Pattern pieces are identical for every width; only the layout changes.",
+        "method": "Bottom-Left-Fill nesting of the stored cutting-line polygons, best of three placement orders (grain "
+                  "kept: 0/180 degrees only, no turn at all for one-way fabric; cut-on-fold pieces on the fold). Pattern "
+                  "pieces are identical for every width; only the layout changes. Heuristic: not proven minimal.",
+        "units": "lengths in m and yd (1 yd = 91.44 cm); areas in m2 and yd2 (1 yd2 = 8361.2736 cm2)",
+        "note": "The widest fabric is not automatically the best choice: compare the length to buy, the waste and the price.",
         "purchase_rule": "recommended purchase = layout length + 3 % shrinkage + 10 cm cutting margin, rounded up to 10 cm",
     }), 200
 
@@ -280,8 +295,16 @@ def generate_pdf(pattern_id):
     requested_mode = (stored_rows[0].get("requested_cutting_mode") if stored_rows else None) or "auto"
     if requested_mode not in ("auto", "folded", "open"):
         requested_mode = "auto"
+    one_way = bool(stored_rows[0].get("one_way_fabric")) if stored_rows else False
+    body = request.get_json(silent=True) or {}
+    part = body.get("part", "all")
+    if part not in ("all", "report", "pattern"):
+        return jsonify({"error": "part must be all, report or pattern.", "error_code": "INVALID_PDF_PART"}), 400
+    unit = body.get("unit") or snapshot.get("display_unit") or "cm"
+    if unit not in ("cm", "in"):
+        return jsonify({"error": "unit must be cm or in.", "error_code": "INVALID_UNIT"}), 400
     try:
-        nesting = estimate_fabric(pattern.pattern_coordinates, width, mode, fabric_type)
+        nesting = estimate_fabric(pattern.pattern_coordinates, width, mode, fabric_type, one_way=one_way)
     except NestingError as err:
         return _nesting_failure_response(err)
     if not summary:
@@ -314,20 +337,26 @@ def generate_pdf(pattern_id):
 
         # Everything below is STORED data: the validated pieces the user saw (and that were nested), plus the
         # drafting metadata saved at generation time. The pattern is NOT re-drafted for the PDF.
-        info = getattr(pattern, "drafting_info", None) or {}
-        base_block = getattr(pattern, "base_block", None) or {}
+        info = getattr(pattern, "drafting_info", None)
+        info = info if isinstance(info, dict) else {}
+        base_block = getattr(pattern, "base_block", None)
+        base_block = base_block if isinstance(base_block, dict) else {}
         pattern_data = {
             "pattern_pieces": pattern.pattern_coordinates,
             "design_attributes": (pattern.design_spec or {}).get("attributes") or info.get("design_attributes") or {},
             "drafting_block": info.get("drafting_block") or base_block.get("block") or {},
             "measurements_used": info.get("measurements_used") or {"ease_profile": base_block.get("ease") or {}},
             "construction_notes": info.get("construction_notes") or [],
+            "why_this_size": info.get("why_this_size") or [],
+            "sleeve_cap": info.get("sleeve_cap") or {},
+            "armhole_lengths": info.get("armhole_lengths") or {},
+            "drafting_method": info.get("drafting_method") or {},
         }
 
         # all three standard widths, laid out from the same stored pieces (layout only - pieces unchanged)
         rows, layouts = [], {}
         for w, w_in in zip(STANDARD_FABRIC_WIDTHS, STANDARD_WIDTHS_IN):
-            res = width_estimate(pattern.pattern_coordinates, w, w_in, requested_mode, fabric_type)
+            res = width_estimate(pattern.pattern_coordinates, w, w_in, requested_mode, fabric_type, one_way)
             row = _row(res)
             row["selected"] = abs(w - float(width)) < 1e-6
             rows.append({k: v for k, v in row.items() if k not in ("placed_pieces", "validation_checks")})
@@ -351,11 +380,13 @@ def generate_pdf(pattern_id):
             "drafting_values": base_block.get("drafting_values") or [],
             "width_estimates": rows,
             "width_layouts": layouts,
+            "unit": unit,
+            "warnings": info.get("warnings") or [],
         }
 
         output_dir = current_app.config["OUTPUT_FOLDER"]
         os.makedirs(output_dir, exist_ok=True)
-        filename   = f"pattern_{pattern_id}.pdf"
+        filename   = f"pattern_{pattern_id}.pdf" if part == "all" else f"pattern_{pattern_id}_{part}.pdf"
         out_path   = os.path.join(output_dir, filename)
 
         generator = PDFGenerator(
@@ -367,6 +398,7 @@ def generate_pdf(pattern_id):
             fabric_name  = pattern.selected_fabric_name,
             garment_title = f"{(pattern.garment_type or 'garment').title()} sewing pattern",
             context      = context,
+            part         = part,
         )
         generator.generate()
 
@@ -382,7 +414,10 @@ def generate_pdf(pattern_id):
             "pattern_id": pattern_id,
             "filename":   filename,
             "pages":      generator.info["pages"],
-            "print_scale": "1:1 (print at 100% / Actual size)",
+            "part":       part,
+            "unit":       unit,
+            "print_scale": ("1:1 (print at 100% / Actual size)" if part != "report"
+                            else "measurement report: drawings are NOT to scale"),
             "download_url": f"/api/export/download/{str(pdf_export.id)}"
         }), 201
 

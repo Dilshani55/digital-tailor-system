@@ -56,8 +56,9 @@ def _conflict(field, message):
 def resolve_hem(dv, garment_type):
     """
     Garment-length rule (project rule, documented):
-      hem level y = measured garment_length_cm, measured down from the neck/shoulder-point level;
-      a blouse or T-shirt hem must reach the waist line.
+      hem level y = measured garment_length_cm, measured down from the shoulder line beside the neck (the top
+      line of the draft); a blouse or T-shirt hem must reach the waist line. The front is drafted longer by the
+      method's extra front length; the side-seam dart takes that up.
     A measurement that contradicts this is reported, never silently changed.
     """
     hem = dv.garment_length
@@ -90,8 +91,11 @@ def _strip(name, ptype, length, width, count, meta):
                  grain=((length / 2.0, 0), (length / 2.0, width)), meta=meta, seam_allowance_cm=0.7)
 
 
-def apply_design(base, attributes):
-    """Apply confirmed design attributes to a valid base block. Raises DraftingError on any problem."""
+def apply_design(base, attributes, seam_allowances=None):
+    """
+    Apply confirmed design attributes to a valid base block. `seam_allowances` ({kind: cm}) replaces single
+    values of the allowance table (research settings). Raises DraftingError on any problem.
+    """
     clean, errors = fs.validate_attributes(attributes, scope="model")
     if errors:
         first = next(iter(errors.values()))
@@ -105,7 +109,6 @@ def apply_design(base, attributes):
                             unsupported_features=report["unsupported"])
 
     dv, block = base.dv, base.block
-    allow_darts = bool(block.get("allow_darts"))
     transformations = []
 
     # 1. garment length
@@ -126,8 +129,8 @@ def apply_design(base, attributes):
         "front_neck_depth_cm": round(neck.get("depth", dv.front_neck_depth), 3),
         "status": "applied" if applied else "not_applied_fallback_round"})
 
-    front = bodice.build_bodice(dv, "front", neck=neck, hem_y=hem_y, block_allows_darts=allow_darts)
-    back = bodice.build_bodice(dv, "back", hem_y=hem_y, block_allows_darts=allow_darts)
+    front = bodice.build_bodice(dv, "front", neck=neck, hem_y=hem_y)
+    back = bodice.build_bodice(dv, "back", hem_y=hem_y)
     front.transformations = [t["id"] for t in transformations]
     back.transformations = ["garment_length"]
 
@@ -144,12 +147,12 @@ def apply_design(base, attributes):
                     "drafted straight — shaped facing not implemented)."})
         transformations.append({"id": "sleeve_style", "type": "none", "design": style_attr, "status": "applied"})
     else:
-        if dv.sleeve_length is None or dv.bicep_width is None or base.sleeve is None:
-            raise DraftingError("This design has sleeves, so the bicep and sleeve length measurements are needed.",
+        if dv.sleeve_length is None or dv.sleeve_width is None:
+            raise DraftingError("This design has sleeves, so the upper arm and sleeve length measurements are needed.",
                                 code="MEASUREMENTS_INCOMPLETE",
                                 field_errors={k: [{"code": "REQUIRED", "message": "Required for this design."}]
                                               for k in ("bicep_cm", "sleeve_cm")
-                                              if (dv.bicep_width if k == "bicep_cm" else dv.sleeve_length) is None})
+                                              if (dv.sleeve_width if k == "bicep_cm" else dv.sleeve_length) is None})
         sleeve_hem = dv.sleeve_length                 # the measured, wanted sleeve length (no fraction)
         cap_h = base.armhole["cap_height_cm"]
         label = LENGTH_LABEL[length_attr]
@@ -162,14 +165,19 @@ def apply_design(base, attributes):
                 "id": "sleeve_style", "type": "puff_slash_and_spread", "design": style_attr, "status": "applied",
                 "spread_fraction": A["puff_spread_fraction"], "crown_rise_cm": A["puff_crown_rise_cm"],
                 "gathered_hem": gathered_hem,
-                "note": "Plain solved sleeve widened and crown raised; the extra cap length is gathered between "
+                "note": "Fitted plain sleeve widened and crown raised; the extra cap length is gathered between "
                         "the front and back notches" + ("; the hem is gathered into a sleeve band." if gathered_hem
-                                                        else "; the lower sleeve tapers to the wrist.")}
+                                                        else "; the lower sleeve narrows to the sleeve end.")}
             if gathered_hem:
-                band_len = dv.bicep_width
+                if dv.sleeve_end_width is None:
+                    raise DraftingError("A puff sleeve is gathered into a band around the arm, so the sleeve-end "
+                                        "measurement is needed.", code="MEASUREMENTS_INCOMPLETE",
+                                        field_errors={"sleeve_end_cm": [{"code": "REQUIRED", "message":
+                                                      "Sleeve end around is required for this design."}]})
+                band_len = dv.sleeve_end_width
                 extras.append(_strip("Sleeve Band", "sleeve_band", band_len, 2.0 * A["puff_band_height_cm"], 2,
                                      {"length_cm": band_len, "finished_height_cm": A["puff_band_height_cm"],
-                                      "rule": "length = eased bicep width; cut double and folded"}))
+                                      "rule": "length = arm at the sleeve end + ease; cut double and folded"}))
         elif style_attr == "bell-sleeve":
             flare = A["bell_flare_fraction"][length_attr]
             sleeve_piece = sleeve_mod.build_bell_sleeve(dv, cap_h, sleeve_hem, flare=flare,
@@ -177,19 +185,19 @@ def apply_design(base, attributes):
             style_record = {
                 "id": "sleeve_style", "type": "bell_flare", "design": style_attr, "status": "applied",
                 "flare_fraction": flare, "hem_width_cm": round(sleeve_piece.meta["width_hem_cm"], 3),
-                "note": "Fitted solved cap; flares from the underarm to a curved hem meeting both seams at 90 degrees."}
+                "note": "Fitted cap; flares from the underarm to a curved hem meeting both seams at 90 degrees."}
         else:
-            sleeve_piece = sleeve_mod.build_sleeve(dv, cap_h, sleeve_hem, name=f"Sleeve ({label})", sleeve_kind=label,
-                                                   taper_to_wrist=length_attr == "long-sleeve")
+            sleeve_piece = sleeve_mod.build_sleeve(dv, cap_h, sleeve_hem, name=f"Sleeve ({label})", sleeve_kind=label)
             style_record = {
                 "id": "sleeve_style", "type": "plain_set_in", "design": style_attr, "status": "applied",
-                "note": "Plain set-in sleeve; cap solved from the bodice armhole seam lengths."}
+                "note": "Plain set-in sleeve of the drafting method, its cap fitted to the two armhole seams; the "
+                        "seams run to the width of the arm at the sleeve end."}
         sleeve_piece.transformations = ["sleeve_length", "sleeve_style"]
         transformations.append({
             "id": "sleeve_length", "type": f"{label}_sleeve", "design": length_attr,
             "sleeve_length_cm": round(sleeve_hem, 3),
-            "rule": "sleeve length = the measured sleeve_cm (shoulder tip to where the sleeve should end); "
-                    "long sleeves taper to the wrist, short sleeves stay at the bicep width",
+            "rule": "sleeve length = the measured sleeve length (shoulder tip to where the sleeve should end); "
+                    "the sleeve narrows to the arm measured at the sleeve end plus ease",
             "status": "applied"})
         transformations.append(style_record)
 
@@ -206,17 +214,21 @@ def apply_design(base, attributes):
 
     # 5. seam allowance: real cutting-line geometry + balance marks on every piece
     block_id = block["block_id"]
+    try:
+        table = sa.allowance_table(block_id, seam_allowances)
+    except ValueError as exc:
+        raise DraftingError(str(exc), code="INVALID_SEAM_ALLOWANCE")
     for piece in final.pieces:
-        sa.apply_seam_allowance(piece, block_id)
+        sa.apply_seam_allowance(piece, block_id, seam_allowances)
     front.notches = sa.bodice_notches(front)
     back.notches = sa.bodice_notches(back)
     if sleeve_piece is not None:
-        sleeve_piece.notches = sa.sleeve_notches(
-            sleeve_piece, front.meta["armhole_length_cm"], back.meta["armhole_length_cm"])
+        sleeve_piece.notches = sa.sleeve_notches(sleeve_piece, front, back)
     transformations.append({
         "id": "seam_allowance", "type": "offset_cutting_line", "status": "applied",
-        "allowances_cm": sa.allowance_table(block_id),
-        "rule": "cutting line = seam line offset per edge (fold edge 0); project sewing-practice values"})
+        "allowances_cm": table,
+        "rule": "cutting line = sewing line moved outwards by the allowance of each kind of edge (fold edge 0); "
+                "seam allowance is not ease"})
     result = validate_final_pattern(final)
     final.validation = result
     if not result["passed"]:

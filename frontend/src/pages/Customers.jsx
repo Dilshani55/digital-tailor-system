@@ -5,12 +5,12 @@ import { measurementsAPI, patternsAPI } from '../services/api';
 import { validateMeasurements, parseFieldErrors, buildPayload, MEASUREMENT_FIELDS, FIELD_KEYS } from '../utils/measurementSchema';
 
 // quick-add fields on the customer form (all optional; the pattern wizard asks for what a design needs)
-const QUICK_FIELDS = ['bust_cm', 'waist_cm', 'hip_cm', 'height_cm'];
+const QUICK_FIELDS = ['bust_cm', 'waist_cm', 'hip_cm', 'shoulder_width_cm'];
 import LoadingSpinner from '../components/LoadingSpinner';
 
 const FIELD_LABEL = Object.fromEntries(MEASUREMENT_FIELDS.map((f) => [f.key, f.label]));
 const PAGE_SIZE = 10;
-const EMPTY = { client_name: '', email: '', notes: '', bust_cm: '', waist_cm: '', hip_cm: '', height_cm: '', fabric_type: 'woven' };
+const EMPTY = { client_name: '', email: '', notes: '', bust_cm: '', waist_cm: '', hip_cm: '', shoulder_width_cm: '', fabric_type: 'woven' };
 const initials = (name) => (name || '?').split(' ').filter(Boolean).map((n) => n[0]).join('').slice(0, 2).toUpperCase();
 const measured = (p) => FIELD_KEYS.filter((k) => p[k] !== null && p[k] !== undefined && p[k] !== '').length;
 

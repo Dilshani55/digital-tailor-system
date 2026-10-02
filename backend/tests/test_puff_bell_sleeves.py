@@ -36,9 +36,9 @@ class TestPuffSleeve(unittest.TestCase):
         self.assertTrue(lo <= r["armhole_sleeve"]["cap_ease_cm"] <= hi, r["armhole_sleeve"])
         band = _piece(r, "sleeve_band")
         self.assertEqual(band["cut_count"], 2)
-        self.assertAlmostEqual(band["bounding_box"]["width_cm"], plain["measurements"]["width_bicep_cm"], 2)
+        self.assertAlmostEqual(band["bounding_box"]["width_cm"], plain["measurements"]["width_hem_cm"], 2)   # arm at the sleeve end + ease
         checks = r["validation"]["final_pattern"]["checks"]
-        self.assertTrue(checks["puff cap flat below notches"]["ok"], checks["puff cap flat below notches"])
+        self.assertTrue(checks["sleeve notches meet the armhole notches"]["ok"], checks["sleeve notches meet the armhole notches"])
         self.assertTrue(checks["puff cap gathering vs armhole"]["ok"])
         t = next(t for t in r["final_pattern"]["transformations"] if t["id"] == "sleeve_style")
         self.assertEqual(t["type"], "puff_slash_and_spread")

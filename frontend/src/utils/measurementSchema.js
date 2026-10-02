@@ -10,9 +10,51 @@ export const CANONICAL_UNIT = 'cm';
 export const CM_PER_INCH = 2.54;
 export const UNITS = ['cm', 'in'];
 
-export const MEASUREMENT_FIELDS = REQ.fields.map(({ key, label }) => ({ key, label }));
+// kind: "measurement" (taken on the body) or "design" (a design value with a calculated default: leave empty to
+// use the calculated value). view: which side of the body guide shows it. usual: only used to WARN.
+export const MEASUREMENT_FIELDS = REQ.fields.map((f) => ({
+  key: f.key, label: f.label, group: f.group, kind: f.kind, view: f.view, guide: f.guide, mistake: f.mistake, usual: f.usual_cm,
+}));
+export const GROUPS = REQ.groups;
 export const FIELD_KEYS = MEASUREMENT_FIELDS.map((f) => f.key);
+export const DESIGN_KEYS = MEASUREMENT_FIELDS.filter((f) => f.kind === 'design').map((f) => f.key);
+// measurements earlier versions asked for; the drafting method does not use them and they are never asked for
+export const LEGACY_KEYS = REQ.legacy_fields;
 export const LABELS = Object.fromEntries(MEASUREMENT_FIELDS.map((f) => [f.key, f.label]));
+
+/**
+ * What the drafting method calculates when a design value is left empty (cm). The same rules as the backend
+ * (backend/app/logic/drafting/drafting_values.py); the backend's numbers are the ones the pattern uses.
+ */
+export function calculatedValues(cm = {}) {
+  const bust = cm.bust_cm;
+  if (!(bust > 0)) return {};
+  const inch = CM_PER_INCH;
+  return {
+    neck_width_cm: bust / 6,                                          // twice 1/12 bust
+    front_neck_depth_cm: bust / 12 + 0.25 * inch,
+    back_neck_depth_cm: 1 * inch,
+    armhole_depth_cm: bust / 4 - (bust < 30 * inch ? 0.5 : 1) * inch,
+    bust_point_distance_cm: bust / 5,                                 // twice one tenth of the bust
+  };
+}
+
+/**
+ * Soft warnings for values that may be a typing or unit mistake: [{ field, message }]. They never block saving.
+ * The server sends the same kind of warnings (and a few about proportions) when a profile is saved.
+ */
+export function softWarnings(cm = {}) {
+  const out = [];
+  MEASUREMENT_FIELDS.forEach((f) => {
+    const v = cm[f.key];
+    if (v === undefined || v === null) return;
+    const [lo, hi] = f.usual;
+    if (v < lo || v > hi) {
+      out.push({ field: f.key, message: `${f.label} ${Number(v.toFixed(2))} cm is outside the usual range (${lo}-${hi} cm). Please check the number and the unit (cm / inch).` });
+    }
+  });
+  return out;
+}
 
 /** Measurement keys the confirmed design needs (FIELD_KEYS order). Same algorithm as the backend. */
 export function requiredFor(design) {

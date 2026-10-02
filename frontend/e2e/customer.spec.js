@@ -6,8 +6,8 @@ import { test, expect } from '@playwright/test';
 const API = process.env.E2E_API_URL || 'http://127.0.0.1:5055/api';
 const PASSWORD = 'E2e-Passw0rd!';
 const MEAS = {
-  bust_cm: 88, waist_cm: 70, hip_cm: 94, height_cm: 162, neck_cm: 36, shoulder_cm: 12, across_back_cm: 34,
-  back_waist_length_cm: 40, armhole_depth_cm: 20, garment_length_cm: 65, bicep_cm: 28, sleeve_cm: 24, wrist_cm: 16,
+  bust_cm: 88, waist_cm: 70, hip_cm: 94, shoulder_width_cm: 37, back_waist_length_cm: 40, shoulder_to_bust_cm: 25,
+  waist_to_hip_cm: 20, garment_length_cm: 65, bicep_cm: 28, sleeve_cm: 24, sleeve_end_cm: 27,
 };
 
 async function uiSignIn(page, email) {
@@ -40,10 +40,10 @@ test('customer -> linked pattern -> saved pattern -> settings', async ({ page, r
   await page.goto('/customers');
   await page.getByRole('button', { name: 'Add customer' }).click();
   await page.getByLabel('Full Name').fill('Walk-in A');
-  await page.getByLabel('Bust (cm)', { exact: true }).fill('0');
+  await page.getByLabel('Bust around (cm)', { exact: true }).fill('0');
   await page.getByRole('button', { name: 'Save Customer' }).click();
   await expect(page.getByTestId('customer-form-error')).toContainText('greater than 0');   // honest validation
-  for (const [label, v] of [['Bust (cm)', 90], ['Waist (cm)', 72], ['Hip (cm)', 96], ['Height (cm)', 160]]) {
+  for (const [label, v] of [['Bust around (cm)', 90], ['Waist around (cm)', 72], ['Hip around (cm)', 96], ['Shoulder to shoulder (cm)', 38]]) {
     await page.getByLabel(label, { exact: true }).fill(String(v));
   }
   await page.getByRole('button', { name: 'Save Customer' }).click();
@@ -66,6 +66,12 @@ test('customer -> linked pattern -> saved pattern -> settings', async ({ page, r
   await page.goto(`/patterns/${patternId}`);
   await expect(page.getByTestId('pattern-preview')).toBeVisible();
   await expect(page.getByText(/traditional|tailor.?s estimate/i)).toHaveCount(0);
+  // the stored pattern keeps its own calculations: block dimensions, the sleeve check and "Why this size?"
+  await page.getByTestId('tab-back_bodice').click();
+  await expect(page.getByTestId('block-back_bodice')).toBeVisible();
+  await page.getByTestId('tab-sleeve').click();
+  await expect(page.getByTestId('sleeve-cap-status')).toContainText(/^PASS/);
+  await expect(page.getByTestId('why-this-size')).toContainText('Front width at the bust line');
 
   // 4. settings reports the real model state, no invented server status
   await page.goto('/settings');

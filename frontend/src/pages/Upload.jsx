@@ -14,10 +14,10 @@ import TilePreview from '../components/TilePreview';
 import GarmentIllustration from '../components/GarmentIllustration';
 import { supportReport, labelOf } from '../utils/designSchema';
 import {
-  MEASUREMENT_FIELDS, LABELS, requiredFor, validateMeasurements, displayValue, canonicalCm, parseFieldErrors, buildPayload,
+  FIELD_KEYS, DESIGN_KEYS, LABELS, requiredFor, validateMeasurements, canonicalCm, parseFieldErrors, buildPayload,
   storedEntries,
 } from '../utils/measurementSchema';
-import { GUIDES } from '../utils/measurementGuides';
+import MeasurementFields from '../components/MeasurementFields';
 import { formatResult, NOT_CALCULATED } from '../utils/results';
 import { friendlyError, imageProblem } from '../utils/friendlyError';
 import { getPreferences, widthLabel } from '../utils/preferences';
@@ -34,16 +34,20 @@ const CUTTING_MODES = [
   { value: 'folded', label: 'Fabric folded lengthwise' },
   { value: 'open', label: 'Fabric laid open' },
 ];
+// Ease = room to move, added to the body measurement. It is not the seam allowance.
 const FITS = [
-  { value: 'close', label: 'Fitted', note: 'Close to the body' },
-  { value: 'standard', label: 'Regular', note: 'Standard ease' },
-  { value: 'loose', label: 'Relaxed', note: 'More ease' },
+  { value: 'close', label: 'Close fit', note: 'Least ease: close to the body' },
+  { value: 'standard', label: 'Regular fit', note: 'The usual ease' },
+  { value: 'loose', label: 'Relaxed fit', note: 'More ease: looser' },
+];
+const PDF_PARTS = [
+  { value: 'all', label: 'Everything', note: 'Measurement report and the 1:1 cutting pattern' },
+  { value: 'report', label: 'Measurement report', note: 'Blocks with dimensions, calculations, fabric table (not to scale)' },
+  { value: 'pattern', label: 'Cutting pattern', note: 'Printing instructions and the 1:1 tiled pattern' },
 ];
 
 const emptyMeas = {
-  client_name: '', bust_cm: '', waist_cm: '', hip_cm: '', height_cm: '', neck_cm: '', shoulder_cm: '',
-  across_back_cm: '', back_waist_length_cm: '', armhole_depth_cm: '', garment_length_cm: '', bicep_cm: '',
-  sleeve_cm: '', wrist_cm: '', fabric_type: 'woven', fit_preference: 'standard',
+  client_name: '', ...Object.fromEntries(FIELD_KEYS.map((k) => [k, ''])), fabric_type: 'woven', fit_preference: 'standard',
 };
 
 // a saved profile as wizard values: every measurement as it was entered, in the unit it was entered in
@@ -54,7 +58,7 @@ const profileToMeas = (p) => ({
   fit_preference: p.fit_preference || 'standard',
 });
 
-// measurements every design needs (shown before a design is confirmed); the design adds hip / sleeve / wrist
+// measurements every design needs (shown before a design is confirmed); the design adds hip, bust point and sleeve
 const BASE_KEYS = requiredFor({});
 const STANDARD_WIDTHS = [{ inches: 36, cm: 91.44 }, { inches: 45, cm: 114.3 }, { inches: 60, cm: 152.4 }];
 
@@ -132,6 +136,7 @@ export default function Upload() {
   const [savedMeasKey, setSavedMeasKey] = useState(null); // measurement values as last saved for this design
   const [activeField, setActiveField] = useState('bust_cm');
   const [manualDesign, setManualDesign] = useState(false);
+  const [measWarnings, setMeasWarnings] = useState([]);   // "please check" notes from the server (never errors)
 
   // fabric & fit
   const [selectedFabricId, setSelectedFabricId] = useState('');
@@ -146,6 +151,8 @@ export default function Upload() {
   // estimate
   const [fabricWidth, setFabricWidth] = useState(() => getPreferences().fabricWidth);
   const [cuttingMode, setCuttingMode] = useState('auto');
+  const [oneWay, setOneWay] = useState(false);              // nap / directional print: no piece is turned
+  const [pdfPart, setPdfPart] = useState('all');
   const [yardageData, setYardageData] = useState(null);     // the selected width's layout
   const [estimates, setEstimates] = useState(null);         // 36" / 45" / 60" comparison rows
   const [yardageError, setYardageError] = useState(false);
@@ -198,25 +205,30 @@ export default function Upload() {
     const dup = acc.some((it) => (it.client_name || '').trim().toLowerCase() === name
       && (name !== '' && name !== 'customer profile' && name !== 'customer'
         ? true
-        : it.bust_cm === cur.bust_cm && it.waist_cm === cur.waist_cm && it.hip_cm === cur.hip_cm && it.height_cm === cur.height_cm));
+        : it.bust_cm === cur.bust_cm && it.waist_cm === cur.waist_cm && it.hip_cm === cur.hip_cm && it.shoulder_width_cm === cur.shoulder_width_cm));
     if (!dup) acc.push(cur);
     return acc;
   }, []), [savedProfiles]);
 
-  const design = supportReport(confirmedAttributes || {});
+  const design = useMemo(() => supportReport(confirmedAttributes || {}), [confirmedAttributes]);
   const designReady = isAttributesConfirmed && !!confirmedAttributes && design.supported;
 
   // which measurements the confirmed design needs (same rules as the backend and the drafting engine)
   const requiredKeys = useMemo(() => (confirmedAttributes ? requiredFor(confirmedAttributes) : []), [confirmedAttributes]);
   const cmValues = useMemo(() => canonicalCm(meas, measUnits), [meas, measUnits]);
-  const measKey = useMemo(() => JSON.stringify(requiredKeys.map((k) => [k, cmValues[k] ?? null])), [requiredKeys, cmValues]);
+  // fields on screen: what the confirmed design needs plus its optional design values (neckline, armhole depth;
+  // the bust-point distance only where there is a bust dart) - or, with no design yet, what every design needs
+  const shownKeys = useMemo(() => {
+    if (!(isAttributesConfirmed && confirmedAttributes && design.supported)) return BASE_KEYS;
+    const optional = DESIGN_KEYS.filter((k) => k !== 'bust_point_distance_cm' || requiredKeys.includes('shoulder_to_bust_cm'));
+    return FIELD_KEYS.filter((k) => requiredKeys.includes(k) || optional.includes(k));
+  }, [isAttributesConfirmed, confirmedAttributes, design.supported, requiredKeys]);
+  const measKey = useMemo(() => JSON.stringify(shownKeys.map((k) => [k, cmValues[k] ?? null])), [shownKeys, cmValues]);
   const measurementsSaved = Boolean(measurementId) && savedMeasKey !== null && savedMeasKey === measKey;
   // everything the pattern depends on: when any of it changes, the old pattern, estimate and PDF are out of date
   const inputsKey = JSON.stringify([confirmedAttributes, measKey, selectedFabricId, meas.fit_preference, imageId]);
   const patternStale = Boolean(patternData) && patternKey !== inputsKey;
   const patternCurrent = Boolean(patternData) && !patternStale;
-  // fields on screen: what the confirmed design needs, or (no design yet) what every design needs
-  const shownKeys = designReady ? requiredKeys : BASE_KEYS;
   useEffect(() => {
     if (shownKeys.length && !shownKeys.includes(activeField)) setActiveField(shownKeys[0]);
   }, [shownKeys, activeField]);
@@ -365,14 +377,17 @@ export default function Upload() {
       const payload = {
         client_name: meas.client_name.trim() !== '' ? meas.client_name.trim() : 'Customer Profile',
         ...(customerContact.trim() ? { email: customerContact.trim() } : {}),
-        ...buildPayload(meas, measUnits, 'cm', requiredKeys),
+        ...buildPayload(meas, measUnits, 'cm', shownKeys),
         design: confirmedAttributes,
         fabric_type: meas.fabric_type,
         fit_preference: meas.fit_preference || 'standard',
       };
+      // an optional design value that was emptied goes back to the calculated value
+      const cleared = shownKeys.filter((k) => DESIGN_KEYS.includes(k) && (meas[k] === '' || meas[k] === null || meas[k] === undefined));
       const res = measurementId
-        ? await measurementsAPI.update(measurementId, payload)
+        ? await measurementsAPI.update(measurementId, { ...payload, clear: cleared })
         : await measurementsAPI.save(payload);
+      setMeasWarnings(res.data.warnings || []);
       setFieldErrors({});
       setMeasurementId(res.data.measurement_id || res.data.profile_id || measurementId);
       setSavedMeasKey(measKey);
@@ -421,6 +436,7 @@ export default function Upload() {
         confirmed_attributes: confirmedAttributes || undefined,
         fabric_id: selectedFabricId,
         fabric_name: selectedFabricName,
+        display_unit: unit,
         ...(projectName.trim() ? { project_name: projectName.trim() } : {}),
       });
       setPatternId(patRes.data.pattern_id);
@@ -451,13 +467,13 @@ export default function Upload() {
   // ── 7: fabric estimate (36" / 45" / 60") ──────────────────────────────────
   const resultOrNA = (value, suffix = '') => formatResult(value, suffix, yardageError);
 
-  const runEstimate = async (width = fabricWidth, mode = cuttingMode) => {
+  const runEstimate = async (width = fabricWidth, mode = cuttingMode, nap = oneWay) => {
     if (!patternId || !patternCurrent) return;
     setLoading(true);
     setLoadingMessage('Laying out the pattern pieces on 36", 45" and 60" fabric…');
     setError('');
     try {
-      const res = await exportAPI.estimates(patternId, { selected_width_cm: width, cutting_mode: mode });
+      const res = await exportAPI.estimates(patternId, { selected_width_cm: width, cutting_mode: mode, one_way: nap });
       const rows = res.data.estimates || [];
       const sel = rows.find((r) => r.selected);
       setEstimates(rows);
@@ -513,7 +529,7 @@ export default function Upload() {
     setLoadingMessage('Building your printable pattern…');
     setError('');
     try {
-      const res = await exportAPI.pdf(patternId);
+      const res = await exportAPI.pdf(patternId, { part: pdfPart, unit });
       setExportId(res.data.export_id);
       setPdfInfo(res.data);
     } catch (err) {
@@ -529,7 +545,7 @@ export default function Upload() {
       const url = window.URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
       const link = document.createElement('a');
       link.href = url;
-      link.download = `sewing_pattern_${patternId}.pdf`;
+      link.download = pdfInfo?.part && pdfInfo.part !== 'all' ? `sewing_pattern_${patternId}_${pdfInfo.part}.pdf` : `sewing_pattern_${patternId}.pdf`;
       link.click();
       window.URL.revokeObjectURL(url);
       setPdfDownloaded(true);
@@ -735,7 +751,7 @@ export default function Upload() {
             )}
             {!designReady && (
               <p className="form-hint" data-testid="base-fields-note" style={{ marginBottom: 12 }}>
-                Every design needs these {BASE_KEYS.length} measurements. Hip, bicep, sleeve length and wrist are added when the confirmed design needs them.
+                Every design needs these {BASE_KEYS.length} measurements. Hip, waist to hip, shoulder to bust point and the sleeve measurements are added when the confirmed design needs them.
               </p>
             )}
             <div className="meas-layout">
@@ -743,40 +759,23 @@ export default function Upload() {
                 <h3>Measurement guide</h3>
                 <MeasureFigure active={activeField} fields={shownKeys} sleeveCm={cmValues.sleeve_cm} />
                 <p className="form-hint" style={{ marginTop: 6 }}>
-                  Shows where to measure {LABELS[activeField] ? <strong>{LABELS[activeField].toLowerCase()}</strong> : 'each field'}; it is a guide, not a body model.
+                  Shows where to measure {LABELS[activeField] ? <strong>{LABELS[activeField].toLowerCase()}</strong> : 'each field'} on the front or back view; it is a guide, not a body model.
                   Inches are converted exactly (1 in = 2.54 cm).
                 </p>
               </aside>
-              <div className="meas-grid">
-                {MEASUREMENT_FIELDS.filter((f) => shownKeys.includes(f.key)).map((field) => {
-                  const key = field.key;
-                  const message = fieldErrors[key] || (key === 'armhole_depth_cm' ? fieldErrors.armhole_cm : undefined);
-                  return (
-                    <div className={`meas-field${activeField === key ? ' active' : ''}`} key={key}>
-                      <label className="form-label" htmlFor={`meas-${key}`}>{field.label}<span className="sr-only"> ({unit})</span></label>
-                      <div className="input-suffix">
-                        <input id={`meas-${key}`} className="form-input" type="text" inputMode="decimal" autoComplete="off"
-                               value={displayValue(meas[key], measUnits[key] || 'cm', unit)} aria-invalid={message ? 'true' : 'false'}
-                               aria-describedby={activeField === key ? `guide-${key}` : undefined}
-                               onFocus={() => setActiveField(key)}
-                               onChange={(e) => {
-                                 setError('');
-                                 setFieldErrors((prev) => {
-                                   if (!prev[key]) return prev;
-                                   const { [key]: _removed, ...rest } = prev;
-                                   return rest;
-                                 });
-                                 setMeas({ ...meas, [key]: e.target.value });
-                                 setMeasUnits({ ...measUnits, [key]: unit });
-                               }} />
-                        <span aria-hidden="true">{unit}</span>
-                      </div>
-                      {activeField === key && <small id={`guide-${key}`} className="form-hint meas-guide" data-testid={`guide-${key}`}>{GUIDES[key]}</small>}
-                      {message && <div role="alert" className="field-error" data-testid={`error-${key}`}>{message}</div>}
-                    </div>
-                  );
-                })}
-              </div>
+              <MeasurementFields idPrefix="meas" keys={shownKeys} required={designReady ? requiredKeys : BASE_KEYS} values={meas}
+                                 units={measUnits} unit={unit} errors={fieldErrors} active={activeField} onActive={setActiveField}
+                                 serverWarnings={measWarnings}
+                                 onChange={(key, value) => {
+                                   setError('');
+                                   setFieldErrors((prev) => {
+                                     if (!prev[key]) return prev;
+                                     const { [key]: _removed, ...rest } = prev;
+                                     return rest;
+                                   });
+                                   setMeas({ ...meas, [key]: value });
+                                   setMeasUnits({ ...measUnits, [key]: unit });
+                                 }} />
             </div>
             <NavRow>
               <button type="button" className="btn btn-outline" onClick={() => go(S.REVIEW)}>Back</button>
@@ -861,7 +860,10 @@ export default function Upload() {
             {patternCurrent ? (
               <PatternPreview pieces={patternData?.pattern_pieces} fabricWidth={fabricWidth} validation={patternData?.validation}
                               draftingBlock={patternData?.drafting_block} armholeSleeve={patternData?.armhole_sleeve}
-                              transformations={patternData?.final_pattern?.transformations} />
+                              transformations={patternData?.final_pattern?.transformations}
+                              whyThisSize={patternData?.why_this_size} sleeveCap={patternData?.sleeve_cap}
+                              draftingMethod={patternData?.drafting_method} ease={patternData?.ease}
+                              warnings={patternData?.warnings} unit={unit} />
             ) : (
               <>
                 <Placeholder icon={Scissors} testId="pattern-placeholder">
@@ -902,6 +904,11 @@ export default function Upload() {
                 {CUTTING_MODES.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
               </select>
             </div>
+            <label className="form-hint" style={{ display: 'flex', gap: 8, alignItems: 'center', margin: '4px 0 12px' }}>
+              <input type="checkbox" checked={oneWay} data-testid="one-way"
+                     onChange={(e) => { setOneWay(e.target.checked); if (canEstimate) runEstimate(fabricWidth, cuttingMode, e.target.checked); }} />
+              One-way fabric (nap, pile or a print with a direction): every piece must point the same way
+            </label>
 
             {(!canEstimate || !estimates) && (
               <div className="width-cards" role="group" aria-label="Fabric width for the estimate" data-testid="width-choices">
@@ -932,21 +939,22 @@ export default function Upload() {
               <div className="table-wrap width-compare" data-testid="width-comparison">
                 <table className="hist-table">
                   <caption className="sr-only">Fabric requirement for the three standard widths</caption>
-                  <thead><tr><th>Fabric width</th><th>Base layout length</th><th>Purchasing allowance</th><th>Recommended purchase</th><th>Utilisation</th><th>Waste</th><th><span className="sr-only">Select</span></th></tr></thead>
+                  <thead><tr><th>Fabric width</th><th>Layout length</th><th>Need to buy</th><th>Pattern area</th><th>Fabric bought</th><th>Waste</th><th>Fabric use</th><th><span className="sr-only">Select</span></th></tr></thead>
                   <tbody>
                     {estimates.map((e) => (
                       <tr key={e.fabric_width_cm} className={e.selected ? 'row-selected' : ''} data-testid={`estimate-row-${e.fabric_width_in}`}>
                         <td><strong>{e.fabric_width_in}&quot;</strong><small>{e.fabric_width_cm} cm</small></td>
                         {e.fits ? (
                           <>
-                            <td>{e.base_layout_length_cm} cm<small>{e.cutting_mode === 'folded' ? 'folded' : 'open'}</small></td>
-                            <td>{e.purchasing_allowance_cm} cm</td>
+                            <td>{e.base_layout_length_cm} cm<small>{e.cutting_mode === 'folded' ? 'folded' : 'open'}{e.one_way_fabric ? ' · one-way' : ''}</small></td>
                             <td><strong>{e.recommended_purchase_m} m</strong><small>{e.recommended_purchase_yd} yd</small></td>
-                            <td>{e.utilisation_percent}%</td>
+                            <td>{e.pattern_area_m2} m²<small>{e.pattern_area_yd2} yd²</small></td>
+                            <td>{e.purchase_area_m2} m²<small>{e.purchase_area_yd2} yd²</small></td>
                             <td>{e.waste_percent}%</td>
+                            <td>{e.utilisation_percent}%</td>
                           </>
                         ) : (
-                          <td colSpan={5} className="cell-warning">Does not fit: {e.error}</td>
+                          <td colSpan={6} className="cell-warning">Does not fit: {e.error}</td>
                         )}
                         <td>
                           <button type="button" className={e.selected ? 'btn btn-primary btn-sm' : 'btn btn-outline btn-sm'} aria-pressed={e.selected}
@@ -958,6 +966,11 @@ export default function Upload() {
                   </tbody>
                 </table>
                 {estimates.flatMap((e) => (e.warnings || []).map((w) => `${e.fabric_width_in}": ${w}`)).map((w) => <p key={w} className="form-hint" style={{ padding: '0 16px 10px' }}>{w}</p>)}
+                <p className="form-hint" data-testid="estimate-explain" style={{ padding: '0 16px 10px' }}>
+                  &quot;Need to buy&quot; is a length of that width (metres / yards). The areas are square metres / square yards: the pattern
+                  pieces themselves, and the rectangle of fabric bought. Waste and fabric use compare the pieces with the fabric the
+                  layout occupies. The widest fabric is not automatically the best: compare the length, the waste and the price.
+                </p>
               </div>
             )}
 
@@ -1020,9 +1033,22 @@ export default function Upload() {
                   <li><span><Ruler size={18} /></span><div><strong>Calibration square 5 × 5 cm</strong><small>Measure it before you tape the pages together.</small></div></li>
                   <li><span><Scissors size={18} /></span><div><strong>Fabric required {canEstimate && yardageData ? `${yardageData.purchasing_recommended_m} m` : '—'}</strong>
                     <small>{canEstimate && yardageData ? `For ${widthLabel(yardageData.fabric_width_cm)}; all three widths are in the PDF.` : 'Calculate the fabric estimate first.'}</small></div></li>
-                  <li><span><Calendar size={18} /></span><div><strong>Test garment first</strong><small>Make a muslin — this is a prototype pattern, not a fit-tested one.</small></div></li>
+                  <li><span><Calendar size={18} /></span><div><strong>Test garment first</strong><small>Confirm the fit with a toile (test garment) before cutting the final fabric — this is a prototype pattern, not a fit-tested one.</small></div></li>
                 </ul>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 18 }}>
+                  <fieldset style={{ border: 0, padding: 0, margin: 0 }} data-testid="pdf-parts">
+                    <legend className="form-label">What to put in the PDF</legend>
+                    {PDF_PARTS.map((o) => (
+                      <label key={o.value} className="form-hint" style={{ display: 'flex', gap: 8, alignItems: 'baseline', marginTop: 4 }}>
+                        <input type="radio" name="pdf-part" value={o.value} checked={pdfPart === o.value} data-testid={`pdf-part-${o.value}`}
+                               onChange={() => { setPdfPart(o.value); setExportId(null); setPdfInfo(null); }} />
+                        <span><strong>{o.label}</strong> — {o.note}</span>
+                      </label>
+                    ))}
+                    <span className="form-hint" style={{ display: 'block', marginTop: 4 }}>
+                      Lengths are printed in {unit === 'in' ? 'inches (with cm)' : 'cm (with inches)'} — the unit chosen in the measurement step.
+                    </span>
+                  </fieldset>
                   {!pdfReady ? (
                     <>
                       <button type="button" className="btn btn-primary btn-lg btn-block" onClick={handleCreatePdf}>Create printable PDF</button>
@@ -1034,7 +1060,7 @@ export default function Upload() {
                     </>
                   ) : (
                     <div data-testid="pdf-ready" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                      <span className="pill good" style={{ alignSelf: 'flex-start' }}><CheckCircle2 size={13} /> {pdfInfo?.pages} pages · A4 · 1:1 scale</span>
+                      <span className="pill good" style={{ alignSelf: 'flex-start' }}><CheckCircle2 size={13} /> {pdfInfo?.pages} pages · A4 · {pdfInfo?.part === 'report' ? 'report, not to scale' : '1:1 scale'}</span>
                       <button type="button" className="btn btn-primary btn-lg btn-block" onClick={handleDownloadPDF}><Download size={18} /> Download PDF</button>
                     </div>
                   )}

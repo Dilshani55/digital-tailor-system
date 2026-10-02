@@ -2,15 +2,20 @@
 #
 # METHOD (documented, deterministic)
 #   * Uses the real CUTTING-LINE polygons of the pattern pieces (seam allowance included).
-#   * Bottom-Left-Fill on a 0.5 cm occupancy grid: pieces are sorted by polygon area (largest
-#     first) and each is placed at the lowest, then left-most, position where its rasterised
-#     polygon does not touch an already placed one. This is a polygon (not bounding-box) layout.
+#   * Bottom-Left-Fill on a 0.5 cm occupancy grid: each piece is placed at the lowest, then left-most,
+#     position where its rasterised polygon does not touch an already placed one. This is a polygon
+#     (not bounding-box) layout. The order in which pieces are placed matters, so the layout is built for
+#     three fixed orders (largest area, longest, widest first) and the shortest one is kept.
+#   * ONE-WAY fabric (nap, pile or a directional print): no 180 degree turns either, so every piece
+#     points the same way.
 #   * Fabric length is the y-axis (selvedge/grain direction). Pieces keep their grain: only 0 or
 #     180 degree orientations are tried (a 90 degree turn would put the grain across the cloth).
 #   * FOLDED mode: the fabric is folded lengthwise, usable width = bolt width / 2. Cut-on-fold
 #     pieces are pinned to the fold (x = 0), are never rotated, and one placement yields the full
 #     piece. Other pieces are cut through both layers (one placement yields two pieces).
 #   * OPEN mode: full width; cut-on-fold pieces are mirrored into their full shape.
+#   * Pieces are kept at least 0.5 cm apart (one grid cell). The selvedge is not used as a margin: the
+#     purchase allowance below covers uneven cut ends.
 #   * The result is verified with EXACT polygon tests (overlap, bounds, fold, grain, quantities).
 #   * Purchase allowance: layout length + 3 % shrinkage + 10 cm cutting/end margin, rounded up
 #     to the next 10 cm. These are project assumptions (listed in the result).
@@ -21,6 +26,7 @@ import math
 
 import numpy as np
 
+from app.logic import units
 from app.logic.drafting import geometry as g
 
 CELL_CM = 0.5              # occupancy-grid resolution
@@ -180,8 +186,10 @@ class NestingAlgorithm:
 
     STANDARD_FABRIC_WIDTHS = list(STANDARD_FABRIC_WIDTHS)
 
+    ORDERS = ("largest area first", "longest first", "widest first")
+
     def __init__(self, pattern_pieces, fabric_width_cm=114.3, fabric_type="woven",
-                 cutting_mode="folded", allow_rotation=None):
+                 cutting_mode="folded", allow_rotation=None, one_way=False):
         try:
             self.fabric_width = float(fabric_width_cm)
         except (TypeError, ValueError):
@@ -197,7 +205,10 @@ class NestingAlgorithm:
         # 180-degree turns keep the grain direction; 90-degree turns never happen.
         # "sheet" mode is used only to arrange the printable pattern sheet (one copy of each piece,
         # fold pieces kept as half pieces, no rotation) - it is not a fabric layout.
-        self.allow_rotation = (self.cutting_mode != "sheet") if allow_rotation is None else bool(allow_rotation)
+        self.one_way = bool(one_way)
+        self.allow_rotation = (self.cutting_mode != "sheet" and not self.one_way) if allow_rotation is None \
+            else bool(allow_rotation)
+        self.order_used = self.ORDERS[0]
         self.pieces_raw = pattern_pieces
         self.instances = self._build_instances(pattern_pieces)
         self.unplaced = []
@@ -298,22 +309,40 @@ class NestingAlgorithm:
                 error_code="PIECE_DOES_NOT_FIT", failed_pieces=failed, fabric_width_cm=self.fabric_width,
                 usable_width_cm=self.usable_width, cutting_mode=self.cutting_mode)
 
-        occ = np.zeros((hcells, wcells), dtype=bool)
+        def size(inst):
+            b = g.bbox(_open(inst.polygon))
+            return b[2] - b[0], b[3] - b[1]
+
+        orders = [sorted(self.instances, key=lambda r: (-r.area, r.name))]
+        if self.cutting_mode != "sheet":                      # the printable sheet keeps its single, stable order
+            orders.append(sorted(self.instances, key=lambda r: (-size(r)[1], -r.area, r.name)))
+            orders.append(sorted(self.instances, key=lambda r: (-size(r)[0], -r.area, r.name)))
+        best_run = None
+        for k, order in enumerate(orders):
+            if k and [id(i) for i in order] in [[id(i) for i in o] for o in orders[:k]]:
+                continue                                      # the same order again: nothing new to try
+            occ = np.zeros((hcells, wcells), dtype=bool)
+            run, unplaced = [], []
+            for inst in order:
+                best = self._place(inst, occ, wcells, hcells)
+                if best is None:
+                    unplaced.append(inst)
+                    continue
+                _, rot, (y0, x0), mask, poly = best
+                h, w = mask.shape
+                occ[y0:y0 + h, x0:x0 + w] |= mask
+                # the padded mask's column/row GAP_CELLS is the polygon's min corner, and grid column/row
+                # GAP_CELLS is fabric x = 0 / y = 0, so the polygon's min corner lands exactly at x0*cell, y0*cell
+                run.append((inst, rot, x0 * cell, y0 * cell, [(px + x0 * cell, py + y0 * cell) for px, py in poly]))
+            length_cells = max((int(round(max(q[1] for q in poly) / cell)) for *_, poly in run), default=0)
+            key = (len(unplaced), length_cells, k)
+            if best_run is None or key < best_run[0]:
+                best_run = (key, run, unplaced, k)
+        _, run, self.unplaced, k = best_run
+        self.order_used = self.ORDERS[k]
         placed = []
-        for inst in self.instances:
-            best = self._place(inst, occ, wcells, hcells)
-            if best is None:
-                self.unplaced.append(inst)
-                continue
-            _, rot, (y0, x0), mask, poly = best
-            h, w = mask.shape
-            occ[y0:y0 + h, x0:x0 + w] |= mask
-            inst.rot180 = rot
-            # the padded mask's column/row GAP_CELLS is the polygon's min corner, and grid column/row
-            # GAP_CELLS is fabric x = 0 / y = 0, so the polygon's min corner lands exactly at x0*cell, y0*cell
-            inst.x = x0 * cell
-            inst.y = y0 * cell
-            inst.placed_polygon = [(px + inst.x, py + inst.y) for px, py in poly]
+        for inst, rot, x, y, poly in run:
+            inst.rot180, inst.x, inst.y, inst.placed_polygon = rot, x, y, poly
             placed.append(inst)
         if self.unplaced:
             names = ", ".join(i.name for i in self.unplaced)
@@ -376,7 +405,8 @@ class NestingAlgorithm:
         checks = self._verify(placed, length, useful_area)
         mode_text = "Fabric folded in half lengthwise" if self.cutting_mode == "folded" else "Fabric laid open flat"
         return {
-            "method": "polygon Bottom-Left-Fill on a 0.5 cm grid using cutting-line geometry (heuristic, not optimal)",
+            "method": "polygon Bottom-Left-Fill on a 0.5 cm grid using cutting-line geometry, best of three placement "
+                      "orders (heuristic, not optimal)",
             "full_bolt_width_cm": self.fabric_width,
             "usable_width_cm": self.usable_width,
             "cutting_mode": self.cutting_mode,
@@ -387,7 +417,24 @@ class NestingAlgorithm:
             "purchasing_recommended_m": purchase_m,
             "handling_allowance_m": handling,
             "yardage_metres": purchase_m,
-            "yardage_yards": round(purchase_m * 1.09361, 2),
+            "yardage_yards": round(units.m_to_yd(purchase_m), 2),
+            # LENGTHS (linear): what the layout needs, and what to buy
+            "layout_length_m": round(units.cm_to_m(length), 2),
+            "layout_length_yd": round(units.cm_to_yd(length), 2),
+            "purchase_length_m": purchase_m,
+            "purchase_length_yd": round(units.m_to_yd(purchase_m), 2),
+            # AREAS (square units): pattern pieces, the fabric rectangle of the layout, the rectangle bought
+            "pattern_area_m2": round(units.cm2_to_m2(useful_area), 3),
+            "pattern_area_yd2": round(units.cm2_to_yd2(useful_area), 3),
+            "layout_area_m2": round(units.cm2_to_m2(fabric_area), 3),
+            "layout_area_yd2": round(units.cm2_to_yd2(fabric_area), 3),
+            "purchase_area_m2": round(units.cm2_to_m2(self.fabric_width * purchase_m * 100.0), 3),
+            "purchase_area_yd2": round(units.cm2_to_yd2(self.fabric_width * purchase_m * 100.0), 3),
+            "waste_area_m2": round(units.cm2_to_m2(max(0.0, fabric_area - useful_area)), 3),
+            "waste_area_yd2": round(units.cm2_to_yd2(max(0.0, fabric_area - useful_area)), 3),
+            "one_way_fabric": self.one_way,
+            "placement_order": self.order_used,
+            "piece_gap_cm": GAP_CELLS * CELL_CM,
             "total_pattern_piece_area_cm2": round(useful_area, 1),
             "usable_area_cm2": round(fabric_area, 1),
             "utilisation_percent": util_r,
@@ -400,10 +447,12 @@ class NestingAlgorithm:
             "validation_checks": checks,
             "assumptions": [
                 "Layout uses the cutting-line (seam allowance included) polygons of the validated pattern.",
-                "Pieces keep their grain: only 0 or 180 degree orientations are used; fold pieces are never rotated.",
+                ("One-way fabric: every piece points the same way (no turns)." if self.one_way else
+                 "Pieces keep their grain: only 0 or 180 degree orientations are used; fold pieces are never rotated."),
                 f"Purchase length = layout length + {SHRINKAGE_ALLOWANCE * 100:.0f}% shrinkage + {END_MARGIN_CM:.0f} cm "
                 f"cutting margin, rounded up to {ROUND_UP_CM:.0f} cm.",
-                "Fabric is treated as plain (no directional print or nap, no pattern matching).",
+                ("Nap / directional print is respected; stripes or checks are not matched." if self.one_way else
+                 "Fabric is treated as plain (no directional print or nap, no pattern matching)."),
                 "Greedy Bottom-Left-Fill heuristic: an upper bound on fabric use, not a proven optimum.",
             ],
         }
@@ -419,7 +468,8 @@ class NestingAlgorithm:
         within = all(g.bbox(p)[0] >= -tol and g.bbox(p)[2] <= self.usable_width + tol and g.bbox(p)[1] >= -tol
                      and g.bbox(p)[3] <= length + tol for p in polys)
         fold_ok = all(abs(g.bbox(i.placed_polygon)[0]) <= tol for i in placed if i.fold)
-        grain_ok = all(not i.fold or not i.rot180 for i in placed)          # 90-degree turns never generated
+        # 90-degree turns are never generated; a fold piece is never turned; one-way fabric: nothing is turned
+        grain_ok = all(not i.rot180 for i in placed if i.fold or self.one_way)
         # quantity: pieces produced per source piece == required cut quantity
         produced = {}
         for i in placed:
@@ -443,7 +493,7 @@ class NestingAlgorithm:
         }
 
 
-def estimate_fabric(pieces, fabric_width_cm=114.3, cutting_mode="auto", fabric_type="woven"):
+def estimate_fabric(pieces, fabric_width_cm=114.3, cutting_mode="auto", fabric_type="woven", one_way=False):
     """
     Fabric requirement for validated pattern pieces. cutting_mode 'auto' lays the pattern out both
     folded and open and keeps the layout that needs the shorter purchase length (ties -> folded).
@@ -457,7 +507,7 @@ def estimate_fabric(pieces, fabric_width_cm=114.3, cutting_mode="auto", fabric_t
     for m in modes:
         try:
             results[m] = NestingAlgorithm(pieces, fabric_width_cm=fabric_width_cm, fabric_type=fabric_type,
-                                          cutting_mode=m).run()
+                                          cutting_mode=m, one_way=one_way).run()
         except NestingError as err:
             errors.append(err)
     if not results:

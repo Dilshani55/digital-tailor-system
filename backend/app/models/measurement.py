@@ -27,9 +27,20 @@ class MeasurementProfile(Document):
     armhole_cm = FloatField()            # legacy alias, kept equal to armhole_depth_cm
     armhole_depth_cm = FloatField()
     garment_length_cm = FloatField()
-    bicep_cm = FloatField()
+    bicep_cm = FloatField()              # upper arm around
     sleeve_cm = FloatField()             # sleeve length
-    wrist_cm = FloatField()
+    wrist_cm = FloatField()              # legacy (a long sleeve's sleeve end)
+
+    # schema version 3 (drafting method of docs/pattern-drafting-method.md). Old profiles simply lack them:
+    # the wizard then asks for the missing ones, nothing is estimated.
+    shoulder_width_cm = FloatField()     # shoulder tip to shoulder tip, across the back
+    shoulder_to_bust_cm = FloatField()
+    bust_point_distance_cm = FloatField()
+    waist_to_hip_cm = FloatField()
+    sleeve_end_cm = FloatField()         # around the arm where the sleeve ends
+    neck_width_cm = FloatField()         # design value: full neckline width
+    front_neck_depth_cm = FloatField()   # design value
+    back_neck_depth_cm = FloatField()    # design value
 
     # Fabric type/stretch + required fit
     fabric_type = StringField(default="woven")       # woven | knit | stretch-knit

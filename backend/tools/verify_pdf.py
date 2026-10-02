@@ -8,7 +8,8 @@ It reads the PDF's own vector data and text; it does not look at a printout. It 
     and on at least one pattern tile?
   * does the PDF say to print at 100 % / Actual size, and are the pages numbered "Page i of n"?
   * are the customer-facing sections there: confirmed design, fabric, measurements, labelled pieces, cutting
-    instructions and the 36" / 45" / 60" fabric requirement?
+    instructions, the 36" / 45" / 60" fabric requirement (metres, yards, areas), the front / back block overviews
+    marked NOT TO SCALE and the list of calculations ("Why this size?")?
 
 A PASS here means the FILE is at true scale. Whether a printer prints it at true scale is checked by a person
 with a ruler on the printed 5 cm square (see docs/HUMAN_VALIDATION.md).
@@ -63,7 +64,11 @@ def verify(path):
         "measurements section": has("Bust", "Waist"),
         "labelled pattern pieces": has("FRONT BODICE", "BACK BODICE", "GRAIN"),
         "cutting instructions (fold / quantity / seam allowance)": has("PLACE ON FOLD", "SA "),
-        "fabric requirement for 36\" / 45\" / 60\"": has('36" / 91.44 cm', '45" / 114.3 cm', '60" / 152.4 cm'),
+        "fabric requirement for 36\" / 45\" / 60\"": has("36 in / 91.44 cm", "45 in / 114.3 cm", "60 in / 152.4 cm"),
+        "fabric lengths in metres and yards, areas in m2 and yd2": has(" yd", " m2", " yd2"),
+        "front, back and sleeve block overviews (not to scale)": has(
+            "FRONT block - measurement overview", "BACK block - measurement overview", "NOT TO SCALE"),
+        "calculations listed (Why this size?)": has("Why this size?"),
         "layout drawing is marked not to scale": has("NOT to scale"),
     }
     measured = sorted({s for page in per_page for s in page})

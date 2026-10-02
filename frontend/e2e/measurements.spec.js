@@ -167,7 +167,7 @@ test('wizard: every step opened directly shows its controls; measurements in the
   // step 4 without a design: design selector + the measurements every design needs
   await step(4).click();
   await expect(page.getByTestId('design-selector')).toBeVisible();
-  await expect(page.locator('.meas-grid input')).toHaveCount(8);
+  await expect(page.locator('.meas-grid input')).toHaveCount(5);
   expect(await typeSlowly(page.locator('#meas-bust_cm'), '88,5')).toEqual(['8', '88', '88,', '88,5']);
   await shot(page, 'step4-no-design');
   await page.getByRole('button', { name: 'Save and continue' }).click();
@@ -179,14 +179,14 @@ test('wizard: every step opened directly shows its controls; measurements in the
   }
   await page.getByTestId('confirm-btn').click();
   await expect(page.getByTestId('design-selector')).toHaveCount(0);
-  await expect(page.locator('.meas-grid input')).toHaveCount(12);                    // + hip, bicep, sleeve length, wrist
+  await expect(page.locator('.meas-grid input')).toHaveCount(16);                    // + hip, waist to hip, bust point, arm, sleeve, 5 optional design values
   await expect(page.locator('#meas-bust_cm')).toHaveValue('88,5');                   // kept through the design change
 
   // inches in the wizard: the sleeve guide line follows the value; toggling never rewrites what was typed
   await page.getByTestId('unit-in').click();
   await expect(page.locator('#meas-bust_cm')).toHaveValue('34.84');
-  const inches = { waist_cm: '27.5', hip_cm: '37', neck_cm: '14.25', shoulder_cm: '4.75', across_back_cm: '13.5', back_waist_length_cm: '15.75',
-    armhole_depth_cm: '8', garment_length_cm: '25.5', bicep_cm: '11', sleeve_cm: '8', wrist_cm: '6.25' };
+  const inches = { waist_cm: '27.5', hip_cm: '37', shoulder_width_cm: '14.5', back_waist_length_cm: '15.75', shoulder_to_bust_cm: '10',
+    waist_to_hip_cm: '8', garment_length_cm: '25.5', bicep_cm: '11', sleeve_cm: '8', sleeve_end_cm: '6.25' };
   for (const [k, v] of Object.entries(inches)) await page.locator(`#meas-${k}`).fill(v);
   await page.locator('#meas-sleeve_cm').focus();
   const shortEnd = await page.getByTestId('sleeve-guide-line').getAttribute('data-end');
@@ -203,11 +203,11 @@ test('wizard: every step opened directly shows its controls; measurements in the
   await expect(page.locator('#meas-sleeve_cm')).toHaveValue('23');
 
   // a mistake beside its field; the rest stays
-  await page.locator('#meas-wrist_cm').fill('-6');
+  await page.locator('#meas-sleeve_end_cm').fill('-6');
   await page.getByRole('button', { name: 'Save and continue' }).click();
-  await expect(page.getByTestId('error-wrist_cm')).toContainText('greater than 0');
+  await expect(page.getByTestId('error-sleeve_end_cm')).toContainText('greater than 0');
   await expect(page.locator('#meas-waist_cm')).toHaveValue('27.5');
-  await page.locator('#meas-wrist_cm').fill('6.25');
+  await page.locator('#meas-sleeve_end_cm').fill('6.25');
   await page.getByRole('button', { name: 'Save and continue' }).click();
   await expect(page.getByRole('alert')).toContainText(/customer name/);
   await step(1).click();
@@ -222,6 +222,8 @@ test('wizard: every step opened directly shows its controls; measurements in the
   expect(saved.sleeve_cm).toBeCloseTo(58.42, 9);
   expect(saved.original_values.sleeve_cm).toEqual({ value: 23, unit: 'in' });
   expect(saved.height_cm ?? null).toBeNull();                                         // not needed by this design: not asked, not invented
+  expect(saved.armhole_depth_cm ?? null).toBeNull();                                  // optional design value left empty: calculated, not stored
+  expect(saved.neck_width_cm ?? null).toBeNull();
 
   await expect(page.getByTestId('fabric-replaced')).toContainText(/Cotton Jersey Knit cannot be used/);
   await expect(page.getByTestId('fit-loose')).toHaveAttribute('aria-pressed', 'true'); // the fit chosen before the design is kept

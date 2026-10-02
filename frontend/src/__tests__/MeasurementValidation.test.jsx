@@ -7,8 +7,9 @@ import Upload from '../pages/Upload';
 import { measurementsAPI } from '../services/api';
 import {
   FIELD_KEYS, LABELS, requiredFor, validateMeasurements, displayValue, canonicalCm, parseFieldErrors,
-  buildPayload, parseEntry, toCm, MEASUREMENT_FIELDS, storedEntries,
+  buildPayload, parseEntry, toCm, MEASUREMENT_FIELDS, storedEntries, DESIGN_KEYS, LEGACY_KEYS, calculatedValues, softWarnings,
 } from '../utils/measurementSchema';
+import { GUIDES, MISTAKES } from '../utils/measurementGuides';
 import { sleeveEnd } from '../components/MeasureFigure';
 
 vi.mock('../services/api', () => ({
@@ -20,12 +21,14 @@ vi.mock('../services/api', () => ({
 }));
 vi.mock('../components/FabricRecommendation', () => ({ default: () => <div data-testid="fabric-stub" /> }));
 
+// what a short-sleeved woven blouse needs (the optional design values are left empty = calculated)
 const VALID = {
-  bust_cm: 88, waist_cm: 70, hip_cm: 94, height_cm: 162, neck_cm: 36, shoulder_cm: 12, across_back_cm: 34,
-  back_waist_length_cm: 40, armhole_depth_cm: 20, garment_length_cm: 65, bicep_cm: 28, sleeve_cm: 24, wrist_cm: 16,
+  bust_cm: 88, waist_cm: 70, hip_cm: 94, shoulder_width_cm: 37, back_waist_length_cm: 40, shoulder_to_bust_cm: 25,
+  waist_to_hip_cm: 20, garment_length_cm: 65, bicep_cm: 28, sleeve_cm: 24, sleeve_end_cm: 27,
 };
-const BODICE = ['bust_cm', 'waist_cm', 'neck_cm', 'shoulder_cm', 'across_back_cm', 'back_waist_length_cm',
-  'armhole_depth_cm', 'garment_length_cm'];
+const BODICE = ['bust_cm', 'waist_cm', 'shoulder_width_cm', 'back_waist_length_cm', 'garment_length_cm'];
+const BELOW_WAIST = ['hip_cm', 'waist_to_hip_cm'];
+const OPTIONAL = ['neck_width_cm', 'front_neck_depth_cm', 'back_neck_depth_cm', 'armhole_depth_cm'];
 const D = {
   sleevelessBlouse: { garment_type: 'blouse', neckline_type: 'round-neck', sleeve_length: 'sleeveless', sleeve_style: 'none' },
   shortBlouse: { garment_type: 'blouse', neckline_type: 'round-neck', sleeve_length: 'short-sleeve', sleeve_style: 'regular-sleeve' },
@@ -34,34 +37,68 @@ const D = {
 };
 
 describe('measurementSchema utils', () => {
-  it('reads the 13 fields from the shared requirement file, with no ranges', () => {
-    expect(FIELD_KEYS).toHaveLength(13);
+  it('reads the 16 fields from the shared requirement file: plain names, a guide and a common mistake each, no rejecting ranges', () => {
+    expect(FIELD_KEYS).toHaveLength(16);
     expect(LABELS.sleeve_cm).toBe('Sleeve length');
-    MEASUREMENT_FIELDS.forEach((f) => expect(f).not.toHaveProperty('min'));
+    expect(LABELS.bust_cm).toBe('Bust around');
+    expect(LABELS.bicep_cm).toBe('Upper arm around');
+    expect(LABELS.sleeve_end_cm).toBe('Sleeve end around');
+    expect(LABELS.back_waist_length_cm).toBe('Back neck to waist');
+    MEASUREMENT_FIELDS.forEach((f) => {
+      expect(f).not.toHaveProperty('min');
+      expect(GUIDES[f.key].length, f.key).toBeGreaterThan(40);
+      expect(MISTAKES[f.key].length, f.key).toBeGreaterThan(15);
+      expect(['front', 'back']).toContain(f.view);
+      expect(f.label).not.toMatch(/circumference|girth|thoracic|posterior|distal/i);
+    });
+    expect(DESIGN_KEYS).toEqual(['bust_point_distance_cm', ...OPTIONAL]);
+    expect(LEGACY_KEYS).toEqual(['neck_cm', 'height_cm', 'shoulder_cm', 'across_back_cm', 'wrist_cm']);
+    LEGACY_KEYS.forEach((k) => expect(FIELD_KEYS).not.toContain(k));  // never asked for any more
   });
 
   it('requires exactly what the design needs (same rules as the backend)', () => {
-    expect(new Set(requiredFor(D.sleevelessBlouse))).toEqual(new Set([...BODICE, 'hip_cm']));   // no sleeve measurements
+    expect(new Set(requiredFor(D.sleevelessBlouse))).toEqual(new Set([...BODICE, ...BELOW_WAIST, 'shoulder_to_bust_cm']));   // no arm measurements
     const short = requiredFor(D.shortBlouse);
-    expect(short).toEqual(expect.arrayContaining(['hip_cm', 'bicep_cm', 'sleeve_cm']));
-    expect(short).not.toContain('wrist_cm');
-    expect(requiredFor(D.longTshirt)).toContain('wrist_cm');
-    expect(requiredFor(D.longBell)).not.toContain('wrist_cm');
-    Object.values(D).forEach((d) => expect(requiredFor(d)).not.toContain('height_cm'));
+    expect(short).toEqual(expect.arrayContaining(['hip_cm', 'bicep_cm', 'sleeve_cm', 'sleeve_end_cm', 'shoulder_to_bust_cm']));
+    expect(requiredFor(D.longTshirt)).toContain('sleeve_end_cm');
+    expect(requiredFor(D.longTshirt)).not.toContain('shoulder_to_bust_cm');     // a knit T-shirt has no bust dart
+    expect(requiredFor(D.longBell)).not.toContain('sleeve_end_cm');             // a bell sleeve flares instead
+    Object.values(D).forEach((d) => [...DESIGN_KEYS, ...LEGACY_KEYS].forEach((k) => expect(requiredFor(d)).not.toContain(k)));
   });
 
   it('reports missing, non-numeric, non-finite, zero and negative values; accepts large values and decimals', () => {
     const errors = validateMeasurements(
-      { ...VALID, bust_cm: '', waist_cm: 'abc', hip_cm: 0, height_cm: -5, neck_cm: Infinity, shoulder_cm: 'NaN',
+      { ...VALID, bust_cm: '', waist_cm: 'abc', hip_cm: 0, shoulder_width_cm: -5, back_waist_length_cm: Infinity, bicep_cm: 'NaN',
         garment_length_cm: 260, sleeve_cm: '24.75' }, FIELD_KEYS);
     expect(errors.bust_cm).toMatch(/required/);
     expect(errors.waist_cm).toMatch(/not a number/);
     expect(errors.hip_cm).toMatch(/greater than 0/);
-    expect(errors.height_cm).toMatch(/greater than 0/);
-    expect(errors.neck_cm).toMatch(/finite/);
-    expect(errors.shoulder_cm).toMatch(/not a number/);
-    expect(errors).not.toHaveProperty('garment_length_cm');          // no plausibility range
+    expect(errors.shoulder_width_cm).toMatch(/greater than 0/);
+    expect(errors.back_waist_length_cm).toMatch(/finite/);
+    expect(errors.bicep_cm).toMatch(/not a number/);
+    expect(errors).not.toHaveProperty('garment_length_cm');          // an unusual value is never an error
     expect(errors).not.toHaveProperty('sleeve_cm');                  // decimals are fine
+  });
+
+  it('warns about values that may be a typing or unit mistake, without rejecting them', () => {
+    expect(softWarnings({ bust_cm: 88, waist_cm: 70 })).toEqual([]);
+    const w = softWarnings({ bust_cm: 34 });                         // inches typed while cm was selected
+    expect(w).toHaveLength(1);
+    expect(w[0].field).toBe('bust_cm');
+    expect(w[0].message).toMatch(/unit \(cm \/ inch\)/);
+    expect(validateMeasurements({ bust_cm: 34 }, [])).toEqual({});     // still accepted
+  });
+
+  it('shows what the drafting method calculates when a design value is left empty', () => {
+    const inch = 2.54;
+    const c = calculatedValues({ bust_cm: 34 * inch });              // the drafting source's sample figure
+    expect(c.neck_width_cm / 2 / inch).toBeCloseTo(34 / 12, 10);     // 1/12 bust each side (2 3/4 in in the source)
+    expect(c.front_neck_depth_cm / inch).toBeCloseTo(34 / 12 + 0.25, 10);
+    expect(c.back_neck_depth_cm).toBeCloseTo(inch, 10);
+    expect(c.armhole_depth_cm / inch).toBeCloseTo(7.5, 10);          // 1/4 bust - 1 in
+    expect(calculatedValues({ bust_cm: 29 * inch }).armhole_depth_cm / inch).toBeCloseTo(29 / 4 - 0.5, 10);   // small bust
+    expect(c.bust_point_distance_cm / inch).toBeCloseTo(6.8, 10);
+    expect(calculatedValues({})).toEqual({});                        // nothing without the bust
   });
 
   it('converts exactly and never twice: switching the display unit keeps what was typed', () => {
@@ -77,9 +114,9 @@ describe('measurementSchema utils', () => {
   });
 
   it('builds a payload of entered numbers only, each with the unit it was typed in', () => {
-    const payload = buildPayload({ bust_cm: '34.5', waist_cm: '', hip_cm: 'x', neck_cm: '36.2' }, { bust_cm: 'in' }, 'cm');
-    expect(payload).toEqual({ unit: 'cm', units: { bust_cm: 'in', neck_cm: 'cm' }, bust_cm: 34.5, neck_cm: 36.2 });
-    expect(buildPayload({ bust_cm: 88, wrist_cm: 16 }, {}, 'cm', ['bust_cm'])).toEqual({ unit: 'cm', units: { bust_cm: 'cm' }, bust_cm: 88 });
+    const payload = buildPayload({ bust_cm: '34.5', waist_cm: '', hip_cm: 'x', bicep_cm: '36.2' }, { bust_cm: 'in' }, 'cm');
+    expect(payload).toEqual({ unit: 'cm', units: { bust_cm: 'in', bicep_cm: 'cm' }, bust_cm: 34.5, bicep_cm: 36.2 });
+    expect(buildPayload({ bust_cm: 88, sleeve_end_cm: 16 }, {}, 'cm', ['bust_cm'])).toEqual({ unit: 'cm', units: { bust_cm: 'cm' }, bust_cm: 88 });
     expect(parseEntry('   ')).toEqual({ missing: true });
   });
 
@@ -100,24 +137,26 @@ describe('measurementSchema utils', () => {
   });
 
   it('opens a saved profile with every value as it was entered, in the unit it was entered in', () => {
-    const p = { bust_cm: 84.58200000000001, waist_cm: 70, hip_cm: null, neck_cm: 36.5, armhole_cm: 20,
+    const p = { bust_cm: 84.58200000000001, waist_cm: 70, hip_cm: null, bicep_cm: 36.5, armhole_cm: 20, neck_cm: 36, wrist_cm: 16,
       original_values: { bust_cm: { value: 33.3, unit: 'in' }, waist_cm: { value: 70, unit: 'cm' },
-        neck_cm: { value: 99, unit: 'in' } } };                     // stale original (does not match the stored cm)
+        bicep_cm: { value: 99, unit: 'in' } } };                    // stale original (does not match the stored cm)
     const { values, units } = storedEntries(p);
     expect(values.bust_cm).toBe('33.3');
     expect(units).toEqual({ bust_cm: 'in' });
     expect(values.waist_cm).toBe('70');
-    expect(values.neck_cm).toBe('36.5');                             // falls back to the stored centimetres
+    expect(values.bicep_cm).toBe('36.5');                            // falls back to the stored centimetres
     expect(values.hip_cm).toBe('');
     expect(values.armhole_depth_cm).toBe('20');                      // legacy field name
+    expect(values.shoulder_width_cm).toBe('');                       // an old profile does not have it: asked for, not guessed
+    expect(values).not.toHaveProperty('neck_cm');                    // no longer part of the form
     expect(canonicalCm(values, units).bust_cm).toBeCloseTo(84.582, 10);
     expect(storedEntries(null).values.bust_cm).toBe('');
   });
 
   it('flattens structured backend errors', () => {
     const err = { response: { data: { field_errors: {
-      wrist_cm: [{ code: 'NOT_DRAFTABLE', message: 'Sleeve width at the bicep must exceed the wrist width.' }] } } } };
-    expect(parseFieldErrors(err)).toEqual({ wrist_cm: 'Sleeve width at the bicep must exceed the wrist width.' });
+      sleeve_end_cm: [{ code: 'NOT_DRAFTABLE', message: 'Sleeve end around is larger than the sleeve.' }] } } } };
+    expect(parseFieldErrors(err)).toEqual({ sleeve_end_cm: 'Sleeve end around is larger than the sleeve.' });
     expect(parseFieldErrors({ response: { data: { error: 'Boom' } } })).toEqual({ _form: 'Boom' });
     expect(parseFieldErrors({})._form).toBeTruthy();
   });
@@ -163,21 +202,50 @@ describe('Measurement form in the Upload wizard', () => {
   it('shows only the measurements the confirmed design needs', () => {
     openMeasurementStep(D.sleevelessBlouse);
     expect(screen.queryByTestId('design-selector')).toBeNull();      // the design really was confirmed
-    expect(new Set(shown())).toEqual(new Set([...BODICE, 'hip_cm']));  // no height, bicep, sleeve, wrist
+    // what the design needs, plus its optional design values (and the bust-point distance: it has a bust dart)
+    expect(new Set(shown())).toEqual(new Set([...BODICE, ...BELOW_WAIST, 'shoulder_to_bust_cm', 'bust_point_distance_cm', ...OPTIONAL]));
     expect(screen.queryByTestId('sleeve-guide-line')).toBeNull();     // no sleeve highlight for sleeveless
+    ['body', 'neck'].forEach((g) => expect(screen.getByTestId(`meas-group-${g}`)).toBeTruthy());
+    expect(screen.queryByTestId('meas-group-arm')).toBeNull();        // no arm group for a sleeveless design
+    expect(screen.getByLabelText(/^Neckline width/).closest('.meas-field').textContent).toMatch(/optional/);
+    expect(screen.getByLabelText(/^Bust around/).closest('.meas-field').textContent).not.toMatch(/optional/);
     expect(document.body.textContent).not.toMatch(/All 13 measurements/);
   });
 
-  it('short sleeve: asks for the sleeve length but not the wrist; long plain sleeve: asks for the wrist', () => {
+  it('a sleeve asks for its length, the upper arm and the arm at the sleeve end; a knit T-shirt has no bust-point fields', () => {
     const v = openMeasurementStep(D.shortBlouse);
-    expect(shown()).toEqual(expect.arrayContaining(['bicep_cm', 'sleeve_cm', 'hip_cm']));
-    expect(input('wrist_cm')).toBeNull();
-    expect(input('height_cm')).toBeNull();
+    expect(shown()).toEqual(expect.arrayContaining(['bicep_cm', 'sleeve_cm', 'sleeve_end_cm', 'hip_cm', 'shoulder_to_bust_cm']));
+    ['wrist_cm', 'height_cm', 'neck_cm', 'shoulder_cm', 'across_back_cm'].forEach((k) => expect(input(k)).toBeNull());
     expect(screen.getByLabelText(/^Sleeve length/)).toBeTruthy();
+    expect(screen.getByLabelText(/^Upper arm around/)).toBeTruthy();
     expect(document.body.textContent).not.toMatch(/full arm/i);
     v.unmount();
     openMeasurementStep(D.longTshirt);
-    expect(input('wrist_cm')).toBeTruthy();
+    expect(input('sleeve_end_cm')).toBeTruthy();
+    expect(input('shoulder_to_bust_cm')).toBeNull();
+    expect(input('bust_point_distance_cm')).toBeNull();
+  });
+
+  it('shows the calculated value of an empty design field and hides it once a value is typed', () => {
+    openMeasurementStep();
+    expect(screen.queryByTestId('calculated-armhole_depth_cm')).toBeNull();          // nothing to calculate from yet
+    fireEvent.change(input('bust_cm'), { target: { value: '86.36' } });              // 34 in
+    expect(screen.getByTestId('calculated-armhole_depth_cm').textContent).toMatch(/Calculated value: 19\.1 cm/);   // 7.5 in
+    expect(screen.getByTestId('calculated-neck_width_cm').textContent).toMatch(/14\.4 cm/);
+    fireEvent.click(screen.getByTestId('unit-in'));
+    expect(screen.getByTestId('calculated-armhole_depth_cm').textContent).toMatch(/7\.5 in/);
+    fireEvent.click(screen.getByTestId('unit-cm'));
+    fireEvent.change(input('armhole_depth_cm'), { target: { value: '21' } });
+    expect(screen.queryByTestId('calculated-armhole_depth_cm')).toBeNull();
+  });
+
+  it('warns about an unusual value beside its field but still saves it', async () => {
+    openMeasurementStep();
+    fillAll({ ...VALID, bust_cm: 250 });
+    expect(screen.getByTestId('warning-bust_cm').textContent).toMatch(/Please check/);
+    save();
+    await waitFor(() => expect(measurementsAPI.save).toHaveBeenCalledTimes(1));
+    expect(measurementsAPI.save.mock.calls[0][0].bust_cm).toBe(250);                 // saved exactly as entered
   });
 
   it('starts empty: no invented default measurements', () => {
@@ -190,13 +258,14 @@ describe('Measurement form in the Upload wizard', () => {
     save();
     expect(screen.getByTestId('error-bust_cm').textContent).toMatch(/required/);
     expect(screen.getByTestId('error-sleeve_cm').textContent).toMatch(/required/);
-    expect(screen.queryByTestId('error-wrist_cm')).toBeNull();
+    expect(screen.getByTestId('error-sleeve_end_cm').textContent).toMatch(/required/);
+    OPTIONAL.forEach((k) => expect(screen.queryByTestId(`error-${k}`)).toBeNull());   // design values are optional
     expect(measurementsAPI.save).not.toHaveBeenCalled();
   });
 
   it('rejects zero, negative and non-numbers but not unusual sizes', () => {
     openMeasurementStep();
-    fillAll({ ...VALID, bust_cm: 0, waist_cm: -4, neck_cm: 'abc', garment_length_cm: 180 });
+    fillAll({ ...VALID, bust_cm: 0, waist_cm: -4, bicep_cm: 'abc', garment_length_cm: 180 });
     save();
     expect(screen.getByTestId('error-bust_cm').textContent).toMatch(/greater than 0/);
     expect(screen.getByTestId('error-waist_cm').textContent).toMatch(/greater than 0/);
@@ -233,8 +302,8 @@ describe('Measurement form in the Upload wizard', () => {
     fireEvent.change(input('bust_cm'), { target: { value: '88.9' } });
     fireEvent.click(screen.getByTestId('unit-in'));
     expect(input('bust_cm').value).toBe('35');                      // 88.9 cm shown as 35 in
-    expect(screen.getByLabelText(/Bust \(in\)/)).toBeTruthy();
-    fireEvent.change(input('neck_cm'), { target: { value: '14.25' } });   // typed in inches
+    expect(screen.getByLabelText(/Bust around \(in\)/)).toBeTruthy();
+    fireEvent.change(input('shoulder_width_cm'), { target: { value: '14.25' } });   // typed in inches
     fireEvent.click(screen.getByTestId('unit-cm'));
     fireEvent.click(screen.getByTestId('unit-in'));
     fireEvent.click(screen.getByTestId('unit-cm'));
@@ -244,14 +313,17 @@ describe('Measurement form in the Upload wizard', () => {
     const payload = measurementsAPI.save.mock.calls[0][0];
     expect(payload.bust_cm).toBe(88.9);
     expect(payload.units.bust_cm).toBe('cm');
-    expect(payload.neck_cm).toBe(14.25);
-    expect(payload.units.neck_cm).toBe('in');                       // the server converts it once, exactly
+    expect(payload.shoulder_width_cm).toBe(14.25);
+    expect(payload.units.shoulder_width_cm).toBe('in');             // the server converts it once, exactly
   });
 
   it('shows one guide instruction next to the active field and moves the sleeve line with the entered length', () => {
     openMeasurementStep();
     fireEvent.focus(input('sleeve_cm'));
-    expect(screen.getByTestId('guide-sleeve_cm').textContent).toBe('උරහිසේ අග සිට ඔබට අත අවසන් වෙන්න අවශ්‍ය ස්ථානය දක්වා මනින්න.');
+    const guide = screen.getByTestId('guide-sleeve_cm').textContent;
+    expect(guide).toMatch(/How to measure/);
+    expect(guide).toMatch(/from the shoulder tip down the outside of the arm to where you want the sleeve to end/);
+    expect(guide).toMatch(/Common mistake: Start at the shoulder tip, not at the neck/);
     expect(screen.queryByTestId('guide-bust_cm')).toBeNull();
     fireEvent.change(input('sleeve_cm'), { target: { value: '20' } });
     const shortEnd = screen.getByTestId('sleeve-guide-line').getAttribute('data-end');
@@ -267,10 +339,29 @@ describe('Measurement form in the Upload wizard', () => {
     expect(screen.getByRole('complementary', { name: 'Measurement guide' })).toBeTruthy();
   });
 
+  it('the body guide has a front and a back view and highlights the measurement being entered', () => {
+    openMeasurementStep();
+    expect(screen.getByTestId('measure-view-front')).toBeTruthy();
+    expect(screen.getByTestId('measure-view-back')).toBeTruthy();
+    fireEvent.focus(input('bust_cm'));
+    expect(screen.getByTestId('measure-figure').getAttribute('data-active-view')).toBe('front');
+    expect(screen.getByTestId('guide-line-bust_cm').getAttribute('data-active')).toBe('yes');
+    expect(screen.getByTestId('guide-line-waist_cm').getAttribute('data-active')).toBe('no');     // the others fade
+    expect(screen.getByTestId('guide-point-bust_cm-0')).toBeTruthy();                               // start and end points
+    expect(screen.getByTestId('guide-point-bust_cm-1')).toBeTruthy();
+    fireEvent.focus(input('back_waist_length_cm'));
+    expect(screen.getByTestId('measure-figure').getAttribute('data-active-view')).toBe('back');
+    expect(screen.getByTestId('measure-view-back').getAttribute('data-current')).toBe('yes');
+    expect(screen.getByTestId('measure-view-front').getAttribute('data-current')).toBe('no');
+    expect(screen.getByTestId('guide-line-back_waist_length_cm').getAttribute('data-active')).toBe('yes');
+    fireEvent.click(screen.getByRole('button', { name: 'How to measure Shoulder to shoulder' }));   // the info button
+    expect(screen.getByTestId('guide-shoulder_width_cm').textContent).toMatch(/tip of one shoulder to the tip of the other/);
+  });
+
   it('displays structured server-side errors under the right field', async () => {
     measurementsAPI.save.mockRejectedValue({ response: { status: 400, data: {
-      error: 'Bicep: required', error_code: 'MEASUREMENT_VALIDATION_FAILED',
-      field_errors: { bicep_cm: [{ code: 'REQUIRED', message: 'Bicep is required for this design.' }] } } } });
+      error: 'Upper arm around: required', error_code: 'MEASUREMENT_VALIDATION_FAILED',
+      field_errors: { bicep_cm: [{ code: 'REQUIRED', message: 'Upper arm around is required for this design.' }] } } } });
     openMeasurementStep();
     fillAll(VALID);
     save();
@@ -291,7 +382,7 @@ describe('Measurement form in the Upload wizard', () => {
     openMeasurementStep({ ...D.shortBlouse, neckline_type: 'halter-neck' });   // not selectable -> never confirmed
     expect(screen.getByTestId('design-selector')).toBeTruthy();
     expect(shown()).toEqual(BODICE);                                  // what every design needs; no sleeve / hip yet
-    expect(screen.getByTestId('base-fields-note').textContent).toMatch(/Every design needs these 8/);
+    expect(screen.getByTestId('base-fields-note').textContent).toMatch(/Every design needs these 5/);
     fireEvent.change(input('bust_cm'), { target: { value: '88.5' } });
     expect(screen.getByText('Save and continue').disabled).toBe(false);       // navigation / saving is never a dead button
     save();
@@ -309,7 +400,7 @@ describe('Measurement form in the Upload wizard', () => {
     Object.entries(D.longTshirt).forEach(([k, v]) => fireEvent.change(screen.getByTestId(`select-${k}`), { target: { value: v } }));
     fireEvent.click(screen.getByTestId('confirm-btn'));
     expect(screen.queryByTestId('design-selector')).toBeNull();
-    expect(shown()).toEqual(expect.arrayContaining(['hip_cm', 'bicep_cm', 'sleeve_cm', 'wrist_cm']));
+    expect(shown()).toEqual(expect.arrayContaining(['hip_cm', 'waist_to_hip_cm', 'bicep_cm', 'sleeve_cm', 'sleeve_end_cm']));
     expect(input('bust_cm').value).toBe('34.5');
   });
 

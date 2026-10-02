@@ -20,8 +20,8 @@ vi.mock('../components/FabricRecommendation', () => ({
 }));
 
 const VALID = {
-  bust_cm: 88, waist_cm: 70, hip_cm: 94, height_cm: 162, neck_cm: 36, shoulder_cm: 12, across_back_cm: 34,
-  back_waist_length_cm: 40, armhole_depth_cm: 20, garment_length_cm: 65, bicep_cm: 28, sleeve_cm: 24, wrist_cm: 16,
+  bust_cm: 88, waist_cm: 70, hip_cm: 94, shoulder_width_cm: 37, back_waist_length_cm: 40, shoulder_to_bust_cm: 25,
+  waist_to_hip_cm: 20, garment_length_cm: 65, bicep_cm: 28, sleeve_cm: 24, sleeve_end_cm: 27,
 };
 const CONFIRMED = { garment_type: 'blouse', neckline_type: 'round-neck', sleeve_length: 'short-sleeve', sleeve_style: 'regular-sleeve' };
 
@@ -129,13 +129,16 @@ describe('creation wizard — full workflow', () => {
 
     fireEvent.click(screen.getByText('Continue to fabric estimate'));
     await heading('Fabric estimate');
-    await waitFor(() => expect(exportAPI.estimates).toHaveBeenCalledWith('p1', { selected_width_cm: 114.3, cutting_mode: 'auto' }));
+    await waitFor(() => expect(exportAPI.estimates).toHaveBeenCalledWith('p1', { selected_width_cm: 114.3, cutting_mode: 'auto', one_way: false }));
     expect((await screen.findAllByText('1.4 m')).length).toBeGreaterThan(0);
     const table = screen.getByTestId('width-comparison');
     ['36"', '45"', '60"', '91.44 cm', '114.3 cm', '152.4 cm', '1.8 m', '1.1 m'].forEach((t) => expect(table.textContent).toContain(t));
     expect(screen.getByTestId('nesting-layout')).toBeTruthy();
     fireEvent.click(screen.getByTestId('width-60'));
-    await waitFor(() => expect(exportAPI.estimates).toHaveBeenLastCalledWith('p1', { selected_width_cm: 152.4, cutting_mode: 'auto' }));
+    await waitFor(() => expect(exportAPI.estimates).toHaveBeenLastCalledWith('p1', { selected_width_cm: 152.4, cutting_mode: 'auto', one_way: false }));
+    fireEvent.click(screen.getByTestId('one-way'));                    // nap or a directional print: nothing may be turned
+    await waitFor(() => expect(exportAPI.estimates).toHaveBeenLastCalledWith('p1', { selected_width_cm: 152.4, cutting_mode: 'auto', one_way: true }));
+    expect(screen.getByTestId('estimate-explain').textContent).toMatch(/not automatically the best/);
     await waitFor(() => expect(screen.getByTestId('width-60').textContent).toBe('Selected'));
 
     fireEvent.click(screen.getByText('Continue to PDF export'));
@@ -144,7 +147,13 @@ describe('creation wizard — full workflow', () => {
     expect(screen.getByTestId('tile-preview')).toBeTruthy();
     fireEvent.click(screen.getByText('Create printable PDF'));
     await screen.findByTestId('pdf-ready');
+    expect(exportAPI.pdf).toHaveBeenCalledWith('p1', { part: 'all', unit: 'cm' });
     expect(screen.getByTestId('pdf-ready').textContent).toMatch(/14 pages/);
+    fireEvent.click(screen.getByTestId('pdf-part-report'));           // another content needs another PDF
+    expect(screen.queryByTestId('pdf-ready')).toBeNull();
+    fireEvent.click(screen.getByText('Create printable PDF'));
+    await screen.findByTestId('pdf-ready');
+    expect(exportAPI.pdf).toHaveBeenLastCalledWith('p1', { part: 'report', unit: 'cm' });
     fireEvent.click(screen.getByRole('button', { name: 'Download PDF' }));
     await waitFor(() => expect(exportAPI.download).toHaveBeenCalledWith('e1'));
 

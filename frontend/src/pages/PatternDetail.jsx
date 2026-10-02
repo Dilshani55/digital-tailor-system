@@ -92,7 +92,10 @@ export default function PatternDetail() {
             <div className="result-tile"><div className="r-val">{formatResult(n.utilisation_percent, '%')}</div><div className="r-lbl">Fabric used by pieces</div></div>
           </div>
           <section className="ui-card" style={{ padding: '18px' }}>
-            <PatternPreview pieces={data.pattern_pieces || []} validation={data.validation} />
+            <PatternPreview pieces={data.pattern_pieces || []} validation={data.validation}
+                            whyThisSize={data.why_this_size} sleeveCap={data.sleeve_cap} draftingMethod={data.drafting_method}
+                            draftingBlock={data.drafting_block} ease={data.ease} warnings={data.warnings}
+                            unit={data.measurements_snapshot?.display_unit || 'cm'} />
           </section>
           <section className="ui-card" style={{ padding: '18px', marginTop: '14px' }}>
             <h2 style={{ fontSize: '14px', marginBottom: '8px' }}>Printable PDFs</h2>

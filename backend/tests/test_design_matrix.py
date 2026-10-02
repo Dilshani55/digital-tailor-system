@@ -165,7 +165,7 @@ class TestEverySupportedDesign(unittest.TestCase):
             self.assertEqual(block["is_knit_block"], construction == "knit", tag)
             self.assertEqual(block["block_id"], "knit_bodice" if construction == "knit" else "woven_bodice", tag)
             ease = p["measurements_used"]["ease_profile"]
-            for key in ("bust_cm", "waist_cm", "hip_cm", "bicep_cm"):
+            for key in ("bust_cm", "waist_cm", "hip_cm", "upper_arm_cm", "sleeve_end_cm"):
                 self.assertGreater(ease[key], 0, tag)                    # positive ease only
             front = next(q for q in p["pattern_pieces"] if q["piece_type"] == "front_bodice")
             if not block["allow_darts"]:
@@ -247,8 +247,12 @@ class TestEverySupportedDesign(unittest.TestCase):
             tag = label(d, construction, profile)
             front = next(q for q in p["pattern_pieces"] if q["piece_type"] == "front_bodice")["measurements"]
             back = next(q for q in p["pattern_pieces"] if q["piece_type"] == "back_bodice")["measurements"]
-            self.assertAlmostEqual(front["shoulder_length_cm"], back["shoulder_length_cm"], places=2, msg=tag)
-            self.assertAlmostEqual(front["side_seam_length_cm"], back["side_seam_length_cm"], places=2, msg=tag)
+            # the method raises the front neck point, so the front shoulder is eased onto the back by a few mm
+            self.assertAlmostEqual(front["shoulder_length_cm"], back["shoulder_length_cm"], delta=0.6, msg=tag)
+            # the side seams are equal once the front bust dart is sewn
+            self.assertAlmostEqual(front["side_seam_sewn_length_cm"], back["side_seam_sewn_length_cm"], places=2, msg=tag)
+            self.assertAlmostEqual(front["side_seam_length_cm"] - front["side_dart_intake_cm"],
+                                   front["side_seam_sewn_length_cm"], places=2, msg=tag)
 
     def test_neckline_shapes_differ(self):
         base = dict(garment_type="blouse", sleeve_length="sleeveless", sleeve_style="none")

@@ -22,6 +22,7 @@ class Piece:
         self.meta = dict(meta or {})
         self.seam_allowance_cm = seam_allowance_cm   # main seam allowance; real geometry is in cut_outline
         self.transformations = []
+        self.dimensions = []                # dimension annotations (builders fill them in)
         # cutting-line geometry, attached by seam_allowance.apply_seam_allowance()
         self.allowances = {}
         self.cut_outline = None
@@ -87,4 +88,5 @@ class Piece:
             "polygon_area_cm2": area,
             "measurements": {k: (round(v, 3) if isinstance(v, float) else v) for k, v in self.meta.items()},
             "transformations": list(self.transformations),
+            "dimensions": [dict(d) for d in self.dimensions],
         }

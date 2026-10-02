@@ -20,6 +20,10 @@ from datetime import datetime, timezone
 patterns_bp = Blueprint("patterns", __name__)
 
 MANUAL_IMAGE_IDS = {"manual", "manual-selection", "none"}
+# what is kept with a saved pattern so its "why this size" and validation report can be shown again later
+DRAFTING_INFO_KEYS = ("engine_version", "drafting_block", "design_attributes", "measurements_used", "construction_notes",
+                      "drafting_method", "units", "ease", "why_this_size", "armhole_lengths", "sleeve_cap",
+                      "seam_allowances_cm")
 
 
 # ── GENERATE PATTERN ──────────────────────────────────────────────────────────
@@ -195,6 +199,8 @@ def generate_pattern():
         "original_values": getattr(measurement, "original_values", None) or {},
         "fabric_type": measurements_dict["fabric_type"],
         "fit_preference": measurements_dict["fit_preference"],
+        # the unit the user worked in: lengths are SHOWN in it (the calculation is always in cm)
+        "display_unit": data.get("display_unit") if data.get("display_unit") in ms.UNITS else ms.CANONICAL_UNIT,
     }
 
     # 4. Create session to track this generation
@@ -210,8 +216,13 @@ def generate_pattern():
         # 5. Engine input = the validated measurements from step 3b (never defaults).
         # 6–7. Run parametric engine with confirmed CAD features
         t0 = time.perf_counter()
-        engine  = ParametricEngine(measurements_dict, features_dict, design_spec=design_spec)
+        # Optional research setting: {"seam_allowances": {"side": 2.0, ...}} replaces single allowance values.
+        extra = {"seam_allowances": data["seam_allowances"]} if isinstance(data.get("seam_allowances"), dict) else {}
+        engine  = ParametricEngine(measurements_dict, features_dict, design_spec=design_spec, **extra)
         pattern = engine.generate()
+        warnings = ms.measurement_warnings(measurements_snapshot["canonical_cm"])
+        if (pattern.get("sleeve_cap") or {}).get("status") == "REVIEW":
+            warnings.append({"field": "bicep_cm", "code": "SLEEVE_CAP_REVIEW", "message": pattern["sleeve_cap"]["note"]})
         generation_time_sec = round(time.perf_counter() - t0, 4)
 
         # 8. Geometry validation. The engine already raised DraftingError if either the base
@@ -235,8 +246,7 @@ def generate_pattern():
             validation_passed   = bool(validation.get("passed")),
             generation_time_sec = generation_time_sec,
             project_name        = project_name,
-            drafting_info       = {k: pattern.get(k) for k in ("engine_version", "drafting_block", "design_attributes",
-                                                              "measurements_used", "construction_notes")},
+            drafting_info       = dict({k: pattern.get(k) for k in DRAFTING_INFO_KEYS}, warnings=warnings),
         )
         pattern_result.save()
 
@@ -268,6 +278,15 @@ def generate_pattern():
             "base_block":          pattern["base_block"],
             "final_pattern":       pattern["final_pattern"],
             "armhole_sleeve":      pattern["armhole_sleeve"],
+            "drafting_method":     pattern["drafting_method"],
+            "units":               pattern["units"],
+            "ease":                pattern["ease"],
+            "why_this_size":       pattern["why_this_size"],
+            "armhole_lengths":     pattern["armhole_lengths"],
+            "sleeve_cap":          pattern["sleeve_cap"],
+            "seam_allowances_cm":  pattern["seam_allowances_cm"],
+            "derived_measurements": pattern["measurements_used"]["derived"],
+            "warnings":            warnings,
             "validation":          validation,
             "validation_passed":   bool(validation.get("passed")),
             "fabric_estimate_blocked": not bool(validation.get("passed")),
@@ -330,6 +349,8 @@ def get_pattern(pattern_id):
 
     exports = PdfExport.objects(pattern_id=pattern).order_by("-exported_at")
     spec = pattern.design_spec or {}
+    info = getattr(pattern, "drafting_info", None)
+    info = info if isinstance(info, dict) else {}
     return jsonify({
         "pattern_id":   str(pattern.id),
         "garment_type": pattern.garment_type,
@@ -353,6 +374,9 @@ def get_pattern(pattern_id):
         "project_name": getattr(pattern, "project_name", None),
         "width_estimates": getattr(pattern, "width_estimates", None) or [],
         "measurements_snapshot": pattern.measurements_snapshot or {},
+        # what was saved with the pattern: the calculation list, the armhole / sleeve-cap check, the method
+        **{k: info.get(k) for k in ("drafting_method", "why_this_size", "armhole_lengths", "sleeve_cap", "ease",
+                                    "seam_allowances_cm", "drafting_block", "warnings")},
         "exports": [{"export_id": str(e.id), "filename": e.file_path, "exported_at": str(e.exported_at)} for e in exports],
         "generated_at": str(pattern.generated_at)
     }), 200

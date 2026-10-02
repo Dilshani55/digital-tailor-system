@@ -8,8 +8,8 @@ import path from 'node:path';
 const API = process.env.E2E_API_URL || 'http://127.0.0.1:5055/api';
 const IMAGE = path.resolve(process.env.E2E_IMAGE || '../backend/training/data/eval_real_product_set/images/blouse_01.jpg');
 const MEAS = {
-  bust_cm: 88, waist_cm: 70, hip_cm: 94, height_cm: 162, neck_cm: 36, shoulder_cm: 12, across_back_cm: 34,
-  back_waist_length_cm: 40, armhole_depth_cm: 20, garment_length_cm: 65, bicep_cm: 28, sleeve_cm: 24, wrist_cm: 16,
+  bust_cm: 88, waist_cm: 70, hip_cm: 94, shoulder_width_cm: 37, back_waist_length_cm: 40, shoulder_to_bust_cm: 25,
+  waist_to_hip_cm: 20, garment_length_cm: 65, bicep_cm: 28, sleeve_cm: 24, sleeve_end_cm: 27,
 };
 
 // Set E2E_SHOT_DIR to save a full-page screenshot of every wizard step (visual evidence);
@@ -70,11 +70,20 @@ test('register -> upload -> AI review -> measurements -> fabric -> pattern -> es
 
   // 4. only the measurements this design needs; a non-positive value is rejected inline; units never double-convert
   await shot('03-measurements-empty');
-  await expect(page.locator('#meas-wrist_cm')).toHaveCount(0);          // short sleeve: no wrist
+  await expect(page.locator('#meas-sleeve_end_cm')).toHaveCount(1);     // the arm where this sleeve ends
+  await expect(page.locator('#meas-wrist_cm')).toHaveCount(0);          // old field: stored, never asked
   await expect(page.locator('#meas-height_cm')).toHaveCount(0);         // no drafting calculation uses height
+  await expect(page.locator('#meas-neck_cm')).toHaveCount(0);           // nor the neck circumference
+  for (const g of ['body', 'arm', 'neck']) await expect(page.getByTestId(`meas-group-${g}`)).toBeVisible();
   await expect(page.getByText(/All 13 measurements|Open the 3D measuring guide|full arm/)).toHaveCount(0);
   await page.locator('#meas-sleeve_cm').focus();
-  await expect(page.getByTestId('guide-sleeve_cm')).toHaveText('උරහිසේ අග සිට ඔබට අත අවසන් වෙන්න අවශ්‍ය ස්ථානය දක්වා මනින්න.');
+  await expect(page.getByTestId('guide-sleeve_cm')).toContainText('How to measure');
+  await expect(page.getByTestId('guide-sleeve_cm')).toContainText('Common mistake:');
+  await expect(page.getByTestId('guide-line-sleeve_cm')).toHaveAttribute('data-active', 'yes');   // drawn on the figure
+  await page.locator('#meas-shoulder_width_cm').focus();
+  await expect(page.getByTestId('measure-figure')).toHaveAttribute('data-active-view', 'back');   // measured on the back
+  await page.locator('#meas-bust_cm').focus();
+  await expect(page.getByTestId('measure-figure')).toHaveAttribute('data-active-view', 'front');
   await page.locator('#meas-bust_cm').fill('-5');
   await page.getByRole('button', { name: 'Save and continue' }).click();
   await expect(page.getByTestId('error-bust_cm')).toContainText(/greater than 0/);
@@ -82,6 +91,8 @@ test('register -> upload -> AI review -> measurements -> fabric -> pattern -> es
   for (const [k, v] of Object.entries(MEAS)) {
     if (await page.locator(`#meas-${k}`).count()) await page.locator(`#meas-${k}`).fill(String(v));
   }
+  // design values left empty: the method's calculated value is shown, not saved as if it were measured
+  await expect(page.getByTestId('calculated-armhole_depth_cm')).toContainText('Calculated value');
   await page.locator('#meas-bust_cm').fill('88.9');
   await page.getByTestId('unit-in').click();
   await expect(page.locator('#meas-bust_cm')).toHaveValue('35');
@@ -99,6 +110,19 @@ test('register -> upload -> AI review -> measurements -> fabric -> pattern -> es
   await expect(page.getByText('Geometry validation passed')).toBeVisible();
   expect(await page.locator('[data-testid^="cutting-line-"]').count()).toBeGreaterThanOrEqual(3);
   expect(await page.locator('[data-testid^="notch-"]').count()).toBeGreaterThanOrEqual(3);
+  // front, back and sleeve blocks with their dimensions; the sleeve cap is checked against the armhole
+  for (const tab of ['front_bodice', 'back_bodice', 'sleeve']) {
+    await page.getByTestId(`tab-${tab}`).click();
+    await expect(page.getByTestId(`block-${tab}`)).toBeVisible();
+    expect(await page.locator('[data-testid^="dim-row-"]').count()).toBeGreaterThanOrEqual(4);
+  }
+  await expect(page.getByTestId('sleeve-cap-report')).toContainText('Bodice armhole seam');
+  await expect(page.getByTestId('sleeve-cap-status')).toContainText(/^(PASS|REVIEW)/);
+  await expect(page.getByTestId('why-this-size')).toContainText('Front width at the bust line');
+  await page.getByTestId('tab-all').click();
+  await page.getByTestId('toggle-cut').click();
+  await expect(page.locator('[data-testid^="cutting-line-"]')).toHaveCount(0);        // sewing line only
+  await page.getByTestId('toggle-cut').click();
   await shot('05-pattern-preview');
   mark('pattern generated, validated, SVG shows cutting lines + notches');
 
@@ -116,11 +140,24 @@ test('register -> upload -> AI review -> measurements -> fabric -> pattern -> es
     await expect(page.getByTestId('nesting-layout')).toContainText(`${cm} cm wide`);
     lengths[inch] = await page.getByTestId(`estimate-row-${inch}`).innerText();
   }
+  // lengths in metres and yards, areas, and a one-way (nap) layout that is never shorter than the two-way one
+  for (const t of ['yd', 'm²', 'yd²']) await expect(table).toContainText(t);
+  await expect(page.getByTestId('estimate-explain')).toBeVisible();
+  const before = await page.getByTestId('estimate-row-45').innerText();
+  await page.getByTestId('one-way').check();
+  await expect(page.getByTestId('width-comparison')).toContainText(/one.way/i, { timeout: 60_000 });
+  mark(`one-way estimate: ${(await page.getByTestId('estimate-row-45').innerText()).replace(/\s+/g, ' ')} (two-way: ${before.replace(/\s+/g, ' ')})`);
+  await page.getByTestId('one-way').uncheck();
+  await expect(page.getByTestId('estimate-row-45')).not.toContainText('one-way', { timeout: 60_000 });
+  expect(await page.getByTestId('estimate-row-45').innerText()).toBe(before);         // the same layout as before
   await shot('06-fabric-estimate');
   mark(`estimates: ${JSON.stringify(lengths).replace(/\s+/g, ' ')}`);
 
   // 7. printable PDF
   await page.getByRole('button', { name: 'Continue to PDF export' }).click();
+  await expect(page.getByTestId('pdf-part-all')).toBeChecked();         // report + 1:1 pattern in one file
+  await expect(page.getByTestId('pdf-part-report')).toBeVisible();
+  await expect(page.getByTestId('pdf-part-pattern')).toBeVisible();
   await page.getByRole('button', { name: 'Create printable PDF' }).click();
   await expect(page.getByTestId('pdf-ready')).toBeVisible({ timeout: 120_000 });
   await shot('07-pdf-ready');

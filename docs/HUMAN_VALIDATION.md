@@ -54,8 +54,9 @@ setting and print again before cutting anything.
 
 ## 2. Muslin fit trial
 
-Purpose: whether a garment sewn from the pattern fits the person it was drafted for. The drafting constants are
-project assumptions that have never been fit-tested, so this is the most important check.
+Purpose: whether a garment sewn from the pattern fits the person it was drafted for. The draft follows a published
+course text with some project extensions ([pattern-drafting-method.md](pattern-drafting-method.md)); none of it has
+been fit-tested, so this is the most important check.
 
 1. Measure the wearer with a tape, following the guide in the app. Record the measurements below **as taken**.
 2. Enter them, choose a supported design and a woven or knit fabric, generate the pattern and print it at 100 %
@@ -71,7 +72,7 @@ project assumptions that have never been fit-tested, so this is the most importa
 | Sewn by (name, experience in years) | |
 | Design (garment, neckline, sleeve length, sleeve style) | |
 | Fabric used for the test / fabric chosen in the app | |
-| Fit preference chosen (fitted / regular / relaxed) | |
+| Fit preference chosen (close / regular / relaxed) | |
 | Pattern id and PDF file | |
 | Measurements entered (list each, with unit) | |
 

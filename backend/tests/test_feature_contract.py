@@ -299,9 +299,9 @@ class TestConfirmRoute(unittest.TestCase):
 
 
 MEAS = SimpleNamespace(
-    id="m1", bust_cm=88.0, waist_cm=70.0, hip_cm=94.0, height_cm=162.0, neck_cm=36.0, shoulder_cm=12.0,
-    across_back_cm=34.0, back_waist_length_cm=40.0, armhole_depth_cm=20.0, armhole_cm=20.0,
-    garment_length_cm=65.0, bicep_cm=28.0, sleeve_cm=55.0, wrist_cm=16.0,
+    id="m1", bust_cm=88.0, waist_cm=70.0, hip_cm=94.0, shoulder_width_cm=37.0, back_waist_length_cm=40.0,
+    shoulder_to_bust_cm=25.0, waist_to_hip_cm=20.0,
+    garment_length_cm=65.0, bicep_cm=28.0, sleeve_cm=55.0, sleeve_end_cm=16.0,
     fabric_type="woven", fit_preference="standard", unit="cm", original_values={},
 )
 

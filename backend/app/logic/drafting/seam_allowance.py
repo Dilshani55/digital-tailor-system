@@ -4,7 +4,9 @@ Seam-allowance (cutting-line) geometry and balance marks (notches).
 The drafted outline of a Piece is the SEAM (stitching) line. This module offsets it outward,
 edge by edge, to produce the CUTTING line:
 
-  * every edge gets its own allowance (side/shoulder/armhole seams, neckline, hem, ...);
+  * every kind of edge has its own allowance: shoulder, side seam, armhole / sleeve cap, neckline,
+    sleeve seam, sleeve hem, garment hem (values and their source: assumptions.SEAM_ALLOWANCES);
+  * a seam allowance is NOT ease: it lies outside the sewing line and does not change the garment size;
   * a fold edge (the centre line of a piece cut on the fold) gets 0 - the cutting line runs
     exactly along the fold;
   * adjacent offset edges are joined by intersecting their offset lines (mitre); very sharp
@@ -17,20 +19,27 @@ preview and the printable PDF all use. Units: cm. Deterministic.
 import math
 
 from app.logic.drafting import geometry as g
+from app.logic.drafting.assumptions import SEAM_ALLOWANCES
 
-# Allowance table (cm). Project choice, documented in assumptions.py (sewing practice, not measured).
-ALLOWANCES = {
-    "woven_bodice": {"seam": 1.5, "neckline": 1.0, "hem": 2.5, "strip": 1.0},
-    "knit_bodice": {"seam": 1.0, "neckline": 1.0, "hem": 2.0, "strip": 0.7},
-}
+ALLOWANCES = SEAM_ALLOWANCES      # cm, per block and kind of edge
+EDGE_KINDS = ("shoulder", "side", "armhole", "neckline", "sleeve_seam", "sleeve_hem", "hem", "strip")
+NOTCH_PAIR_GAP_CM = 1.0           # distance between the two marks of a double notch
 
 MITRE_LIMIT = 2.0        # max mitre length as a multiple of the largest local allowance
 PARALLEL_EPS = 1e-9
 REMOVE_REVERSED_EDGES = True
 
 
-def allowance_table(block_id):
-    return dict(ALLOWANCES[block_id])
+def allowance_table(block_id, overrides=None):
+    """The allowances used for a block; `overrides` ({kind: cm}) replaces single values (research settings)."""
+    table = dict(ALLOWANCES[block_id])
+    for kind, value in (overrides or {}).items():
+        if kind not in EDGE_KINDS:
+            raise ValueError(f"unknown seam allowance '{kind}'")
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not (0.0 <= value <= 6.0):
+            raise ValueError(f"seam allowance '{kind}' must be a number between 0 and 6 cm")
+        table[kind] = float(value)
+    return table
 
 
 # Strip pieces (straight bands/facings) take the narrower "strip" allowance on every edge.
@@ -41,13 +50,19 @@ def edge_kind(piece, seg_id):
     """Classify a segment id into an allowance kind ('fold' for the centre line of a fold piece)."""
     if seg_id == "centre_line" and piece.cut_on_fold:
         return "fold"
-    if seg_id.startswith("neckline"):
-        return "neckline"
-    if seg_id == "hem":
-        return "hem"
     if piece.piece_type in STRIP_TYPES:
         return "strip"
-    return "seam"
+    if seg_id.startswith("neckline"):
+        return "neckline"
+    if seg_id == "shoulder":
+        return "shoulder"
+    if seg_id.startswith("armhole") or seg_id.startswith("cap_"):
+        return "armhole"
+    if seg_id.startswith("underarm"):
+        return "sleeve_seam"
+    if seg_id == "hem":
+        return "sleeve_hem" if piece.piece_type == "sleeve" else "hem"
+    return "side"
 
 
 def labelled_outline(piece):
@@ -234,59 +249,69 @@ def _notch(nid, point, label, kind="single"):
     return {"id": nid, "point": [round(point[0], 4), round(point[1], 4)], "label": label, "kind": kind}
 
 
+def armhole_path(piece):
+    """The armhole segments of a bodice, from the shoulder tip to the underarm."""
+    return [s for s in piece.segments if s.id.startswith("armhole")]
+
+
+def cap_paths_of(piece):
+    """(front cap: front underarm -> crown, back cap: crown -> back underarm) of a sleeve piece."""
+    return ([s for s in piece.segments if s.id.startswith("cap_front")],
+            [s for s in piece.segments if s.id.startswith("cap_back")])
+
+
 def bodice_notches(piece):
-    """Balance marks on a bodice: armhole (front 1, back 2), waist on the side seam."""
+    """
+    Balance marks on a bodice. The drafting method: ONE notch on the back armhole (Z), TWO on the front (Y1),
+    so the sleeve cannot be set in back to front. Plus the waist on the side seam.
+    """
     notches = []
-    arm = piece.segment("armhole")
-    if arm is not None:
-        total = arm.length()
-        # measured from the underarm (end of the armhole curve) going up
+    arm = armhole_path(piece)
+    if arm:
+        total = g.path_length(arm)
+        from_underarm = piece.meta["armhole_notch_from_underarm_cm"]
         if piece.piece_type == "front_bodice":
-            notches.append(_notch("front_armhole_1", _point_at_arc(arm, total - 0.30 * total), "single notch"))
+            notches.append(_notch("front_armhole_1", g.point_at_length(arm, total - from_underarm), "double notch", "double"))
+            notches.append(_notch("front_armhole_2", g.point_at_length(arm, total - from_underarm - NOTCH_PAIR_GAP_CM),
+                                  "double notch", "double"))
         else:
-            notches.append(_notch("back_armhole_1", _point_at_arc(arm, total - 0.30 * total), "double notch", "double"))
-            notches.append(_notch("back_armhole_2", _point_at_arc(arm, total - 0.36 * total), "double notch", "double"))
-    if "WAIST_SIDE" in piece.points:
+            notches.append(_notch("back_armhole_1", g.point_at_length(arm, total - from_underarm), "single notch"))
+    if "WAIST_SIDE" in piece.points and piece.meta["hem_y_cm"] > piece.meta["waist_y_cm"] + 1e-6:
         notches.append(_notch(f"{piece.piece_type}_waist", piece.points["WAIST_SIDE"], "waist"))
     return notches
 
 
-def sleeve_notches(piece, front_armhole_len, back_armhole_len):
+def sleeve_notches(piece, front_piece, back_piece):
     """
-    Sleeve cap balance marks mirroring the bodice: crown, front (1) and back (2).
-    Plain/bell cap: notch distances are scaled by (cap / armhole) so the cap ease is spread evenly.
-    Gathered (puff) cap: the cap below the notches is sewn flat, so the notches sit at exactly the bodice's
-    distances from the underarm and all the extra length lies between them (the gathering zone).
+    Sleeve cap balance marks: crown (meets the shoulder seam), front (two) and back (one). Each is at exactly the
+    seam distance from its underarm point at which the bodice notch sits, so the cap below the notches is sewn
+    flat to the armhole and all the cap ease (or the gathering of a puff sleeve) lies between the notches.
     """
-    left, right = piece.segment("cap_left"), piece.segment("cap_right")
-    cap_total = left.length() + right.length()
-    armhole_total = front_armhole_len + back_armhole_len
-    scale = 1.0 if piece.meta.get("gathered_cap") else (cap_total / armhole_total if armhole_total else 1.0)
-    # front = left quadrant (x = 0 side); its notch is 30 % of the front armhole above the underarm
-    df = 0.30 * front_armhole_len * scale
-    db = 0.30 * back_armhole_len * scale
-    notches = [_notch("sleeve_crown", piece.points["CROWN"], "crown", "crown")]
-    notches.append(_notch("sleeve_front_1", _point_at_arc(left, df), "single notch"))
-    # back = right quadrant, measured from the underarm end (x = width) upward
-    rlen = arc_length_to_point(right, right.end)[1]          # same flattening as _point_at_arc
-    notches.append(_notch("sleeve_back_1", _point_at_arc(right, rlen - db), "double notch", "double"))
-    notches.append(_notch("sleeve_back_2", _point_at_arc(right, rlen - db - 0.06 * cap_total), "double notch", "double"))
-    return notches
+    front, back = cap_paths_of(piece)
+    df = front_piece.meta["armhole_notch_from_underarm_cm"]
+    db = back_piece.meta["armhole_notch_from_underarm_cm"]
+    back_total = g.path_length(back)
+    return [
+        _notch("sleeve_crown", piece.points["CROWN"], "crown", "crown"),
+        _notch("sleeve_front_1", g.point_at_length(front, df), "double notch", "double"),
+        _notch("sleeve_front_2", g.point_at_length(front, df + NOTCH_PAIR_GAP_CM), "double notch", "double"),
+        _notch("sleeve_back_1", g.point_at_length(back, back_total - db), "single notch"),
+    ]
 
 
-def apply_seam_allowance(piece, block_id):
+def apply_seam_allowance(piece, block_id, overrides=None):
     """
     Attach real cutting-line geometry to a Piece. Sets:
-        piece.allowances   {'seam','neckline','hem','strip'} used (cm)
+        piece.allowances   the allowance of every kind of edge used (cm)
         piece.cut_outline  closed polygon of the cutting line
         piece.edge_kinds   allowance kind per seam-line edge (parallel to piece.seam_outline)
     """
-    table = ALLOWANCES[block_id]
+    table = allowance_table(block_id, overrides)
     pts, ids = labelled_outline(piece)
     kinds = [edge_kind(piece, sid) for sid in ids]
     offsets = [0.0 if k == "fold" else table[k] for k in kinds]
-    piece.allowances = dict(table)
-    piece.seam_allowance_cm = table["seam"] if piece.piece_type not in STRIP_TYPES else table["strip"]
+    piece.allowances = {k: table[k] for k in dict.fromkeys(kinds) if k != "fold"}
+    piece.seam_allowance_cm = table["side"] if piece.piece_type not in STRIP_TYPES else table["strip"]
     piece.seam_outline = pts
     piece.edge_kinds = kinds
     piece.edge_offsets = offsets

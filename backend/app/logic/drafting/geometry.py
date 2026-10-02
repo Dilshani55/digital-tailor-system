@@ -105,6 +105,81 @@ def quarter_ellipse(seg_id, start, end, corner, *, first_axis):
     return Cubic(seg_id, start, c1, c2, end)
 
 
+def _unit(v):
+    n = math.hypot(v[0], v[1])
+    return (v[0] / n, v[1] / n) if n > EPS else (0.0, 0.0)
+
+
+def spline_through(prefix, points, start_dir=None, end_dir=None):
+    """
+    Smooth curve through `points` as cubic Bezier segments named <prefix>_1 ... <prefix>_n (one per span).
+    The direction at an inner point is that of the chord between its neighbours; at the ends it is `start_dir` /
+    `end_dir` when given (a direction of travel), else the direction of the first / last span. Each handle is one
+    third of its span long, so the curve stays close to the points and cannot loop. Deterministic.
+    """
+    pts = [tuple(p) for p in points]
+    n = len(pts)
+    if n < 2:
+        raise ValueError("spline_through needs at least two points")
+    dirs = []
+    for i in range(n):
+        if i == 0:
+            d = start_dir if start_dir is not None else (pts[1][0] - pts[0][0], pts[1][1] - pts[0][1])
+        elif i == n - 1:
+            d = end_dir if end_dir is not None else (pts[-1][0] - pts[-2][0], pts[-1][1] - pts[-2][1])
+        else:
+            d = (pts[i + 1][0] - pts[i - 1][0], pts[i + 1][1] - pts[i - 1][1])
+        dirs.append(_unit(d))
+    out = []
+    for i in range(n - 1):
+        a, b = pts[i], pts[i + 1]
+        h = dist(a, b) / 3.0
+        out.append(Cubic(f"{prefix}_{i + 1}", a, (a[0] + dirs[i][0] * h, a[1] + dirs[i][1] * h),
+                         (b[0] - dirs[i + 1][0] * h, b[1] - dirs[i + 1][1] * h), b))
+    return out
+
+
+def path_length(segments):
+    return sum(s.length() for s in segments)
+
+
+def path_points(segments, steps=200):
+    """One polyline along consecutive segments (the same flattening the notch helpers use)."""
+    pts = []
+    for s in segments:
+        sp = s.flatten(steps)
+        pts.extend(sp if not pts else sp[1:])
+    return pts
+
+
+def point_at_length(segments, distance):
+    """Point on a path of segments at arc length `distance` from its start (clamped to the path)."""
+    pts = path_points(segments)
+    acc = 0.0
+    for i in range(len(pts) - 1):
+        d = dist(pts[i], pts[i + 1])
+        if d > 0 and acc + d >= distance:
+            return lerp(pts[i], pts[i + 1], max(0.0, (distance - acc) / d))
+        acc += d
+    return pts[-1]
+
+
+def length_to_point(segments, point):
+    """(arc length from the start of the path to the place nearest `point`, total length of the path)."""
+    pts = path_points(segments)
+    best, best_arc, acc = None, 0.0, 0.0
+    for i in range(len(pts) - 1):
+        a, b = pts[i], pts[i + 1]
+        d = dist(a, b)
+        if d > 0:
+            t = max(0.0, min(1.0, ((point[0] - a[0]) * (b[0] - a[0]) + (point[1] - a[1]) * (b[1] - a[1])) / (d * d)))
+            e = dist(lerp(a, b, t), point)
+            if best is None or e < best:
+                best, best_arc = e, acc + t * d
+        acc += d
+    return best_arc, acc
+
+
 # ── paths / polygons ─────────────────────────────────────────────────────────
 def path_is_connected(segments, tol=1e-6):
     return all(dist(segments[i].end, segments[i + 1].start) <= tol for i in range(len(segments) - 1))

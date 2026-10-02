@@ -28,11 +28,19 @@ def _build(garment="blouse", neck="round-neck", sleeve="short-sleeve", fabric="w
     return m, data, nest
 
 
-def _generate(path, **kw):
+def _generate(path, part="all", context=None, **kw):
     m, data, nest = _build(**kw)
-    gen = pg.PDFGenerator(data, nest, m, {}, path, fabric_name="Cotton Poplin", garment_title="Test pattern")
+    gen = pg.PDFGenerator(data, nest, m, {}, path, fabric_name="Cotton Poplin", garment_title="Test pattern",
+                          part=part, context=context)
     gen.generate()
     return gen, data, nest
+
+
+def _page(doc, title):
+    """The page whose heading starts with `title` (pages are found by their title, not by position)."""
+    hits = [p for p in doc if p.get_text().lstrip().startswith(title)]
+    assert hits, f"no page titled '{title}'"
+    return hits[0]
 
 
 @unittest.skipIf(pymupdf is None, "SKIPPED: pymupdf not installed (pip install -r requirements-dev.txt)")
@@ -47,13 +55,15 @@ class TestPrintablePdf(unittest.TestCase):
     def test_pages_and_a4(self):
         self.assertEqual(len(self.doc), self.gen.info["pages"])
         self.assertEqual(len(self.doc), self.gen.front_pages + len(self.gen.tiles))
-        self.assertEqual(self.gen.front_pages, 5)
+        # cover, measurements, front, back, sleeve, why this size (2), pieces, fabric + printing instructions
+        self.assertEqual(self.gen.front_pages, 10)
+        self.assertEqual([k for k, _ in self.gen.plan].count("report"), 9)
         for page in self.doc:
             self.assertAlmostEqual(page.rect.width, 595.28, delta=0.5)
             self.assertAlmostEqual(page.rect.height, 841.89, delta=0.5)
 
     def test_printing_instructions_and_page_numbers(self):
-        first = self.doc[1].get_text()                      # page 2: printing instructions
+        first = _page(self.doc, "Printing instructions").get_text()
         self.assertIn("ACTUAL SIZE", first)
         self.assertIn("100 %", first)
         self.assertIn("Fit to page", first)
@@ -70,23 +80,88 @@ class TestPrintablePdf(unittest.TestCase):
         return out
 
     def test_calibration_square_is_exactly_5cm(self):
-        self.assertTrue(self._squares(self.doc[1]), "printing page has no 5 cm calibration square")
+        self.assertTrue(self._squares(_page(self.doc, "Printing instructions")), "printing page has no 5 cm calibration square")
         on_tiles = sum(1 for i in range(self.gen.front_pages, len(self.doc)) if self._squares(self.doc[i]))
         self.assertGreaterEqual(on_tiles, 1, "no tile carries the calibration square")
 
     def test_summary_page_contents(self):
-        cover, meas, pieces = (self.doc[i].get_text() for i in (0, 2, 3))
-        for word in ("Cotton Poplin", "Round Neck", "Confirmed design"):
+        cover = self.doc[0].get_text()
+        meas = _page(self.doc, "Measurements").get_text()
+        pieces = _page(self.doc, "Pattern pieces").get_text()
+        for word in ("Cotton Poplin", "Round Neck", "Confirmed design", "Regular fit", "Drafting method", "toile"):
             self.assertIn(word, cover)
-        for word in ("Bust", "Waist", "Shoulder length", "DERIVED", "ASSUMPTION"):
+        for word in ("Bust around", "Waist around", "Shoulder to shoulder", "calculated value", "measured",
+                     "Body measurement + ease = garment measurement", "Seam allowance is NOT ease"):
             self.assertIn(word, meas)
-        for word in ("Front Bodice", "Back Bodice", "hem SA", "Sewing notes"):
+        self.assertIn("34.65", meas)                                       # 88 cm also shown in inches
+        for word in ("Front Bodice", "Back Bodice", "Seam allowances", "shoulder 1.5", "armhole 1", "Sewing notes"):
             self.assertIn(word, pieces)
 
     def test_layout_page_and_estimate(self):
-        text = self.doc[4].get_text()
+        text = _page(self.doc, "Fabric requirement").get_text()
         self.assertIn("NOT to scale", text)
         self.assertIn(str(self.nest["fabric_length_cm"]), text)
+
+    def test_block_overview_pages_show_numbered_dimensions_and_say_not_to_scale(self):
+        for title, words in (("FRONT block", ("Neck width", "Front neck depth", "Shoulder", "Armhole depth", "Armhole curve",
+                                             "Bust width", "Waist width", "Hip width", "Garment length", "Bust dart",
+                                             "CUT 1 ON FOLD", "FOLD - centre front")),
+                             ("BACK block", ("Back neck depth", "Armhole curve", "Bust width", "Waist dart",
+                                            "CUT 1 ON FOLD", "FOLD - centre back")),
+                             ("SLEEVE block", ("Sleeve length", "Sleeve width", "Cap height", "Sleeve end width",
+                                              "Front cap", "Back cap", "CUT 2"))):
+            text = _page(self.doc, title).get_text()
+            self.assertIn("NOT TO SCALE", text, title)
+            for word in words:
+                self.assertIn(word, text, (title, word))
+            self.assertIn("cm (", text)                                    # every value in cm and in inches
+        front = next(p for p in self.data["pattern_pieces"] if p["piece_type"] == "front_bodice")
+        text = _page(self.doc, "FRONT block").get_text()
+        bust = next(d for d in front["dimensions"] if d["id"] == "bust_width")
+        self.assertIn(f"{bust['value_cm']:.2f} cm", text)                  # the value on the page is the drafted one
+        self.assertIn("your measurement", text)
+        self.assertIn("drafting method", text)
+
+    def test_sleeve_page_reports_the_armhole_against_the_sleeve_cap(self):
+        text = _page(self.doc, "SLEEVE block").get_text()
+        cap = self.data["sleeve_cap"]
+        for word in ("Does the sleeve fit the armhole?", "Front armhole curve", "Back armhole curve", "Bodice armhole seam",
+                     "Sleeve cap seam", "Difference", "Allowed sleeve-cap ease", f"Status: {cap['status']}",
+                     f"{cap['sleeve_cap_seam_cm']:.2f} cm", f"{cap['bodice_armhole_seam_cm']:.2f} cm"):
+            self.assertIn(word, text)
+
+    def test_why_this_size_shows_the_customers_own_numbers(self):
+        text = " ".join(p.get_text() for p in self.doc if p.get_text().lstrip().startswith("Why this size?"))
+        for word in ("Front width at the bust line", "88", "/ 4", "Armhole depth", "Sleeve cap seam", "Seam allowance: side",
+                     "drafting method", "your measurement", "project rule", "seam allowance"):
+            self.assertIn(word, text)
+        self.assertNotIn("Aldrich", text)
+
+    def test_report_and_cutting_pattern_can_be_made_separately(self):
+        report, _, _ = _generate(os.path.join(self.tmp, "r.pdf"), part="report")
+        doc = pymupdf.open(os.path.join(self.tmp, "r.pdf"))
+        self.assertEqual(len(doc), 9)
+        self.assertEqual(report.info["tiles"], 0)
+        for page in doc:
+            self.assertIn("NOT to scale", page.get_text())                  # nothing in the report claims to be 1:1
+            self.assertNotIn("scale 1:1", page.get_text())
+        pattern, _, _ = _generate(os.path.join(self.tmp, "c.pdf"), part="pattern")
+        doc = pymupdf.open(os.path.join(self.tmp, "c.pdf"))
+        self.assertEqual(len(doc), 1 + len(pattern.tiles))
+        self.assertTrue(doc[0].get_text().lstrip().startswith("Printing instructions"))
+        for page in doc:
+            self.assertIn("scale 1:1", page.get_text())
+        with self.assertRaises(ValueError):
+            pg.PDFGenerator(self.data, self.nest, {}, {}, os.path.join(self.tmp, "bad.pdf"), part="everything")
+
+    def test_lengths_follow_the_selected_unit(self):
+        _generate(os.path.join(self.tmp, "in.pdf"), part="report", context={"unit": "in"})
+        text = _page(pymupdf.open(os.path.join(self.tmp, "in.pdf")), "BACK block").get_text()
+        back = next(p for p in self.data["pattern_pieces"] if p["piece_type"] == "back_bodice")
+        bust = next(d for d in back["dimensions"] if d["id"] == "bust_width")["value_cm"]
+        self.assertIn(f"{bust / 2.54:.2f} in ({bust:.2f} cm)", text)        # inches first
+        cm_text = _page(self.doc, "BACK block").get_text()
+        self.assertIn(f"{bust:.2f} cm ({bust / 2.54:.2f} in)", cm_text)     # cm first
 
     def test_tile_pages_have_labels_marks_and_pieces(self):
         for i in range(self.gen.front_pages, len(self.doc)):
@@ -95,7 +170,7 @@ class TestPrintablePdf(unittest.TestCase):
             self.assertIn("Actual size", text)
         all_text = " ".join(self.doc[i].get_text() for i in range(self.gen.front_pages, len(self.doc)))
         for word in ("FRONT BODICE", "BACK BODICE", "SLEEVE", "PLACE ON FOLD", "CUT 2", "SA 1.5 cm", "incl. SA",
-                     "BP (derived)", "CROWN", "GRAIN"):
+                     "BP", "CROWN", "GRAIN"):
             self.assertIn(word, all_text)
 
     def test_every_piece_is_on_some_tile_and_tiles_overlap(self):
@@ -222,7 +297,7 @@ class TestExportRoutes(unittest.TestCase):
         self.assertIn("1:1", body["print_scale"])
         doc = pymupdf.open(os.path.join(out, body["filename"]))
         self.assertEqual(len(doc), body["pages"])
-        self.assertIn('60" / 152.4 cm  (selected)', doc[4].get_text())
+        self.assertIn('60 in / 152.4 cm *', _page(doc, "Fabric requirement").get_text())
 
     def test_pdf_prints_the_stored_pieces_and_never_redrafts(self):
         """The PDF must show the validated, nested stored pieces; the engine is not run again."""
@@ -282,15 +357,39 @@ class TestExportRoutes(unittest.TestCase):
                      "Fabric requirement"):
             self.assertIn(word, cover)
         self.assertTrue(doc[0].get_images(), "the customer's design image is not embedded")
-        self.assertIn("34.65 in", doc[2].get_text())                       # value as entered
-        fabric = doc[4].get_text()
-        for word in ('36" / 91.44 cm', '45" / 114.3 cm', '60" / 152.4 cm', "(selected)", "Recommended purchase", "Utilisation"):
+        self.assertIn("34.65 in", _page(doc, "Measurements").get_text())   # value as entered
+        fabric = _page(doc, "Fabric requirement").get_text()
+        for word in ("36 in / 91.44 cm", "45 in / 114.3 cm *", "60 in / 152.4 cm", "the width chosen", "Need to buy",
+                     "Pattern area", "Fabric bought", "Waste", "Fabric use", " yd", " m2", " yd2",
+                     "not automatically the best"):
             self.assertIn(word, fabric)
         for page in doc:
             t = page.get_text()
             self.assertIn("Pattern 65f0c0ffee00000000000001", t)
             self.assertIn("Customer Amara Silva", t)
-            self.assertIn("Units cm - scale 1:1", t)
+            self.assertTrue(("Units cm - scale 1:1" in t) != ("drawings NOT to scale" in t))   # one or the other
+
+    @unittest.skipIf(pymupdf is None, "SKIPPED: pymupdf not installed")
+    def test_report_only_and_pattern_only_downloads(self):
+        out = tempfile.mkdtemp()
+        self.app.config["OUTPUT_FOLDER"] = out
+        pages = {}
+        for part in ("report", "pattern", "all"):
+            with patch("app.routes.export.PatternResult") as pr, patch("app.routes.export.PdfExport") as pe:
+                pr.objects.return_value.first.return_value = self._pattern()
+                pe.return_value.id = "e1"
+                r = self.app.test_client().post("/api/export/pdf/p1", json={"part": part, "unit": "in"}, headers=self.headers)
+            body = r.get_json()
+            self.assertEqual(r.status_code, 201, body)
+            self.assertEqual((body["part"], body["unit"]), (part, "in"))
+            pages[part] = body["pages"]
+            self.assertEqual("NOT to scale" in body["print_scale"], part == "report")
+        self.assertEqual(pages["report"] + pages["pattern"], pages["all"])
+        for bad in ({"part": "everything"}, {"unit": "mm"}):
+            with patch("app.routes.export.PatternResult") as pr:
+                pr.objects.return_value.first.return_value = self._pattern()
+                r = self.app.test_client().post("/api/export/pdf/p1", json=bad, headers=self.headers)
+            self.assertEqual(r.status_code, 400)
 
     def test_pdf_failure_does_not_leak_internal_details(self):
         pat = self._pattern()

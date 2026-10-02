@@ -1,17 +1,19 @@
 """
-EASE stage:  BODY MEASUREMENT + EASE = GARMENT (drafting) DIMENSION.
+EASE stage:  BODY MEASUREMENT + EASE = GARMENT (pattern) DIMENSION.
 
-Ease values are PROJECT ASSUMPTIONS (see assumptions.py / ease_rules.py); they are not taken
-from a verified published table. Every applied ease is returned so the engine can explain it.
+Ease is wearing room. It is a separate thing from the seam allowance (seam_allowance.py), which is added
+outside the sewing line and does not change the size of the garment.
 
-Only positive-ease woven and knit bodice blocks are drafted. Stretch-knit (negative ease)
-drafting is not implemented and is rejected rather than approximated.
+Woven values come from the drafting source (assumptions.py, "principles of drafting"); knit values are project
+presets because the source does not cover knit fabric. Every applied ease is returned so the engine can show
+"body + ease = pattern" for each dimension.
+
+Stretch-knit (negative ease) drafting is not implemented and is rejected rather than approximated.
 """
 
 from dataclasses import dataclass, asdict
 
-from app.logic.ease_rules import EASE_RULES, FIT_EASE_DELTA
-from app.logic.drafting.assumptions import A, ASSUMPTION
+from app.logic.drafting.assumptions import EASE_PRESETS, FIT_LABELS
 
 WOVEN_BLOCK = "woven_bodice"
 KNIT_BLOCK = "knit_bodice"
@@ -35,14 +37,17 @@ class DraftingError(Exception):
 class EaseProfile:
     block_id: str
     fit_preference: str
-    fit_delta_cm: float
-    bust_cm: float          # total circumference ease at bust  (incl. fit delta)
-    waist_cm: float
+    fit_label: str
+    bust_cm: float              # added to the bust around (whole circumference)
+    waist_cm: float             # added to the waist around (4 x the per-quarter ease)
+    waist_quarter_cm: float     # per quarter pattern, as the source states it
     hip_cm: float
-    bicep_cm: float         # sleeve circumference ease
-    wrist_cm: float
-    sleeve_cap_cm: float    # target extra length of sleeve cap over the armhole seam
-    status: str = ASSUMPTION
+    upper_arm_cm: float         # least ease of the sleeve over the upper arm
+    sleeve_end_cm: float        # added to the arm at the sleeve end
+    sleeve_cap_cm: float        # target extra length of the sleeve cap over the armhole seam
+    cap_ease_min_cm: float      # accepted range of (sleeve cap seam - armhole seam)
+    cap_ease_max_cm: float
+    status: str                 # "ease" (from the source) or "extension" (project preset)
 
     def to_dict(self):
         return asdict(self)
@@ -50,16 +55,17 @@ class EaseProfile:
 
 def ease_profile_for(block_id, fit_preference="standard"):
     """EaseProfile for a drafting block. Unknown block or fit -> DraftingError (never a default)."""
-    if block_id not in (WOVEN_BLOCK, KNIT_BLOCK):
+    if block_id not in EASE_PRESETS:
         raise DraftingError(f"No ease profile for block '{block_id}'.", code="UNSUPPORTED_BLOCK")
     fit = fit_preference or "standard"
-    if fit not in FIT_EASE_DELTA:
+    table = EASE_PRESETS[block_id]
+    if fit not in FIT_LABELS:
         raise DraftingError(f"Unknown fit preference '{fit}'.", code="INVALID_FIT_PREFERENCE")
-    base = EASE_RULES["woven" if block_id == WOVEN_BLOCK else "knit"]
-    delta = FIT_EASE_DELTA[fit]
-    sleeve = A["sleeve_ease_cm"][block_id]
+    e = table[fit]
+    lo, hi = table["cap_ease_range"]
     return EaseProfile(
-        block_id=block_id, fit_preference=fit, fit_delta_cm=delta,
-        bust_cm=base["bust_cm"] + delta, waist_cm=base["waist_cm"] + delta, hip_cm=base["hip_cm"] + delta,
-        bicep_cm=sleeve["bicep"], wrist_cm=sleeve["wrist"], sleeve_cap_cm=sleeve["cap"],
+        block_id=block_id, fit_preference=fit, fit_label=FIT_LABELS[fit],
+        bust_cm=e["bust"], waist_cm=4.0 * e["waist_quarter"], waist_quarter_cm=e["waist_quarter"], hip_cm=e["hip"],
+        upper_arm_cm=e["upper_arm"], sleeve_end_cm=table["sleeve_end"], sleeve_cap_cm=table["cap_ease_target"],
+        cap_ease_min_cm=lo, cap_ease_max_cm=hi, status=table["kind"],
     )

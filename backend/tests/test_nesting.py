@@ -138,5 +138,115 @@ class TestGeometryAwareNesting(unittest.TestCase):
         self.assertEqual(a["placed_pieces"], b["placed_pieces"])
 
 
+class TestUnitsLengthsAndAreas(unittest.TestCase):
+    """Linear lengths and areas are different quantities with their own exact conversions."""
+
+    def test_exact_conversion_factors(self):
+        from app.logic import units
+        self.assertEqual(units.CM_PER_INCH, 2.54)
+        self.assertEqual(units.CM_PER_YARD, 91.44)                       # 1 yd = 36 in
+        self.assertEqual(units.IN2_PER_YD2, 1296.0)
+        self.assertAlmostEqual(units.CM2_PER_YD2, 8361.2736, places=9)
+        self.assertAlmostEqual(units.cm_to_in(2.54), 1.0)
+        self.assertAlmostEqual(units.cm_to_yd(91.44), 1.0)
+        self.assertAlmostEqual(units.m_to_yd(0.9144), 1.0)
+        self.assertAlmostEqual(units.cm2_to_m2(10000.0), 1.0)
+        self.assertAlmostEqual(units.cm2_to_yd2(8361.2736), 1.0)
+        self.assertAlmostEqual(units.in2_to_yd2(1296.0), 1.0)
+        self.assertAlmostEqual(units.cm2_to_in2(6.4516), 1.0)
+        self.assertAlmostEqual(units.in_to_cm(units.cm_to_in(37.3)), 37.3, places=12)   # round trip
+
+    def test_a_linear_yard_is_not_a_square_yard(self):
+        from app.logic import units
+        # 2 yd of 45 in fabric is a rectangle 72 in x 45 in = 3240 in2 = 2.5 yd2, not 2 yd2
+        area_cm2 = (2 * units.CM_PER_YARD) * (45 * units.CM_PER_INCH)
+        self.assertAlmostEqual(units.cm2_to_yd2(area_cm2), 2.5, places=9)
+        self.assertAlmostEqual(units.cm2_to_in2(area_cm2), 3240.0, places=6)
+
+    def test_text_helpers_put_the_selected_unit_first(self):
+        from app.logic import units
+        self.assertEqual(units.both_lengths(25.4), "25.4 cm (10.0 in)")
+        self.assertEqual(units.both_lengths(25.4, "in"), "10.0 in (25.4 cm)")
+        self.assertEqual(units.length_text(25.4, "in", 2), "10.00 in")
+        self.assertEqual(units.both_lengths(None), "-")
+
+
+class TestFabricRequirementNumbers(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        from app.logic.nesting_algorithm import estimate_fabric
+        cls.pieces = _pattern()
+        cls.by_width = {w: estimate_fabric(cls.pieces, w) for w in STANDARD_FABRIC_WIDTHS}
+
+    def test_pattern_area_is_the_polygon_area_of_the_pieces_actually_cut(self):
+        expected = 0.0
+        for p in self.pieces:
+            half = calculate_shoelace_area([tuple(q) for q in p["cutting_line"]])
+            expected += half * (2 if p["cut_on_fold"] else p["cut_count"])
+        for n in self.by_width.values():
+            self.assertAlmostEqual(n["total_pattern_piece_area_cm2"], expected, delta=0.2)     # the same on every width
+            self.assertAlmostEqual(n["pattern_area_m2"], expected / 10000.0, places=3)
+            self.assertAlmostEqual(n["pattern_area_yd2"], expected / 8361.2736, places=3)
+
+    def test_lengths_and_areas_agree_in_both_unit_systems(self):
+        for width, n in self.by_width.items():
+            self.assertAlmostEqual(n["layout_length_m"], n["fabric_length_cm"] / 100.0, places=2)
+            self.assertAlmostEqual(n["layout_length_yd"], n["fabric_length_cm"] / 91.44, places=2)
+            self.assertAlmostEqual(n["purchase_length_yd"], n["purchase_length_m"] / 0.9144, places=2)
+            self.assertEqual(n["purchase_length_m"], n["purchasing_recommended_m"])
+            layout_cm2 = width * n["fabric_length_cm"]
+            self.assertAlmostEqual(n["layout_area_m2"], layout_cm2 / 10000.0, places=3)
+            self.assertAlmostEqual(n["layout_area_yd2"], layout_cm2 / 8361.2736, places=3)
+            self.assertAlmostEqual(n["purchase_area_m2"], width * n["purchase_length_m"] / 100.0, places=3)
+            self.assertAlmostEqual(n["waste_area_m2"], n["layout_area_m2"] - n["pattern_area_m2"], places=2)
+            self.assertAlmostEqual(n["utilisation_percent"] + n["waste_percent"], 100.0, places=6)
+            self.assertAlmostEqual(n["utilisation_percent"], 100.0 * n["pattern_area_m2"] / n["layout_area_m2"], delta=0.2)
+
+    def test_the_layout_is_not_a_bounding_box_or_area_division(self):
+        for width, n in self.by_width.items():
+            by_area = n["total_pattern_piece_area_cm2"] / width             # "area / width": always too short
+            self.assertGreater(n["fabric_length_cm"], by_area)
+            boxes = sum(p["bounding_dimensions"]["width_cm"] * p["bounding_dimensions"]["height_cm"] for p in n["placed_pieces"])
+            polygons = sum(p["polygon_area_cm2"] for p in n["placed_pieces"])
+            self.assertLess(polygons, boxes)                                # real shapes, smaller than their boxes
+
+    def test_every_width_gets_its_own_measured_result(self):
+        lengths = {w: n["purchase_length_m"] for w, n in self.by_width.items()}
+        waste = {w: n["waste_percent"] for w, n in self.by_width.items()}
+        self.assertGreaterEqual(lengths[91.44], lengths[152.4])            # narrower cloth is never shorter here
+        self.assertEqual(sorted(waste), sorted(STANDARD_FABRIC_WIDTHS))     # waste is reported per width, not assumed
+        self.assertGreater(len(set(waste.values())), 1)
+
+    def test_one_way_fabric_never_turns_a_piece(self):
+        from app.logic.nesting_algorithm import estimate_fabric
+        for width in STANDARD_FABRIC_WIDTHS:
+            free = estimate_fabric(self.pieces, width, "open")
+            nap = estimate_fabric(self.pieces, width, "open", one_way=True)
+            self.assertTrue(nap["one_way_fabric"])
+            self.assertEqual({p["rotation_deg"] for p in nap["placed_pieces"]}, {0})
+            self.assertEqual(nap["validation_checks"]["status"], "PASSED")
+            self.assertGreaterEqual(nap["fabric_length_cm"], free["fabric_length_cm"] - 1e-6)   # a restriction never helps
+            self.assertIn("One-way fabric", " ".join(nap["assumptions"]))
+
+    def test_the_best_of_three_placement_orders_is_kept_and_named(self):
+        n = self.by_width[114.3]
+        self.assertIn(n["placement_order"], NestingAlgorithm.ORDERS)
+        again = NestingAlgorithm(self.pieces, fabric_width_cm=114.3, cutting_mode=n["cutting_mode"]).run()
+        self.assertEqual(again["fabric_length_cm"], n["fabric_length_cm"])                     # deterministic
+        self.assertEqual(again["placement_order"], n["placement_order"])
+        self.assertEqual(n["piece_gap_cm"], 0.5)
+
+    def test_sleeves_are_two_pieces_and_fold_pieces_stay_on_the_fold(self):
+        folded = NestingAlgorithm(self.pieces, fabric_width_cm=152.4, cutting_mode="folded").run()
+        sleeves = [p for p in folded["placed_pieces"] if p["piece_type"] == "sleeve"]
+        self.assertEqual(sum(p["pieces_per_placement"] for p in sleeves), 2)                   # one placement, two layers
+        for p in folded["placed_pieces"]:
+            if p["cut_on_fold"]:
+                self.assertAlmostEqual(p["x"], 0.0, places=6)
+                self.assertEqual(p["rotation_deg"], 0)
+        opened = NestingAlgorithm(self.pieces, fabric_width_cm=152.4, cutting_mode="open").run()
+        self.assertEqual(len([p for p in opened["placed_pieces"] if p["piece_type"] == "sleeve"]), 2)
+
+
 if __name__ == "__main__":
     unittest.main()

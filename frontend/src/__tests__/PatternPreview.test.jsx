@@ -1,9 +1,9 @@
 // Phase 4 — the preview renders API geometry only (no hard-coded pieces).
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import PatternPreview, { piecePath, outlinePoints } from '../components/PatternPreview';
+import PatternPreview, { piecePath, outlinePoints, lengthText } from '../components/PatternPreview';
 
 const source = (rel) => fs.readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
 
@@ -59,8 +59,9 @@ describe('PatternPreview', () => {
     render(<PatternPreview pieces={[front, sleeve]} />);
     expect(screen.getByText(/Pattern Preview — Not to Scale for Printing/)).toBeTruthy();
     const text = document.body.textContent;
-    expect(text).toMatch(/geometry validated only/);
-    expect(text).toMatch(/not fit-tested or professionally validated/);
+    expect(text).toMatch(/passed geometric validation only/);
+    expect(text).toMatch(/confirm the fit with a test garment \(toile\)/);
+    expect(text).not.toMatch(/perfect fit|industry standard|100% accurate|scientifically validated/i);
     expect(text).not.toMatch(/true-scale|Download true-scale|already included/i);
   });
 
@@ -86,7 +87,7 @@ describe('PatternPreview', () => {
       armholeSleeve={{ front_armhole_seam_cm: 19.47, back_armhole_seam_cm: 19.19, total_armhole_seam_cm: 38.62,
         sleeve_cap_seam_cm: 40.62, cap_ease_cm: 2 }} />);
     expect(screen.getByText('Geometry validation passed')).toBeTruthy();
-    expect(screen.getByTestId('armhole-sleeve').textContent).toMatch(/38\.6 cm .* 40\.6 cm .* ease 2\.0 cm/);
+    expect(screen.getByTestId('armhole-sleeve').textContent).toMatch(/38\.6 cm .* 40\.6 cm .* difference 2\.0 cm/);
   });
 
   it('shows validation errors when geometry validation failed', () => {
@@ -109,6 +110,108 @@ describe('PatternPreview', () => {
     render(<PatternPreview pieces={[]} />);
     expect(screen.getByText(/No pattern geometry available yet/)).toBeTruthy();
     expect(document.querySelectorAll('svg path')).toHaveLength(0);
+  });
+});
+
+describe('PatternPreview: blocks with dimensions, why this size, sleeve check', () => {
+  const dims = [
+    { id: 'neck_width', label: 'Neck width', value_cm: 6, a: [0, 0], b: [6, 0], kind: 'linear', trace: 'front_neck_width' },
+    { id: 'bust_width', label: 'Bust width', value_cm: 24.5, a: [0, 20], b: [24.5, 20], kind: 'linear', trace: 'front_bust_width' },
+    { id: 'armhole_curve', label: 'Armhole curve', value_cm: 22.2, a: [19, 12], b: [19, 12], kind: 'curve', trace: null },
+  ];
+  const withDims = { ...front, dimensions: dims, cutting_line: [[0, 6], [7, -1], [26, 19], [24, 44], [0, 44]] };
+  const sleeveDims = { ...sleeve, dimensions: [{ id: 'sleeve_width', label: 'Sleeve width', value_cm: 33, a: [0, 9], b: [33, 9], kind: 'linear', trace: 'sleeve_width' }] };
+  const why = [
+    { id: 'front_bust_width', label: 'Front width at the bust line', value_cm: 24.5, formula: '(88 + 8.89) / 4 + 1.27', source: 'method' },
+    { id: 'front_neck_width', label: 'Front neck width', value_cm: 6, formula: 'back neck width 6.64 - 0.64', source: 'method' },
+    { id: 'sleeve_width', label: 'Sleeve width at the underarm', value_cm: 33, formula: 'upper arm 28 + ease 7.62', source: 'extension' },
+    { id: 'seam_allowance_side', label: 'Seam allowance: side', value_cm: 1.5, formula: 'outside the sewing line', source: 'seam' },
+  ];
+  const cap = { has_sleeve: true, bodice_armhole_seam_cm: 40.79, sleeve_cap_seam_cm: 42.07, difference_cm: 1.28,
+    allowed_cm: [0.5, 4.5], difference_is: 'sleeve-cap ease', status: 'PASS', note: 'The sleeve cap fits the armhole.' };
+  const show = (extra = {}) => render(<PatternPreview pieces={[withDims, sleeveDims]} whyThisSize={why} sleeveCap={cap} {...extra} />);
+
+  it('has a tab for all pieces and one for each block that exists', () => {
+    show();
+    expect(screen.getByTestId('tab-all').getAttribute('aria-selected')).toBe('true');
+    expect(screen.getByTestId('tab-front_bodice')).toBeTruthy();
+    expect(screen.getByTestId('tab-sleeve')).toBeTruthy();
+    expect(screen.queryByTestId('tab-back_bodice')).toBeNull();       // no back piece in this record: no invented tab
+  });
+
+  it('draws each dimension as a numbered line on the block and lists it with its calculation', () => {
+    show();
+    fireEvent.click(screen.getByTestId('tab-front_bodice'));
+    const block = screen.getByTestId('block-front_bodice');
+    expect(block.textContent).toMatch(/Cut 1 on fold/);
+    dims.forEach((d) => expect(screen.getByTestId(`dim-${d.id}`)).toBeTruthy());
+    expect(screen.getByTestId('dim-bust_width').querySelector('line')).toBeTruthy();
+    expect(screen.getByTestId('dim-armhole_curve').querySelector('line')).toBeNull();      // a curve length: a marker, not a straight line
+    const row = screen.getByTestId('dim-row-bust_width').textContent;
+    expect(row).toMatch(/Bust width: 24\.5 cm \(9\.65 in\)/);
+    expect(row).toMatch(/\(88 \+ 8\.89\) \/ 4 \+ 1\.27 — drafting method/);              // traceable to the customer's bust
+    expect(screen.getByTestId('dim-row-armhole_curve').textContent).toMatch(/22\.2 cm/);
+  });
+
+  it('highlights the line on the drawing when its row is pointed at', () => {
+    show();
+    fireEvent.click(screen.getByTestId('tab-front_bodice'));
+    expect(screen.getByTestId('dim-bust_width').getAttribute('data-active')).toBe('no');
+    fireEvent.mouseEnter(screen.getByTestId('dim-row-bust_width'));
+    expect(screen.getByTestId('dim-bust_width').getAttribute('data-active')).toBe('yes');
+    expect(screen.getByTestId('dim-neck_width').getAttribute('data-active')).toBe('no');
+    fireEvent.mouseLeave(screen.getByTestId('dim-row-bust_width'));
+    expect(screen.getByTestId('dim-bust_width').getAttribute('data-active')).toBe('no');
+  });
+
+  it('shows lengths in the selected unit first', () => {
+    show({ unit: 'in' });
+    fireEvent.click(screen.getByTestId('tab-front_bodice'));
+    expect(screen.getByTestId('dim-row-bust_width').textContent).toMatch(/Bust width: 9\.65 in \(24\.5 cm\)/);
+    expect(lengthText(2.54, 'in')).toBe('1.00 in (2.5 cm)');
+    expect(lengthText(2.54)).toBe('2.5 cm (1.00 in)');
+    expect(lengthText(undefined)).toBe('—');
+  });
+
+  it('the sleeve tab reports the armhole against the sleeve cap with PASS or REVIEW', () => {
+    show();
+    fireEvent.click(screen.getByTestId('tab-sleeve'));
+    const report = screen.getByTestId('sleeve-cap-report').textContent;
+    expect(report).toMatch(/Bodice armhole seam40\.8 cm/);
+    expect(report).toMatch(/Sleeve cap seam42\.1 cm/);
+    expect(report).toMatch(/Difference1\.3 cm/);
+    expect(report).toMatch(/Allowed sleeve-cap ease0\.5 to 4\.5 cm/);
+    expect(screen.getByTestId('sleeve-cap-status').textContent).toMatch(/^PASS/);
+  });
+
+  it('can show the sewing line and the cutting line separately', () => {
+    show();
+    expect(screen.getByTestId('cutting-line-0')).toBeTruthy();
+    expect(screen.getByTestId('seam-line-0')).toBeTruthy();
+    fireEvent.click(screen.getByTestId('toggle-cut'));
+    expect(screen.queryByTestId('cutting-line-0')).toBeNull();        // sewing line only
+    expect(screen.getByTestId('seam-line-0')).toBeTruthy();
+    fireEvent.click(screen.getByTestId('toggle-cut'));
+    fireEvent.click(screen.getByTestId('toggle-seam'));
+    expect(screen.getByTestId('cutting-line-0')).toBeTruthy();        // cutting line only
+    expect(screen.queryByTestId('seam-line-0')).toBeNull();
+  });
+
+  it('"Why this size?" lists every calculation with where its rule comes from', () => {
+    show({ draftingMethod: { name: 'Direct-measurement draft', source: { title: 'Pattern Making and Grading' } } });
+    const table = screen.getByTestId('why-this-size');
+    why.forEach((r) => expect(screen.getByTestId(`why-${r.id}`)).toBeTruthy());
+    expect(screen.getByTestId('why-front_bust_width').textContent).toMatch(/drafting method/);
+    expect(screen.getByTestId('why-sleeve_width').textContent).toMatch(/project rule/);
+    expect(screen.getByTestId('why-seam_allowance_side').textContent).toMatch(/seam allowance/);
+    expect(table.textContent).toMatch(/Pattern Making and Grading/);
+    expect(table.textContent).not.toMatch(/Aldrich/);
+  });
+
+  it('shows the engine\'s warnings without hiding the pattern', () => {
+    show({ warnings: [{ field: 'bicep_cm', code: 'SLEEVE_CAP_REVIEW', message: 'The cap height was changed a lot.' }] });
+    expect(screen.getByTestId('pattern-warning').textContent).toMatch(/Please check: The cap height was changed a lot/);
+    expect(screen.getByTestId('piece-0')).toBeTruthy();
   });
 });
 

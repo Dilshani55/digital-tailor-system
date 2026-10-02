@@ -58,7 +58,9 @@ class TestNecklineTransformations(unittest.TestCase):
     def test_round_neck_is_a_smooth_curve(self):
         seg = self.round.front.segment("neckline")
         self.assertEqual(seg.kind, "cubic")
-        self.assertEqual(seg.start, (0.0, self.round.dv.front_neck_depth))
+        dv = self.round.dv                                    # the front piece is moved down by its neck raise
+        self.assertAlmostEqual(seg.start[0], 0.0)
+        self.assertAlmostEqual(seg.start[1], dv.front_neck_depth + dv.front_raise)
 
     def test_square_neck_has_two_straight_edges_at_a_right_angle(self):
         bottom, side = self.square.front.segment("neckline_bottom"), self.square.front.segment("neckline_side")
@@ -72,7 +74,7 @@ class TestNecklineTransformations(unittest.TestCase):
     def test_v_neck_is_a_straight_v_with_a_centre_front_point(self):
         seg = self.v.front.segment("neckline")
         self.assertEqual(seg.kind, "line")
-        expected_depth = self.v.dv.front_neck_depth + A["v_neck_extra_depth_cm"]
+        expected_depth = self.v.dv.front_neck_depth + A["v_neck_extra_depth_cm"] + self.v.dv.front_raise
         self.assertAlmostEqual(seg.start[1], expected_depth)
         self.assertAlmostEqual(seg.start[0], 0.0)                            # the V point is on the centre line
         self.assertEqual(seg.end, self.v.front.points["NECK_POINT"])
@@ -90,10 +92,13 @@ class TestNecklineTransformations(unittest.TestCase):
         for f in (self.round, self.square, self.v):
             self.assertAlmostEqual(f.front.meta["armhole_length_cm"], self.round.front.meta["armhole_length_cm"], places=9)
 
-    def test_shoulder_seams_stay_equal_for_every_neckline(self):
-        for f in (self.round, self.square, self.v):
-            self.assertAlmostEqual(f.front.meta["shoulder_length_cm"], f.back.meta["shoulder_length_cm"], places=6)
-            self.assertAlmostEqual(f.front.meta["shoulder_length_cm"], 12.0, places=6)
+    def test_shoulder_seams_are_the_same_for_every_neckline(self):
+        back = self.round.back.meta["shoulder_length_cm"]
+        front = self.round.front.meta["shoulder_length_cm"]
+        self.assertAlmostEqual(front, back, delta=0.6)       # the method raises the front neck point a little
+        for f in (self.square, self.v):
+            self.assertAlmostEqual(f.front.meta["shoulder_length_cm"], front, places=9)
+            self.assertAlmostEqual(f.back.meta["shoulder_length_cm"], back, places=9)
 
     def test_neckline_transformation_is_recorded(self):
         for f, shape in ((self.round, "round"), (self.square, "square"), (self.v, "v")):
@@ -134,20 +139,26 @@ class TestSleeveTransformations(unittest.TestCase):
             self.assertNotIn("fraction", t)
         self.assertNotIn("sleeve_length_fraction", A)
 
-    def test_short_sleeve_is_straight_and_long_sleeve_tapers_to_the_wrist(self):
-        short = piece(final(length="short-sleeve", over=dict(sleeve_cm=24, wrist_cm=None)), "Sleeve").meta
-        self.assertAlmostEqual(short["width_hem_cm"], short["width_bicep_cm"])      # no wrist needed
-        f = final(length="long-sleeve", over=dict(sleeve_cm=58))
-        long_ = piece(f, "Sleeve").meta
-        self.assertAlmostEqual(long_["width_hem_cm"], f.dv.wrist_width)
+    def test_a_sleeve_narrows_to_the_arm_measured_at_its_end(self):
+        f = final(length="short-sleeve", over=dict(sleeve_cm=24, sleeve_end_cm=27))
+        short = piece(f, "Sleeve").meta
+        self.assertAlmostEqual(short["width_hem_cm"], 27 + f.base.ease.sleeve_end_cm)
+        self.assertLess(short["width_hem_cm"], short["width_bicep_cm"])
+        f = final(length="long-sleeve", over=dict(sleeve_cm=58, sleeve_end_cm=16))
+        self.assertAlmostEqual(piece(f, "Sleeve").meta["width_hem_cm"], f.dv.sleeve_end_width)
 
-    def test_long_sleeve_without_wrist_is_reported_not_guessed(self):
+    def test_a_sleeve_end_wider_than_the_sleeve_is_reported(self):
         with self.assertRaises(DraftingError) as ctx:
-            final(length="long-sleeve", over=dict(sleeve_cm=58, wrist_cm=None))
-        self.assertIn("wrist_cm", ctx.exception.field_errors)
+            final(length="short-sleeve", over=dict(sleeve_cm=24, sleeve_end_cm=45))
+        self.assertIn("sleeve_end_cm", ctx.exception.field_errors)
+
+    def test_a_sleeve_without_its_end_measurement_is_reported_not_guessed(self):
+        with self.assertRaises(DraftingError) as ctx:
+            final(length="long-sleeve", over=dict(sleeve_cm=58, sleeve_end_cm=None))
+        self.assertIn("sleeve_end_cm", ctx.exception.field_errors)
 
     def test_sleeveless_design_needs_no_sleeve_measurements(self):
-        f = final(length="sleeveless", style="none", over=dict(bicep_cm=None, sleeve_cm=None, wrist_cm=None))
+        f = final(length="sleeveless", style="none", over=dict(bicep_cm=None, sleeve_cm=None, sleeve_end_cm=None))
         self.assertIsNone(f.sleeve)
         self.assertTrue(f.validation["passed"], f.validation["errors"])
 
@@ -158,7 +169,9 @@ class TestSleeveTransformations(unittest.TestCase):
             s = piece(f, "Sleeve")
             caps.add(round(s.meta["cap_length_cm"], 6))
             info = f.validation["armhole_sleeve"]
-            self.assertAlmostEqual(info["cap_ease_cm"], f.dv.sleeve_cap_ease, delta=0.01)
+            self.assertGreaterEqual(info["cap_ease_cm"], f.dv.cap_ease_min - 1e-6)
+            self.assertLessEqual(info["cap_ease_cm"], f.dv.cap_ease_max + 1e-6)
+            self.assertAlmostEqual(info["sleeve_cap_seam_cm"] - info["total_armhole_seam_cm"], info["cap_ease_cm"], places=6)
         self.assertEqual(len(caps), 1)
 
     def test_sleeve_tapers_towards_the_wrist_with_length(self):
@@ -168,7 +181,7 @@ class TestSleeveTransformations(unittest.TestCase):
             with self.assertRaises(DraftingError) as ctx:
                 final(length=length)
             self.assertEqual(ctx.exception.code, "INVALID_DESIGN_ATTRIBUTES", length)
-        self.assertAlmostEqual(widths[-1], 20.0, places=6)                      # wrist 16 + ease 4
+        self.assertAlmostEqual(widths[-1], 20.0, places=6)                      # sleeve end 16 + ease 4
 
     def test_sleeveless_has_no_sleeve_and_gets_armhole_facings(self):
         f = final(length="sleeveless", style="none")                        # a sleeveless blouse
@@ -230,7 +243,7 @@ class TestGarmentLengthTransformations(unittest.TestCase):
 
     def test_length_rule_boundaries(self):
         b = make_base()
-        waist = b.dv.waist_y                                                    # 42.0
+        waist = b.dv.waist_y                                                    # back neck to waist + 1/2 in
         final(garment_type="blouse", over=dict(garment_length_cm=waist))               # exactly at the waist
         with self.assertRaises(DraftingError) as ctx:
             final(garment_type="blouse", over=dict(garment_length_cm=waist - 0.1))
@@ -240,13 +253,16 @@ class TestGarmentLengthTransformations(unittest.TestCase):
     def test_hem_follows_the_measured_garment_length(self):
         for length in (50, 60, 75):
             f = final(over=dict(garment_length_cm=length))
-            self.assertAlmostEqual(f.front.meta["hem_y_cm"], length)
-            self.assertAlmostEqual(f.front.to_dict()["bounding_box"]["height_cm"], length, places=2)
+            self.assertAlmostEqual(f.back.meta["hem_y_cm"], length)
+            self.assertAlmostEqual(f.back.to_dict()["bounding_box"]["height_cm"], length, places=2)
+            # the front is longer by the method's extra front length (taken up by the bust dart) and its neck raise
+            self.assertAlmostEqual(f.front.meta["hem_y_cm"], length + f.dv.front_extra + f.dv.front_raise)
+            self.assertAlmostEqual(f.front.meta["side_seam_sewn_length_cm"], f.back.meta["side_seam_sewn_length_cm"], places=6)
 
     def test_long_blouse_uses_closed_fish_darts_inside_the_outline(self):
         blouse = final()
         for p in (blouse.front, blouse.back):
-            d = p.darts[0]
+            d = next(x for x in p.darts if "waist" in x["id"])
             self.assertEqual(d["type"], "fish")
             self.assertTrue(g.point_in_polygon(tuple(d["lower_apex"]), p.outline))
             self.assertLess(d["lower_apex"][1], p.meta["hem_y_cm"])
@@ -257,7 +273,9 @@ class TestGarmentLengthTransformations(unittest.TestCase):
         x_waist = f.front.points["WAIST_SIDE"][0]
         x_hem = f.front.points["HEM_SIDE"][0]
         self.assertGreater(x_hem, x_waist)
-        self.assertAlmostEqual(x_hem, f.dv.q_hip)                                # hem below hip level = quarter hip
+        self.assertAlmostEqual(x_hem, f.front.points["HIP_SIDE"][0])             # straight down below the hip line
+        both = f.front.points["HIP_SIDE"][0] + f.back.points["HIP_SIDE"][0]
+        self.assertAlmostEqual(2 * both, f.dv.garment_hip, places=6)             # front + back = half of (hip + ease)
 
     def test_tshirt_is_knit_without_darts_and_has_a_neckband_derived_from_the_neckline(self):
         f = final(garment_type="t-shirt", fabric="knit")
@@ -333,11 +351,11 @@ class TestApiOutputStructure(unittest.TestCase):
         base, fin = self.out["base_block"], self.out["final_pattern"]
         self.assertEqual(base["stage"], "base_block")
         self.assertEqual(fin["stage"], "final_pattern")
-        base_front = next(p for p in base["pieces"] if p["name"] == "Front Bodice")
-        fin_front = next(p for p in fin["pieces"] if p["name"] == "Front Bodice")
-        self.assertNotEqual(base_front["outline"], fin_front["outline"])
-        self.assertAlmostEqual(base_front["measurements"]["hem_y_cm"], 42.0)      # waist length
-        self.assertAlmostEqual(fin_front["measurements"]["hem_y_cm"], 65.0)       # design length
+        base_back = next(p for p in base["pieces"] if p["name"] == "Back Bodice")
+        fin_back = next(p for p in fin["pieces"] if p["name"] == "Back Bodice")
+        self.assertNotEqual(base_back["outline"], fin_back["outline"])
+        self.assertAlmostEqual(base_back["measurements"]["hem_y_cm"], 40 + 1.27)  # waist line: back neck to waist + 1/2 in
+        self.assertAlmostEqual(fin_back["measurements"]["hem_y_cm"], 65.0)        # design length
         self.assertTrue(any(p["name"] == "Sleeve Block" for p in base["pieces"]))
         self.assertTrue(any(p["name"].startswith("Sleeve (") for p in fin["pieces"]))
 
@@ -359,20 +377,31 @@ class TestApiOutputStructure(unittest.TestCase):
     def test_base_block_output_carries_assumptions_ease_and_drafting_values(self):
         base = self.out["base_block"]
         self.assertIn("assumptions", base)
-        self.assertEqual(base["ease"]["bust_cm"], 10.0)
+        self.assertAlmostEqual(base["ease"]["bust_cm"], 3.5 * 2.54)             # regular fit: the source's 3 1/2 in
+        self.assertIn("drafting_method", base["assumptions"])
         self.assertTrue(base["drafting_values"])
         self.assertIn("total_armhole_seam_cm", base["armhole"])
 
     def test_research_language(self):
         text = repr(self.out).lower()
-        self.assertNotIn("professionally validated", text.replace("not professionally or fit validated", ""))
+        for claim in ("professionally validated", "industry standard", "perfect fit", "100% accurate", "aldrich-based"):
+            self.assertNotIn(claim, text)
         self.assertIn("prototype", self.out["disclaimer"].lower())
-        self.assertIn("not professionally", self.out["disclaimer"].lower())
+        self.assertIn("geometric validation only", self.out["disclaimer"].lower())
+        self.assertIn("toile", self.out["disclaimer"].lower())
+        self.assertIn("not winifred aldrich", self.out["drafting_method"]["note"].lower())
 
     def test_armhole_sleeve_report_is_returned(self):
         info = self.out["armhole_sleeve"]
         self.assertGreater(info["total_armhole_seam_cm"], 30)
-        self.assertAlmostEqual(info["cap_ease_cm"], 2.0, delta=0.01)
+        cap = self.out["sleeve_cap"]
+        self.assertEqual(cap["status"], "PASS")
+        self.assertAlmostEqual(cap["difference_cm"], cap["sleeve_cap_seam_cm"] - cap["bodice_armhole_seam_cm"], delta=0.011)
+        self.assertTrue(cap["allowed_cm"][0] <= cap["difference_cm"] <= cap["allowed_cm"][1])
+        lengths = self.out["armhole_lengths"]
+        self.assertAlmostEqual(lengths["front_armhole_curve_cm"] + lengths["back_armhole_curve_cm"],
+                               lengths["total_armhole_cm"], delta=0.011)
+        self.assertGreater(lengths["front_armhole_curve_cm"], lengths["back_armhole_curve_cm"])
 
 
 # ── route integration: validated measurements + confirmed design_spec -> API ──
@@ -393,7 +422,7 @@ def _headers():
 
 
 def _profile(profile="medium", **over):
-    base = dict(PROFILES[profile], armhole_cm=PROFILES[profile]["armhole_depth_cm"], fabric_type="woven",
+    base = dict(PROFILES[profile], fabric_type="woven",
                 fit_preference="standard", original_values={}, id="m1", unit="cm")
     base.update(over)
     return SimpleNamespace(**base)
@@ -450,7 +479,7 @@ class TestGenerateRouteIntegration(unittest.TestCase):
         pr.assert_not_called()
 
     def test_undraftable_measurements_return_422_not_a_pattern(self):
-        resp, pr = self._post(_profile("medium", across_back_cm=50.0), design())
+        resp, pr = self._post(_profile("medium", shoulder_width_cm=60.0), design())
         self.assertEqual(resp.status_code, 422)
         self.assertEqual(resp.get_json()["error_code"], "MEASUREMENTS_NOT_DRAFTABLE")
         pr.assert_not_called()

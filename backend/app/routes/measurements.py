@@ -136,7 +136,8 @@ def save_measurements():
     return jsonify({
         "message": "Measurement profile saved successfully",
         "measurement_id": str(profile.id),
-        "profile": _profile_dict(profile)
+        "profile": _profile_dict(profile),
+        "warnings": ms.measurement_warnings(canonical),      # unusual values: shown, never rejected
     }), 201
 
 
@@ -242,9 +243,15 @@ def update_measurement(measurement_id):
     canonical_new, original_new, parse_errors = ms.convert_input(data, unit, data.get("units"))
     _merge(errors, parse_errors)
     fabric_type, fit_preference = _choice_errors(data, errors, existing=profile)
+    clear = data.get("clear") or []
+    if not isinstance(clear, list) or any(ms.KIND.get(k) != "design" for k in clear):
+        errors["clear"] = [{"code": "INVALID_CLEAR", "message": "Only design values can be cleared: "
+                            + ", ".join(k for k, v in ms.KIND.items() if v == "design") + "."}]
+        clear = []
+    clear = [k for k in clear if k not in canonical_new]
 
     # With a confirmed design, the MERGED profile must hold every measurement that design needs.
-    merged = {k: v for k, v in _canonical_of(profile).items() if v is not None}
+    merged = {k: v for k, v in _canonical_of(profile).items() if v is not None and k not in clear}
     merged.update(canonical_new)
     for key, items in ms.missing_errors(merged, _design_required(data, errors)).items():
         if key not in errors:
@@ -256,10 +263,18 @@ def update_measurement(measurement_id):
         setattr(profile, key, value)
     if "armhole_depth_cm" in canonical_new:
         profile.armhole_cm = canonical_new["armhole_depth_cm"]
-    if original_new:
-        stored = dict(getattr(profile, "original_values", None) or {})
+    stored = dict(getattr(profile, "original_values", None) or {})
+    # "clear": design values to empty again, so that the calculated value is used (measurements are never cleared
+    # this way: a measurement the design needs cannot be missing)
+    for key in clear:
+        setattr(profile, key, None)
+        stored.pop(key, None)
+        if key == "armhole_depth_cm":
+            profile.armhole_cm = None
+    if original_new or clear:
         stored.update(original_new)
         profile.original_values = stored
+    if original_new:
         profile.unit = unit
 
     if "client_name" in data:
@@ -277,5 +292,6 @@ def update_measurement(measurement_id):
     return jsonify({
         "message": "Measurement profile updated successfully",
         "profile_id": str(profile.id),
-        "profile": _profile_dict(profile)
+        "profile": _profile_dict(profile),
+        "warnings": ms.measurement_warnings(_canonical_of(profile)),
     }), 200

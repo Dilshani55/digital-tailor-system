@@ -50,14 +50,14 @@ class TestLockedMeasurements(unittest.TestCase):
             "fabric_type": "woven",
             "fit_preference": "standard",
             "back_waist_length_cm": 41.0,
-            "shoulder_cm": 13.0,
-            "across_back_cm": 34.0,
-            "armhole_depth_cm": 21.0,
+            "shoulder_width_cm": 37.0,
+            "shoulder_to_bust_cm": 25.0,
+            "waist_to_hip_cm": 20.0,
+            "armhole_depth_cm": 21.0,   # an entered armhole depth replaces the calculated one
             "garment_length_cm": 55.0,
-            "neck_cm": 36.0,
             "bicep_cm": 28.0,
-            "sleeve_cm": 55.0,   # FULL arm length (a short sleeve is derived from it)
-            "wrist_cm": 16.0,
+            "sleeve_cm": 24.0,
+            "sleeve_end_cm": 27.0,
         }
         features = {
             "garment_type": "blouse",

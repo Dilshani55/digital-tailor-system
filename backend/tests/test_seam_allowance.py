@@ -64,13 +64,37 @@ class TestFinalPatternSeamAllowance(unittest.TestCase):
         self.assertAlmostEqual(front["cut_bounding_box"]["min_x"], 0.0, places=2)   # fold edge: no allowance
         grow = front["cut_bounding_box"]["width_cm"] - front["bounding_box"]["width_cm"]
         self.assertGreater(grow, 1.0)
-        self.assertEqual(front["seam_allowances"]["seam"], 1.5)
+        self.assertEqual(front["seam_allowances"], {"neckline": 1.0, "shoulder": 1.5, "armhole": 1.0, "side": 1.5, "hem": 2.5})
+        sleeve = next(p for p in out["pattern_pieces"] if p["piece_type"] == "sleeve")
+        self.assertEqual(sleeve["seam_allowances"], {"armhole": 1.0, "sleeve_seam": 1.5, "sleeve_hem": 2.5})
+        kinds = {e["kind"] for e in front["edge_allowances"]}
+        self.assertEqual(kinds, {"neckline", "shoulder", "armhole", "side", "hem", "fold"})
+        self.assertTrue(all(e["cm"] == 0 for e in front["edge_allowances"] if e["kind"] == "fold"))
+
+    def test_seam_allowance_is_not_ease(self):
+        """Changing an allowance moves the cutting line only: the sewing line (garment size) stays the same."""
+        from app.logic.parametric_engine import ParametricEngine
+        from tests.fixtures import measurements, design
+        m = measurements()
+        a = ParametricEngine(m, design_spec={"attributes": design()}).generate()
+        b = ParametricEngine(m, design_spec={"attributes": design()}, seam_allowances={"side": 3.0, "hem": 4.0}).generate()
+        for pa, pb in zip(a["pattern_pieces"], b["pattern_pieces"]):
+            self.assertEqual(pa["outline"], pb["outline"], pa["name"])              # sewing line unchanged
+        fa, fb = a["pattern_pieces"][0], b["pattern_pieces"][0]
+        self.assertGreater(fb["cut_polygon_area_cm2"], fa["cut_polygon_area_cm2"])
+        self.assertEqual(b["seam_allowances_cm"]["side"], 3.0)
+        self.assertEqual(b["seam_allowances_cm"]["shoulder"], a["seam_allowances_cm"]["shoulder"])
+        from app.logic.drafting.ease import DraftingError
+        for bad in ({"side": -1}, {"side": 9}, {"zip": 1.0}, {"side": "wide"}):
+            with self.assertRaises(DraftingError) as ctx:
+                ParametricEngine(m, design_spec={"attributes": design()}, seam_allowances=bad).generate()
+            self.assertEqual(ctx.exception.code, "INVALID_SEAM_ALLOWANCE")
 
     def test_woven_and_knit_use_different_allowances(self):
         woven = _gen("blouse", "round-neck", "short-sleeve")["pattern_pieces"][0]["seam_allowances"]
         knit = _gen("t-shirt", "round-neck", "short-sleeve")["pattern_pieces"][0]["seam_allowances"]
         self.assertNotEqual(woven, knit)
-        self.assertGreater(woven["seam"], knit["seam"])
+        self.assertGreater(woven["side"], knit["side"])
 
     def test_measured_allowance_matches_specified(self):
         out = _gen("blouse", "v-neck", "long-sleeve")
