@@ -100,7 +100,9 @@ h3 { font-size: 15px; font-weight: 600; }
 .sidebar-research strong { font-size: 13px; color: #fff; }
 .sidebar-research small { font-size: 11px; color: #9fb3aa; margin-top: 2px; }
 .sidebar-item.logout { margin-top: 10px; }
-.main-content { flex: 1; padding: 30px 34px 44px; overflow-y: auto; height: 100%; background: var(--bg); }
+/* position: relative keeps absolutely positioned children (the .sr-only labels) inside this scrolling area;
+   without it they are laid out against the page and make the page itself scroll below the app */
+.main-content { flex: 1; padding: 30px 34px 44px; overflow-y: auto; height: 100%; background: var(--bg); position: relative; }
 
 /* ── Primitives ──────────────────────────────────────────────────────────── */
 .btn { min-height: 42px; border-radius: 10px; font-size: 14px; font-weight: 600; cursor: pointer; border: 1px solid transparent; display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 0 18px; text-decoration: none; white-space: nowrap; }

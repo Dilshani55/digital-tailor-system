@@ -45,6 +45,9 @@ test('all pages and navigation links work with no console errors', async ({ page
     const text = (await page.locator('.main-content').innerText()).trim();
     expect(text.length, `${path} is blank`).toBeGreaterThan(20);
     expect(text, `${path} shows a raw error`).not.toMatch(/Traceback|undefined|NaN|\[object Object\]/);
+    // only the content area scrolls: the browser page itself must not (no blank area below the app)
+    const overflow = await page.evaluate(() => document.documentElement.scrollHeight - window.innerHeight);
+    expect(overflow, `${path}: the page itself scrolls`).toBeLessThanOrEqual(1);
   }
 
   // empty state for a new user

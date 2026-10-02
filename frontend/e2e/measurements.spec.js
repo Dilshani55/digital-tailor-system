@@ -47,6 +47,8 @@ async function typeSlowly(field, text) {
   return seen;
 }
 const shot = async (page, name) => { if (SHOTS) await page.screenshot({ path: `${SHOTS}/${name}.png`, fullPage: true }); };
+// the app scrolls inside its own content area; the browser page itself must never scroll (no blank area below the app)
+const pageOverflow = (page) => page.evaluate(() => document.documentElement.scrollHeight - window.innerHeight);
 
 test('Measurements page: typing, decimals, cm/in, save, reload, edit', async ({ page, request }) => {
   const problems = watch(page);
@@ -81,6 +83,7 @@ test('Measurements page: typing, decimals, cm/in, save, reload, edit', async ({ 
   await page.getByTestId('page-unit-in').click();
   await expect(bust).toHaveValue('33.3');
   await shot(page, 'measurements-page-inches');
+  expect(await pageOverflow(page)).toBeLessThanOrEqual(1);
   await page.getByRole('button', { name: 'Save measurements' }).click();
   await expect(page.getByText('New measurement profile saved.')).toBeVisible();
   let saved = await profile();
@@ -174,6 +177,7 @@ test('wizard: every step opened directly shows its controls; measurements in the
   await expect(page.getByTestId('meas-source-note')).toContainText('For a new customer, type them here');
   expect(await typeSlowly(page.locator('#meas-bust_cm'), '88,5')).toEqual(['8', '88', '88,', '88,5']);
   await shot(page, 'step4-no-design');
+  expect(await pageOverflow(page)).toBeLessThanOrEqual(1);
   await page.getByRole('button', { name: 'Save and continue' }).click();
   await expect(page.getByRole('alert')).toContainText(/confirm the design first/i);
 
