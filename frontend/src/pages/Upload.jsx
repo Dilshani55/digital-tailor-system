@@ -1,10 +1,11 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
-import { useNavigate, useLocation, Link } from 'react-router-dom';
+import { useState, useEffect, useMemo } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import {
   ArrowRight, Calendar, CheckCircle2, CircleDashed, Download, FileText, FolderOpen, Grid3x3, ImageUp, PencilLine, Printer, Ruler, Scissors,
 } from 'lucide-react';
 import StepIndicator from '../components/StepIndicator';
 import LoadingSpinner from '../components/LoadingSpinner';
+import MeasureFigure from '../components/MeasureFigure';
 import FabricRecommendation from '../components/FabricRecommendation';
 import PredictionReview from '../components/PredictionReview';
 import PatternPreview from '../components/PatternPreview';
@@ -13,9 +14,10 @@ import TilePreview from '../components/TilePreview';
 import GarmentIllustration from '../components/GarmentIllustration';
 import { supportReport, labelOf } from '../utils/designSchema';
 import {
-  FIELD_KEYS, DESIGN_KEYS, LABELS, GROUPS, MEASUREMENT_FIELDS, requiredFor, validateMeasurements, canonicalCm, parseFieldErrors,
-  buildPayload, storedEntries, displayValue, calculatedValues, CM_PER_INCH,
+  FIELD_KEYS, DESIGN_KEYS, LABELS, requiredFor, validateMeasurements, canonicalCm, parseFieldErrors, buildPayload,
+  storedEntries,
 } from '../utils/measurementSchema';
+import MeasurementFields from '../components/MeasurementFields';
 import { formatResult, NOT_CALCULATED } from '../utils/results';
 import { friendlyError, imageProblem } from '../utils/friendlyError';
 import { getPreferences, widthLabel } from '../utils/preferences';
@@ -58,8 +60,10 @@ const profileToMeas = (p) => ({
   fit_preference: p.fit_preference || 'standard',
 });
 
-const isEmpty = (v) => v === '' || v === null || v === undefined;
-const namesOf = (keys) => keys.map((k) => LABELS[k] || k).join(', ');
+// measurements every design needs; the confirmed design adds hip, bust point and sleeve measurements
+const BASE_KEYS = requiredFor({});
+// body measurements only some designs need: before a design is confirmed they can already be entered
+const CONDITIONAL_KEYS = FIELD_KEYS.filter((k) => !BASE_KEYS.includes(k) && !DESIGN_KEYS.includes(k));
 const STANDARD_WIDTHS = [{ inches: 36, cm: 91.44 }, { inches: 45, cm: 114.3 }, { inches: 60, cm: 152.4 }];
 
 const EmptyState = ({ title, children, action, onAction }) => (
@@ -134,7 +138,7 @@ export default function Upload() {
   const [fieldErrors, setFieldErrors] = useState({});
   const [measUnits, setMeasUnits] = useState({});         // unit each value was typed in (missing = cm)
   const [savedMeasKey, setSavedMeasKey] = useState(null); // measurement values as last saved for this design
-  const knownProfileIds = useRef(null);                   // profiles seen so far: a new one was just added on the Measurements page
+  const [activeField, setActiveField] = useState('bust_cm');
   const [manualDesign, setManualDesign] = useState(false);
   const [measWarnings, setMeasWarnings] = useState([]);   // "please check" notes from the server (never errors)
 
@@ -188,11 +192,7 @@ export default function Upload() {
   }, []);
 
   useEffect(() => {
-    measurementsAPI.getAll().then((res) => {
-      const list = res.data.measurements || [];
-      setSavedProfiles(list);
-      knownProfileIds.current = new Set(list.map((p) => p.measurement_id));
-    }).catch(() => {});
+    measurementsAPI.getAll().then((res) => setSavedProfiles(res.data.measurements || [])).catch(() => {});
     if (location.state?.selectedProfile) {
       const p = location.state.selectedProfile;
       setMeas(profileToMeas(p));
@@ -229,14 +229,14 @@ export default function Upload() {
     return FIELD_KEYS.filter((k) => requiredKeys.includes(k) || optional.includes(k));
   }, [isAttributesConfirmed, confirmedAttributes, design.supported, requiredKeys]);
   const measKey = useMemo(() => JSON.stringify(shownKeys.map((k) => [k, cmValues[k] ?? null])), [shownKeys, cmValues]);
-  const missingKeys = designReady ? requiredKeys.filter((k) => isEmpty(meas[k])) : [];
-  const calculated = calculatedValues(cmValues);
-  const showLength = (cm) => `${Number((unit === 'in' ? cm / CM_PER_INCH : cm).toFixed(unit === 'in' ? 2 : 1))} ${unit}`;
   const measurementsSaved = Boolean(measurementId) && savedMeasKey !== null && savedMeasKey === measKey;
   // everything the pattern depends on: when any of it changes, the old pattern, estimate and PDF are out of date
   const inputsKey = JSON.stringify([confirmedAttributes, measKey, selectedFabricId, meas.fit_preference, imageId]);
   const patternStale = Boolean(patternData) && patternKey !== inputsKey;
   const patternCurrent = Boolean(patternData) && !patternStale;
+  useEffect(() => {
+    if (shownKeys.length && !shownKeys.includes(activeField)) setActiveField(shownKeys[0]);
+  }, [shownKeys, activeField]);
 
   // ── 1: customer & design ──────────────────────────────────────────────────
   const handleSelectSavedClient = (profileId) => {
@@ -250,52 +250,16 @@ export default function Upload() {
       return;
     }
     const found = savedProfiles.find((p) => p.measurement_id === profileId);
-    if (found) applyProfile(found);
-  };
-
-  // the wizard only shows a customer's measurements; they are entered and changed on the Measurements page
-  const applyProfile = (found) => {
-    setMeas(profileToMeas(found));
-    setMeasUnits(storedEntries(found).units);
-    setSavedMeasKey(null);
-    setCustomerContact(found.email || '');
-    setFieldErrors({});
-    setMeasWarnings([]);
-    setMeasurementId(found.measurement_id);
-  };
-
-  // Read the saved profiles again (after the Measurements page was used in another tab): the chosen customer's values
-  // are replaced by what is saved now; with no customer chosen, a profile that is new since the last look is chosen.
-  const refreshProfiles = async () => {
-    let list;
-    try {
-      list = (await measurementsAPI.getAll()).data.measurements || [];
-    } catch {
-      return;
-    }
-    setSavedProfiles(list);
-    const known = knownProfileIds.current;
-    knownProfileIds.current = new Set(list.map((p) => p.measurement_id));
-    const current = measurementId && list.find((p) => p.measurement_id === measurementId);
-    if (current) {
-      setMeas({ ...profileToMeas(current), fabric_type: meas.fabric_type, fit_preference: meas.fit_preference });
-      setMeasUnits(storedEntries(current).units);
+    if (found) {
+      setMeas(profileToMeas(found));
+      setMeasUnits(storedEntries(found).units);
+      setSavedMeasKey(null);
+      setCustomerContact(found.email || '');
+      setUnit('cm');
       setFieldErrors({});
-      return;
-    }
-    const added = known ? list.filter((p) => !known.has(p.measurement_id)) : [];
-    if (!measurementId && added.length) {
-      const newest = added.reduce((a, b) => (String(b.created_at || '') > String(a.created_at || '') ? b : a));
-      applyProfile({ ...newest, fabric_type: meas.fabric_type, fit_preference: meas.fit_preference });
+      setMeasurementId(found.measurement_id);
     }
   };
-  const refreshRef = useRef(refreshProfiles);
-  refreshRef.current = refreshProfiles;
-  useEffect(() => {
-    const onFocus = () => refreshRef.current();
-    window.addEventListener('focus', onFocus);
-    return () => window.removeEventListener('focus', onFocus);
-  }, []);
 
   const continueFromCustomer = () => {
     if (customerContact.trim().length > 120 || projectName.trim().length > 80) {
@@ -396,25 +360,23 @@ export default function Upload() {
     setFieldErrors({});
   };
 
-  // Step 4 checks that the chosen customer's saved measurements are enough for the confirmed design and links them
-  // to this pattern. Nothing is typed here: missing values are added on the Measurements page.
   const handleSaveMeasurements = async () => {
     if (!designReady) {
-      setError('Choose and confirm the design first (at the top of this step or in the AI review step). The measurements are checked for that design.');
-      return;
-    }
-    if (!measurementId) {
-      setError('Choose a saved customer, or add the customer\'s measurements on the Measurements page first.');
+      setError('Choose and confirm the design first (at the top of this step or in the AI review step). The measurements are saved for that design.');
       return;
     }
     const localErrors = validateMeasurements(meas, requiredKeys);
     if (Object.keys(localErrors).length > 0) {
       setFieldErrors(localErrors);
-      setError(`This design also needs: ${namesOf(Object.keys(localErrors))}. Add them with "Edit measurements".`);
+      setError('Please correct the highlighted measurements.');
+      return;
+    }
+    if (!measurementId && !meas.client_name.trim()) {
+      setError('Please enter the customer name (step 1) or choose a saved customer before saving.');
       return;
     }
     setLoading(true);
-    setLoadingMessage('Checking the measurements…');
+    setLoadingMessage('Saving measurements…');
     setError('');
     try {
       const payload = {
@@ -441,7 +403,7 @@ export default function Upload() {
         setError(friendlyError(err, parsed._form));
       } else {
         setFieldErrors(parsed);
-        setError(`Please check these measurements with "Edit measurements": ${namesOf(Object.keys(parsed))}.`);
+        setError('Please correct the highlighted measurements.');
       }
     } finally {
       setLoading(false);
@@ -455,7 +417,7 @@ export default function Upload() {
       return;
     }
     if (!measurementsSaved) {
-      setError('Please confirm the measurements for this design (step 4) before generating the pattern.');
+      setError('Please save the measurements for this design (step 4) before generating the pattern.');
       return;
     }
     if (!selectedFabricId) {
@@ -625,7 +587,7 @@ export default function Upload() {
   const pdfReady = Boolean(exportId) && patternCurrent;
   const readiness = [
     { label: 'Design confirmed', done: designReady, todo: 'Choose and confirm the garment, neckline and sleeves.', action: 'Go to AI review', to: S.REVIEW },
-    { label: 'Measurements saved', done: measurementsSaved, todo: 'Choose the customer and confirm the measurements the design needs.', action: 'Go to measurements', to: S.MEASURE },
+    { label: 'Measurements saved', done: measurementsSaved, todo: 'Enter and save the measurements the design needs.', action: 'Go to measurements', to: S.MEASURE },
     { label: 'Fabric chosen', done: Boolean(selectedFabricId), todo: 'Pick a fit and a fabric.', action: 'Go to fabric & fit', to: S.FABRIC },
   ];
   const patternItem = { label: 'Pattern generated', done: canEstimate, action: 'Go to pattern preview', to: S.PREVIEW,
@@ -763,8 +725,8 @@ export default function Upload() {
           <div className="wizard-body" id="wp4">
             <Title title="Body measurements"
                    help={designReady
-                     ? `This design needs ${requiredKeys.length} measurements. The chosen customer's saved measurements are shown here; they are entered and changed on the Measurements page.`
-                     : 'Choose the design and the customer. The customer\'s saved measurements are shown here; they are entered and changed on the Measurements page.'} />
+                     ? `This design needs ${requiredKeys.length} measurements${meas.client_name ? ` for ${meas.client_name}` : ''}. Select a field to see how to measure it.`
+                     : 'Choose the design, then enter the measurements it needs. Select a field to see how to measure it.'} />
             {!designReady && (
               <section className="section-card" data-testid="design-selector" aria-labelledby="design-selector-h">
                 <h3 id="design-selector-h">Which design are these measurements for?</h3>
@@ -789,89 +751,60 @@ export default function Upload() {
             </div>
             {measurementId && savedMeasKey !== null && !measurementsSaved && (
               <div role="status" className="alert warn" style={{ marginBottom: 12 }} data-testid="meas-unsaved">
-                The measurements changed since this step was completed. Continue from here again before generating the pattern.
+                The measurements changed since they were saved. Save them again before generating the pattern.
               </div>
             )}
             <div className="section-card" data-testid="meas-source" style={{ marginBottom: 14 }}>
-              <div className="form-grid" style={{ marginTop: 0, alignItems: 'end' }}>
-                <div className="form-field">
-                  <label className="form-label" htmlFor="saved-client-meas">Customer</label>
-                  <select id="saved-client-meas" className="form-select" value={measurementId || ''} onChange={(e) => handleSelectSavedClient(e.target.value)}>
-                    <option value="">No customer chosen</option>
-                    {uniqueProfiles.map((p) => (
-                      <option key={p.measurement_id} value={p.measurement_id}>
-                        {p.client_name || 'Customer'}{p.email ? ` — ${p.email}` : ''}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="form-field" style={{ display: 'flex', flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
-                  {measurementId && (
-                    <Link to={`/measurements?profile=${measurementId}&from=pattern`} target="_blank" rel="noopener"
-                          className="btn btn-primary" data-testid="edit-measurements">Edit measurements</Link>
-                  )}
-                  <Link to={`/measurements?new=1&from=pattern${!measurementId && meas.client_name.trim() ? `&name=${encodeURIComponent(meas.client_name.trim())}` : ''}`}
-                        target="_blank" rel="noopener" className={measurementId ? 'btn btn-outline' : 'btn btn-primary'} data-testid="add-measurements">
-                    Add a new customer&apos;s measurements
-                  </Link>
-                  <button type="button" className="btn btn-outline" onClick={refreshProfiles} data-testid="refresh-measurements">Refresh</button>
-                </div>
+              <div className="form-field" style={{ maxWidth: 520 }}>
+                <label className="form-label" htmlFor="saved-client-meas">Customer</label>
+                <select id="saved-client-meas" className="form-select" value={measurementId || ''} onChange={(e) => handleSelectSavedClient(e.target.value)}>
+                  <option value="">New customer (type the measurements below)</option>
+                  {uniqueProfiles.map((p) => (
+                    <option key={p.measurement_id} value={p.measurement_id}>
+                      {p.client_name || 'Customer'}{p.email ? ` — ${p.email}` : ''}
+                    </option>
+                  ))}
+                </select>
+                <span className="form-hint" data-testid="meas-source-note">
+                  {measurementId
+                    ? 'These are the measurements saved for this customer. Change any value here if needed: saving updates the customer\'s profile.'
+                    : 'A saved customer\'s measurements are filled in below. For a new customer, type them here: they are saved as a new profile.'}
+                </span>
               </div>
-              <span className="form-hint" style={{ display: 'block', marginTop: 8 }}>
-                Measurements are entered and changed on the Measurements page. It opens in a new tab, so this pattern is kept;
-                when you come back here the values below are updated (or press Refresh).
-              </span>
             </div>
-            {!measurementId ? (
-              <div className="section-card" data-testid="meas-none">
-                <h3>No measurements yet</h3>
-                <p className="form-hint">
-                  Choose a saved customer above. For a new customer, press &quot;Add a new customer&apos;s measurements&quot;, save them on the
-                  Measurements page and come back: they are shown here.
-                </p>
-              </div>
-            ) : (
-              <div className="section-card" data-testid="meas-summary">
-                <h3>{meas.client_name || 'Customer'} — saved measurements{designReady ? ' this design uses' : ''}</h3>
-                {missingKeys.length > 0 && (
-                  <div role="alert" className="alert warn" data-testid="meas-missing" style={{ margin: '8px 0 12px' }}>
-                    This design also needs: {namesOf(missingKeys)}. Add them with &quot;Edit measurements&quot;.
-                  </div>
-                )}
-                {GROUPS.filter((g) => MEASUREMENT_FIELDS.some((f) => f.group === g.key && shownKeys.includes(f.key))).map((g) => (
-                  <div key={g.key} data-testid={`meas-group-${g.key}`} style={{ marginTop: 10 }}>
-                    <div className="form-label" style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>{g.label}</div>
-                    <dl className="meas-readonly" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(230px, 100%), 1fr))', gap: '4px 18px', margin: 0 }}>
-                      {MEASUREMENT_FIELDS.filter((f) => f.group === g.key && shownKeys.includes(f.key)).map((f) => {
-                        const has = !isEmpty(meas[f.key]);
-                        const missing = !has && missingKeys.includes(f.key);
-                        const text = has ? `${displayValue(meas[f.key], measUnits[f.key] || 'cm', unit)} ${unit}`
-                          : missing ? 'Missing'
-                            : f.kind === 'design' && calculated[f.key] ? `calculated ${showLength(calculated[f.key])}`
-                              : 'Not measured';
-                        return (
-                          <div key={f.key} data-testid={`meas-value-${f.key}`} data-state={has ? 'saved' : missing ? 'missing' : 'empty'}
-                               style={{ display: 'flex', justifyContent: 'space-between', gap: 10, borderBottom: '1px solid var(--border, #dfe5e0)', padding: '5px 0' }}>
-                            <dt style={{ fontWeight: 600 }}>{f.label}</dt>
-                            <dd style={{ margin: 0, color: missing || fieldErrors[f.key] ? '#B23B3B' : has ? 'inherit' : 'var(--text-muted, #6b7280)' }}>
-                              {text}{fieldErrors[f.key] && has ? ` — ${fieldErrors[f.key]}` : ''}
-                            </dd>
-                          </div>
-                        );
-                      })}
-                    </dl>
-                  </div>
-                ))}
-                {measWarnings.map((w) => (
-                  <p key={`${w.field}-${w.message}`} role="status" className="form-hint" data-testid={`warning-${w.field}`} style={{ color: '#92400e', marginTop: 8 }}>
-                    Please check: {w.message}
-                  </p>
-                ))}
-              </div>
+            {!designReady && (
+              <p className="form-hint" data-testid="base-fields-note" style={{ marginBottom: 12 }}>
+                All measurements can be entered now. The first {BASE_KEYS.length} (bust, waist, shoulder to shoulder, back neck to waist, garment length) are needed for every design;
+                hip, waist to hip, shoulder to bust point and the sleeve measurements are needed when the confirmed design uses them. Design values are optional.
+              </p>
             )}
+            <div className="meas-layout">
+              <aside className="meas-figure" aria-label="Measurement guide">
+                <h3>Measurement guide</h3>
+                <MeasureFigure active={activeField} fields={shownKeys} sleeveCm={cmValues.sleeve_cm} />
+                <p className="form-hint" style={{ marginTop: 6 }}>
+                  Shows where to measure {LABELS[activeField] ? <strong>{LABELS[activeField].toLowerCase()}</strong> : 'each field'} on the front or back view; it is a guide, not a body model.
+                  Inches are converted exactly (1 in = 2.54 cm).
+                </p>
+              </aside>
+              <MeasurementFields idPrefix="meas" keys={shownKeys} required={designReady ? requiredKeys : BASE_KEYS}
+                                 conditional={designReady ? [] : CONDITIONAL_KEYS} values={meas}
+                                 units={measUnits} unit={unit} errors={fieldErrors} active={activeField} onActive={setActiveField}
+                                 serverWarnings={measWarnings}
+                                 onChange={(key, value) => {
+                                   setError('');
+                                   setFieldErrors((prev) => {
+                                     if (!prev[key]) return prev;
+                                     const { [key]: _removed, ...rest } = prev;
+                                     return rest;
+                                   });
+                                   setMeas({ ...meas, [key]: value });
+                                   setMeasUnits({ ...measUnits, [key]: unit });
+                                 }} />
+            </div>
             <NavRow>
               <button type="button" className="btn btn-outline" onClick={() => go(S.REVIEW)}>Back</button>
-              <button type="button" className="btn btn-primary btn-lg" onClick={handleSaveMeasurements}>Use these measurements</button>
+              <button type="button" className="btn btn-primary btn-lg" onClick={handleSaveMeasurements}>Save and continue</button>
             </NavRow>
           </div>
         )}

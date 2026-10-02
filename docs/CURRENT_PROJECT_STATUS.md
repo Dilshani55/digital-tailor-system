@@ -15,7 +15,7 @@ mismatch** (see [THESIS_RECONCILIATION.md](THESIS_RECONCILIATION.md)).
 | Dashboard, Customers and Pattern library show the same saved patterns | Complete (fixed) | the library listed only PDFs; it now lists every saved pattern with "PDF ready / PDF pending / PDF file missing"; `test_pattern_list.py`, `Library.test.jsx`, E2E `library.spec.js` |
 | Delete a pattern (owner only; its PDFs go with it; customer and measurements stay) / delete one PDF (pattern stays) | Complete (added) | `test_pattern_list.py`, E2E `library.spec.js` |
 | Records whose references were deleted | Complete (added) | treated as "missing", never a crash; read-only report `backend/tools/orphan_report.py` |
-| Measurement entry (design-dependent fields, cm / in, exact conversion, values kept as typed) | Complete (rebuilt 2 Oct 2026) | 11 body measurements + 5 optional design values in plain words, grouped; front / back body guide that highlights the active field; how-to-measure card with a common mistake; warnings for unusual values (never a refusal); old profiles are asked for the new fields, nothing is estimated. Measurements are typed only on the Measurements page; the wizard shows the chosen customer's saved values and links there to add or edit. [measurement-guide.md](measurement-guide.md); `test_measurement_validation.py`, `MeasurementValidation.test.jsx`, E2E `measurements.spec.js` |
+| Measurement entry (design-dependent fields, cm / in, exact conversion, values kept as typed) | Complete (rebuilt 2 Oct 2026) | 11 body measurements + 5 optional design values in plain words, grouped; front / back body guide that highlights the active field; how-to-measure card with a common mistake; warnings for unusual values (never a refusal); old profiles are asked for the new fields, nothing is estimated. [measurement-guide.md](measurement-guide.md); `test_measurement_validation.py`, `MeasurementValidation.test.jsx`, E2E `measurements.spec.js` |
 | Wizard: every step can be opened and shows its own controls; validation only on save / generate / export; stale results invalidated | Complete (changed) | `Wizard.test.jsx`, E2E `measurements.spec.js`, `wizard.spec.js` |
 | Image upload (content-checked, size-limited, random names) | Complete | `test_hardening.py` |
 | AI: garment detector + four separate models (garment type MobileNetV3-Large; neckline, sleeve length, sleeve design YOLOv8n-cls) | Complete (replaced the single M40 model on 2 Oct 2026) | [AI_MODELS.md](AI_MODELS.md); `test_garment_models.py`, `test_garment_detector.py`, `test_analyse_garment_crop.py`, E2E `analysis.spec.js` |
@@ -44,7 +44,7 @@ mismatch** (see [THESIS_RECONCILIATION.md](THESIS_RECONCILIATION.md)).
 | Suite | Result |
 |---|---|
 | Backend unittest | 474 passed, 0 skipped |
-| Frontend vitest | 169 passed |
+| Frontend vitest | 165 passed |
 | ESLint | 0 errors, 0 warnings |
 | Production build | succeeds |
 | Real-stack Playwright (real Chrome, Flask, MongoDB test database, detector + four models, PDF) | 10 passed; 5 of them also at phone width |

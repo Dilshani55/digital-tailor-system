@@ -23,9 +23,6 @@ const VALID = {
   bust_cm: 88, waist_cm: 70, hip_cm: 94, shoulder_width_cm: 37, back_waist_length_cm: 40, shoulder_to_bust_cm: 25,
   waist_to_hip_cm: 20, garment_length_cm: 65, bicep_cm: 28, sleeve_cm: 24, sleeve_end_cm: 27,
 };
-// the customer's measurements were saved on the Measurements page; the wizard only shows and uses them
-const PROFILE = { measurement_id: 'm1', client_name: 'Test Customer', email: 'amara@example.com', fabric_type: 'woven',
-  fit_preference: 'standard', created_at: '2026-10-01 09:00:00', ...VALID };
 const CONFIRMED = { garment_type: 'blouse', neckline_type: 'round-neck', sleeve_length: 'short-sleeve', sleeve_style: 'regular-sleeve' };
 
 const piece = {
@@ -49,7 +46,7 @@ const ESTIMATES = (selectedCm = 114.3) => ({ data: {
 
 function stubAll() {
   vi.clearAllMocks();
-  measurementsAPI.getAll.mockResolvedValue({ data: { measurements: [PROFILE] } });
+  measurementsAPI.getAll.mockResolvedValue({ data: { measurements: [] } });
   imagesAPI.upload.mockResolvedValue({ data: { image_id: 'i1' } });
   imagesAPI.modelStatus.mockResolvedValue({ data: { available: true } });
   imagesAPI.analyse.mockResolvedValue({ data: { garment_attributes: null, confirmed_attributes: {} } });
@@ -74,11 +71,11 @@ const chooseDesign = (over = {}) => {
     fireEvent.change(screen.getByTestId(`select-${k}`), { target: { value: v } }));
   fireEvent.click(screen.getByTestId('confirm-btn'));
 };
-// step 4: choose the saved customer whose measurements are used
-const pickCustomer = async (id = 'm1') => {
-  await waitFor(() => expect(document.querySelector(`#saved-client-meas option[value="${id}"]`)).toBeTruthy());
-  fireEvent.change(document.querySelector('#saved-client-meas'), { target: { value: id } });
-};
+// fills only the fields the confirmed design shows
+const fill = () => Object.entries(VALID).forEach(([k, v]) => {
+  const input = document.querySelector(`#meas-${k}`);
+  if (input) fireEvent.change(input, { target: { value: String(v) } });
+});
 const stepButton = (label) => screen.getByText(label, { selector: '.wstep-lbl' }).closest('button');
 
 const heading = (name) => screen.findByRole('heading', { name });
@@ -100,8 +97,8 @@ async function reachStep4(opts) {
   chooseDesign();
   await waitFor(() => expect(screen.getByText('Continue to measurements').disabled).toBe(false));
   fireEvent.click(screen.getByText('Continue to measurements'));
-  await pickCustomer();
-  fireEvent.click(screen.getByText('Use these measurements'));
+  fill();
+  fireEvent.click(screen.getByText('Save and continue'));
   await heading('Choose fabric and fit');
 }
 
@@ -113,9 +110,7 @@ describe('creation wizard — full workflow', () => {
     expect(imagesAPI.upload).toHaveBeenCalledTimes(1);
     expect(imagesAPI.analyse).toHaveBeenCalledWith('i1');
     expect(imagesAPI.confirmAttributes).toHaveBeenCalledWith('i1', CONFIRMED);
-    expect(measurementsAPI.save).not.toHaveBeenCalled();     // the wizard creates no profile: it uses the saved one
-    expect(measurementsAPI.update.mock.calls[0][0]).toBe('m1');
-    const saved = measurementsAPI.update.mock.calls[0][1];
+    const saved = measurementsAPI.save.mock.calls[0][0];
     expect(saved).toMatchObject({ unit: 'cm', client_name: 'Test Customer', email: 'amara@example.com', design: CONFIRMED, sleeve_cm: 24 });
     expect(saved).not.toHaveProperty('wrist_cm');          // short sleeve: no wrist
     expect(saved).not.toHaveProperty('height_cm');         // no drafting calculation uses height
@@ -124,7 +119,7 @@ describe('creation wizard — full workflow', () => {
     fireEvent.click(screen.getByText('pick-poplin'));
     fireEvent.click(screen.getByText('Confirm and generate pattern'));
     await heading('Pattern preview');
-    expect(measurementsAPI.update).toHaveBeenLastCalledWith('m1', { fabric_type: 'woven', fit_preference: 'standard' });
+    expect(measurementsAPI.update).toHaveBeenCalledWith('m1', { fabric_type: 'woven', fit_preference: 'standard' });
     expect(patternsAPI.generate.mock.calls[0][0]).toMatchObject({
       measurement_id: 'm1', image_id: 'i1', fabric_id: 'cotton-poplin', confirmed_attributes: CONFIRMED,
       project_name: 'Wedding blouse',
@@ -189,13 +184,10 @@ describe('creation wizard — full workflow', () => {
     ['garment_type', 'neckline_type', 'sleeve_length', 'sleeve_style'].forEach((h) => expect(screen.getByTestId(`select-${h}`).disabled).toBe(false));
     expect(screen.getByText(/Upload a photo for AI suggestions/)).toBeTruthy();
 
-    fireEvent.click(stepButton('Measurements'));                       // design selector + unit toggle + customer choice
+    fireEvent.click(stepButton('Measurements'));                       // design selector + unit toggle + fields
     expect(screen.getByTestId('design-selector')).toBeTruthy();
     expect(screen.getByTestId('unit-toggle')).toBeTruthy();
-    expect(document.querySelector('#saved-client-meas')).toBeTruthy();
-    expect(screen.getByTestId('meas-none')).toBeTruthy();              // no customer chosen: no values shown or invented
-    expect(screen.getByTestId('add-measurements').getAttribute('href')).toMatch(/^\/measurements\?new=1&from=pattern/);
-    expect(document.querySelector('#meas-bust_cm')).toBeNull();        // measurements are typed on the Measurements page
+    expect(document.querySelector('#meas-bust_cm')).toBeTruthy();
 
     fireEvent.click(stepButton('Fabric & fit'));                       // fit choices + fabric list, recommendations pending
     expect(screen.getByTestId('step-empty').textContent).toMatch(/recommendations pending/i);
@@ -261,8 +253,8 @@ describe('creation wizard — full workflow', () => {
     expect(stepButton('AI review').getAttribute('data-status')).toBe('done');
     expect(stepButton('Upload image').getAttribute('data-status')).toBe('done');
     fireEvent.click(screen.getByText('Continue to measurements'));
-    await pickCustomer();
-    fireEvent.click(screen.getByText('Use these measurements'));
+    fill();
+    fireEvent.click(screen.getByText('Save and continue'));
     await heading('Choose fabric and fit');
     fireEvent.click(screen.getByText('pick-poplin'));
     fireEvent.click(screen.getByText('Confirm and generate pattern'));
@@ -279,7 +271,7 @@ describe('creation wizard — full workflow', () => {
     expect(stepButton('Customer & design').getAttribute('data-status')).toBe('done');
   });
 
-  it('asks for a customer with saved measurements when the step is completed, not when navigating', async () => {
+  it('asks for the customer name when the measurements are saved, not when navigating', async () => {
     render(<MemoryRouter><Upload /></MemoryRouter>);
     fireEvent.click(screen.getByText('Continue to upload'));
     expect(screen.getByTestId('image-input')).toBeTruthy();                   // navigation is not blocked
@@ -287,10 +279,10 @@ describe('creation wizard — full workflow', () => {
     await heading('Review the AI suggestions');
     chooseDesign();
     fireEvent.click(screen.getByText('Continue to measurements'));
-    fireEvent.click(screen.getByText('Use these measurements'));
-    expect(screen.getByRole('alert').textContent).toMatch(/Choose a saved customer, or add the customer's measurements on the Measurements page/);
+    fill();
+    fireEvent.click(screen.getByText('Save and continue'));
+    expect(screen.getByRole('alert').textContent).toMatch(/customer name/);
     expect(measurementsAPI.save).not.toHaveBeenCalled();
-    expect(measurementsAPI.update).not.toHaveBeenCalled();
   });
 
   it('marks the pattern, estimate and PDF as out of date when a measurement changes', async () => {
@@ -300,11 +292,8 @@ describe('creation wizard — full workflow', () => {
     await heading('Pattern preview');
     expect(screen.getByTestId('pattern-preview')).toBeTruthy();
     fireEvent.click(stepButton('Measurements'));
-    // the bust is changed on the Measurements page (another tab); back here the new value is read
-    measurementsAPI.getAll.mockResolvedValue({ data: { measurements: [{ ...PROFILE, bust_cm: 91.5 }] } });
-    fireEvent.click(screen.getByTestId('refresh-measurements'));
-    await screen.findByTestId('meas-unsaved');
-    expect(screen.getByTestId('meas-value-bust_cm').textContent).toMatch(/91\.5 cm/);
+    fireEvent.change(document.querySelector('#meas-bust_cm'), { target: { value: '91.5' } });
+    expect(screen.getByTestId('meas-unsaved')).toBeTruthy();
     ['Measurements', 'Pattern preview'].forEach((label) => expect(stepButton(label).getAttribute('data-status')).toBe('stale'));
     fireEvent.click(stepButton('Pattern preview'));
     expect((await screen.findByTestId('step-empty')).textContent).toMatch(/generated again/);
@@ -313,7 +302,7 @@ describe('creation wizard — full workflow', () => {
     expect((await screen.findByTestId('step-empty')).textContent).toMatch(/out of date/);
     fireEvent.click(stepButton('Fabric & fit'));
     fireEvent.click(screen.getByText('Regenerate pattern'));
-    expect(screen.getByRole('alert').textContent).toMatch(/confirm the measurements for this design/i);   // stale values are not drafted
+    expect(screen.getByRole('alert').textContent).toMatch(/save the measurements/i);   // stale values are not drafted
     expect(patternsAPI.generate).toHaveBeenCalledTimes(1);
   });
 
