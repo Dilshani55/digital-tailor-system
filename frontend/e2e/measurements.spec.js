@@ -165,10 +165,13 @@ test('wizard: every step opened directly shows its controls; measurements in the
   await expect(page.getByRole('alert')).toContainText('Generate the pattern first');
   await shot(page, 'step8-no-pattern');
 
-  // step 4 without a design: design selector + the measurements every design needs
+  // step 4 without a design: design selector + every measurement, as on the Measurements page
   await step(4).click();
   await expect(page.getByTestId('design-selector')).toBeVisible();
-  await expect(page.locator('.meas-grid input')).toHaveCount(5);
+  await expect(page.locator('.meas-grid input')).toHaveCount(16);
+  await expect(page.getByTestId('meas-need-hip_cm')).toContainText('needed for some designs');
+  await expect(page.getByTestId('open-measurements-page')).toHaveAttribute('href', '/measurements');
+  await expect(page.locator('#saved-client-meas')).toBeVisible();
   expect(await typeSlowly(page.locator('#meas-bust_cm'), '88,5')).toEqual(['8', '88', '88,', '88,5']);
   await shot(page, 'step4-no-design');
   await page.getByRole('button', { name: 'Save and continue' }).click();
@@ -180,7 +183,8 @@ test('wizard: every step opened directly shows its controls; measurements in the
   }
   await page.getByTestId('confirm-btn').click();
   await expect(page.getByTestId('design-selector')).toHaveCount(0);
-  await expect(page.locator('.meas-grid input')).toHaveCount(16);                    // + hip, waist to hip, bust point, arm, sleeve, 5 optional design values
+  await expect(page.locator('.meas-grid input')).toHaveCount(16);                    // long-sleeve blouse: all 11 measurements + 5 optional design values
+  await expect(page.getByTestId('meas-need-hip_cm')).toHaveCount(0);                 // now required by the confirmed design
   await expect(page.locator('#meas-bust_cm')).toHaveValue('88,5');                   // kept through the design change
 
   // inches in the wizard: the sleeve guide line follows the value; toggling never rewrites what was typed

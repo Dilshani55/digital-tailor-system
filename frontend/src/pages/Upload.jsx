@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import {
   ArrowRight, Calendar, CheckCircle2, CircleDashed, Download, FileText, FolderOpen, Grid3x3, ImageUp, PencilLine, Printer, Ruler, Scissors,
 } from 'lucide-react';
@@ -60,8 +60,10 @@ const profileToMeas = (p) => ({
   fit_preference: p.fit_preference || 'standard',
 });
 
-// measurements every design needs (shown before a design is confirmed); the design adds hip, bust point and sleeve
+// measurements every design needs; the confirmed design adds hip, bust point and sleeve measurements
 const BASE_KEYS = requiredFor({});
+// body measurements only some designs need: before a design is confirmed they can already be entered
+const CONDITIONAL_KEYS = FIELD_KEYS.filter((k) => !BASE_KEYS.includes(k) && !DESIGN_KEYS.includes(k));
 const STANDARD_WIDTHS = [{ inches: 36, cm: 91.44 }, { inches: 45, cm: 114.3 }, { inches: 60, cm: 152.4 }];
 
 const EmptyState = ({ title, children, action, onAction }) => (
@@ -189,6 +191,13 @@ export default function Upload() {
       .catch(() => setModelAvailable(null));
   }, []);
 
+  // a profile saved on the Measurements page in another tab appears here when this tab is looked at again
+  useEffect(() => {
+    const refresh = () => measurementsAPI.getAll().then((res) => setSavedProfiles(res.data.measurements || [])).catch(() => {});
+    window.addEventListener('focus', refresh);
+    return () => window.removeEventListener('focus', refresh);
+  }, []);
+
   useEffect(() => {
     measurementsAPI.getAll().then((res) => setSavedProfiles(res.data.measurements || [])).catch(() => {});
     if (location.state?.selectedProfile) {
@@ -219,9 +228,10 @@ export default function Upload() {
   const requiredKeys = useMemo(() => (confirmedAttributes ? requiredFor(confirmedAttributes) : []), [confirmedAttributes]);
   const cmValues = useMemo(() => canonicalCm(meas, measUnits), [meas, measUnits]);
   // fields on screen: what the confirmed design needs plus its optional design values (neckline, armhole depth;
-  // the bust-point distance only where there is a bust dart) - or, with no design yet, what every design needs
+  // the bust-point distance only where there is a bust dart) - or, with no design yet, every measurement, exactly as
+  // on the Measurements page, so a new customer can be measured completely before the design is confirmed
   const shownKeys = useMemo(() => {
-    if (!(isAttributesConfirmed && confirmedAttributes && design.supported)) return BASE_KEYS;
+    if (!(isAttributesConfirmed && confirmedAttributes && design.supported)) return FIELD_KEYS;
     const optional = DESIGN_KEYS.filter((k) => k !== 'bust_point_distance_cm' || requiredKeys.includes('shoulder_to_bust_cm'));
     return FIELD_KEYS.filter((k) => requiredKeys.includes(k) || optional.includes(k));
   }, [isAttributesConfirmed, confirmedAttributes, design.supported, requiredKeys]);
@@ -751,9 +761,31 @@ export default function Upload() {
                 The measurements changed since they were saved. Save them again before generating the pattern.
               </div>
             )}
+            <div className="section-card" data-testid="meas-source" style={{ marginBottom: 14 }}>
+              <div className="form-grid" style={{ marginTop: 0, alignItems: 'end' }}>
+                <div className="form-field">
+                  <label className="form-label" htmlFor="saved-client-meas">Use a saved customer&apos;s measurements</label>
+                  <select id="saved-client-meas" className="form-select" value={measurementId || ''} onChange={(e) => handleSelectSavedClient(e.target.value)}>
+                    <option value="">New measurements (type them below)</option>
+                    {uniqueProfiles.map((p) => (
+                      <option key={p.measurement_id} value={p.measurement_id}>
+                        {p.client_name || 'Customer'}{p.email ? ` — ${p.email}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="form-field">
+                  <Link to="/measurements" target="_blank" rel="noopener" className="btn btn-outline" data-testid="open-measurements-page">
+                    Open the Measurements page
+                  </Link>
+                  <span className="form-hint">Opens in a new tab, so this pattern is kept. A profile saved there appears in the list here.</span>
+                </div>
+              </div>
+            </div>
             {!designReady && (
               <p className="form-hint" data-testid="base-fields-note" style={{ marginBottom: 12 }}>
-                Every design needs these {BASE_KEYS.length} measurements. Hip, waist to hip, shoulder to bust point and the sleeve measurements are added when the confirmed design needs them.
+                All measurements can be entered now. The first {BASE_KEYS.length} (bust, waist, shoulder to shoulder, back neck to waist, garment length) are needed for every design;
+                hip, waist to hip, shoulder to bust point and the sleeve measurements are needed when the confirmed design uses them. Design values are optional.
               </p>
             )}
             <div className="meas-layout">
@@ -765,7 +797,8 @@ export default function Upload() {
                   Inches are converted exactly (1 in = 2.54 cm).
                 </p>
               </aside>
-              <MeasurementFields idPrefix="meas" keys={shownKeys} required={designReady ? requiredKeys : BASE_KEYS} values={meas}
+              <MeasurementFields idPrefix="meas" keys={shownKeys} required={designReady ? requiredKeys : BASE_KEYS}
+                                 conditional={designReady ? [] : CONDITIONAL_KEYS} values={meas}
                                  units={measUnits} unit={unit} errors={fieldErrors} active={activeField} onActive={setActiveField}
                                  serverWarnings={measWarnings}
                                  onChange={(key, value) => {

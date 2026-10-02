@@ -55,6 +55,11 @@ the page shows that value as "Calculated value". A typed value replaces it, and 
 | short or long sleeve | + upper arm, sleeve length |
 | plain or puff sleeve | + sleeve end around |
 
+In the pattern wizard, before a design is confirmed, the measurement step shows every field (as the Measurements
+page does), so a new customer can be measured completely; fields only some designs need are marked "needed for
+some designs". The step also offers the saved customers' measurements and a link to the Measurements page (new
+tab). Once the design is confirmed, only the fields that design uses stay on screen.
+
 A sleeveless design asks for no sleeve measurement. Nothing else is required and nothing is filled in with a
 "standard" value: a missing required measurement is reported next to its field.
 

@@ -378,11 +378,18 @@ describe('Measurement form in the Upload wizard', () => {
     expect(screen.queryByTestId('error-bust_cm')).toBeNull();
   });
 
-  it('with no confirmed design the step shows a design selector and the base fields; saving explains, nothing is sent', () => {
+  it('with no confirmed design the step shows a design selector and every measurement; saving explains, nothing is sent', () => {
     openMeasurementStep({ ...D.shortBlouse, neckline_type: 'halter-neck' });   // not selectable -> never confirmed
     expect(screen.getByTestId('design-selector')).toBeTruthy();
-    expect(shown()).toEqual(BODICE);                                  // what every design needs; no sleeve / hip yet
-    expect(screen.getByTestId('base-fields-note').textContent).toMatch(/Every design needs these 5/);
+    expect(shown()).toEqual(FIELD_KEYS);                              // the same fields as the Measurements page: a new customer can be measured completely
+    expect(screen.getByTestId('base-fields-note').textContent).toMatch(/All measurements can be entered now\. The first 5/);
+    expect(screen.queryByTestId('meas-need-bust_cm')).toBeNull();     // needed for every design
+    expect(screen.getByTestId('meas-need-hip_cm').textContent).toMatch(/needed for some designs/);
+    expect(screen.getByTestId('meas-need-sleeve_cm').textContent).toMatch(/needed for some designs/);
+    expect(screen.getByTestId('meas-need-neck_width_cm').textContent).toMatch(/optional/);
+    expect(screen.getByTestId('open-measurements-page').getAttribute('href')).toBe('/measurements');
+    expect(screen.getByTestId('open-measurements-page').getAttribute('target')).toBe('_blank');     // the pattern in progress is kept
+    expect(screen.getByLabelText("Use a saved customer's measurements")).toBeTruthy();
     fireEvent.change(input('bust_cm'), { target: { value: '88.5' } });
     expect(screen.getByText('Save and continue').disabled).toBe(false);       // navigation / saving is never a dead button
     save();
@@ -396,12 +403,16 @@ describe('Measurement form in the Upload wizard', () => {
     fireEvent.change(screen.getByLabelText('Customer name'), { target: { value: 'Test Customer' } });
     fireEvent.click(screen.getByRole('button', { name: /^Step 4: Measurements/ }));
     fireEvent.change(input('bust_cm'), { target: { value: '34.5' } });
-    expect(input('sleeve_cm')).toBeNull();
+    fireEvent.change(input('sleeve_cm'), { target: { value: '23' } });         // a sleeve can be measured before the design is known
+    expect(input('shoulder_to_bust_cm')).toBeTruthy();
     Object.entries(D.longTshirt).forEach(([k, v]) => fireEvent.change(screen.getByTestId(`select-${k}`), { target: { value: v } }));
     fireEvent.click(screen.getByTestId('confirm-btn'));
     expect(screen.queryByTestId('design-selector')).toBeNull();
     expect(shown()).toEqual(expect.arrayContaining(['hip_cm', 'waist_to_hip_cm', 'bicep_cm', 'sleeve_cm', 'sleeve_end_cm']));
+    expect(input('shoulder_to_bust_cm')).toBeNull();                  // a T-shirt has no bust dart: the field goes away
+    expect(screen.queryByTestId('meas-need-sleeve_cm')).toBeNull();   // now required by the confirmed design
     expect(input('bust_cm').value).toBe('34.5');
+    expect(input('sleeve_cm').value).toBe('23');
   });
 
   it('uses text inputs so nothing typed is dropped, and reports a mistyped value beside its field', async () => {

@@ -237,7 +237,7 @@ test('out-of-scope design cannot be confirmed through the UI', async ({ page, re
   await page.getByRole('button', { name: 'Continue to measurements' }).click();       // navigation is free ...
   await expect(page.getByTestId('design-selector')).toBeVisible();                    // ... the step asks for the design
   await expect(page.getByTestId('design-selector').getByTestId('confirm-btn')).toBeDisabled();
-  await expect(page.locator('#meas-sleeve_cm')).toHaveCount(0);                       // no design-specific fields yet
+  await expect(page.locator('#meas-sleeve_cm')).toHaveCount(1);                       // every measurement can already be entered
   await page.locator('#meas-bust_cm').fill('88');
   await page.getByRole('button', { name: 'Save and continue' }).click();
   await expect(page.getByRole('alert')).toContainText(/confirm the design first/i);   // ... and nothing is saved or drafted
