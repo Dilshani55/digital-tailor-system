@@ -328,7 +328,7 @@ class TestExportRoutes(unittest.TestCase):
         self.assertEqual(r.get_json()["error_code"], "INVALID_FABRIC_WIDTH")
 
     @unittest.skipIf(pymupdf is None, "SKIPPED: pymupdf not installed")
-    def test_pdf_route_writes_a_tiled_pdf_using_stored_layout(self):
+    def test_pdf_route_by_default_writes_the_report_without_real_size_pages_using_stored_layout(self):
         pat = self._pattern(summary={"fabric_width_cm": 152.4, "cutting_mode": "open"})
         out = tempfile.mkdtemp()
         self.app.config["OUTPUT_FOLDER"] = out
@@ -338,10 +338,16 @@ class TestExportRoutes(unittest.TestCase):
             r = self.app.test_client().post("/api/export/pdf/p1", headers=self.headers)
         body = r.get_json()
         self.assertEqual(r.status_code, 201, body)
-        self.assertIn("1:1", body["print_scale"])
+        self.assertEqual(body["part"], "report")                                 # no part asked for: the report
+        self.assertIn("NOT to scale", body["print_scale"])
         doc = pymupdf.open(os.path.join(out, body["filename"]))
         self.assertEqual(len(doc), body["pages"])
         self.assertIn('60 in / 152.4 cm *', _page(doc, "Fabric requirement").get_text())
+        for page in doc:                                                         # nothing printed at real size
+            self.assertNotIn("Actual size", page.get_text())
+            squares = [d for d in page.get_drawings()
+                       if abs(d["rect"].width - 5 * CM) < 0.4 and abs(d["rect"].height - 5 * CM) < 0.4]
+            self.assertEqual(squares, [])                                         # no calibration square either
 
     def test_pdf_prints_the_stored_pieces_and_never_redrafts(self):
         """The PDF must show the validated, nested stored pieces; the engine is not run again."""

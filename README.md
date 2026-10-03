@@ -2,7 +2,7 @@
 
 Final-year research project — **D N M Vitharana (28404)**, BSc (Hons) Software Engineering, NSBM Green University. Supervisor: Mr. Anton Jayakody.
 
-A web system that turns a garment photo and a person's body measurements into a **printable, full-size (1:1) sewing pattern** for women's **blouses and T-shirts**, together with a fabric estimate.
+A web system that turns a garment photo and a person's body measurements into a **sewing pattern with all its measurements** (a PDF drawn at a reduced scale) for women's **blouses and T-shirts**, together with a fabric estimate.
 
 ## What it does
 
@@ -11,7 +11,7 @@ Garment photo ─► AI suggests the design ─► YOU review and confirm it ─
       ─► fabric & fit ─► parametric pattern drafting (deterministic maths, not AI)
       ─► seam allowances + notches ─► automatic geometry validation
       ─► polygon nesting on 36" / 45" / 60" (91.44 / 114.3 / 152.4 cm) fabric ─► fabric quantity
-      ─► printable 1:1 tiled A4 PDF ─► saved in your pattern library
+      ─► PDF: the blocks at a reduced scale with their measurements ─► saved in your pattern library
 ```
 
 * **AI part.** A garment detector (YOLOv8n) finds the top in the photo, then **four separate models** look at that area: garment type (MobileNetV3-Large: blouse / T-shirt), neckline (YOLOv8n-cls: round / V / square / collared), sleeve length (YOLOv8n-cls: sleeveless / short / long) and sleeve design (YOLOv8n-cls: regular / puff). A suggestion is filled in automatically only when that model's score reaches a threshold chosen on validation photos; otherwise the feature is shown as "please select". The answers are only *suggestions*: the user must confirm or correct them, and only the confirmed design reaches the pattern engine. Measured results and limits: [docs/AI_MODELS.md](docs/AI_MODELS.md).
@@ -103,7 +103,7 @@ Details, current counts and the E2E set-up are in [docs/TESTING.md](docs/TESTING
 | `backend/config/` | the scope and measurement rules shared by the backend and the frontend |
 | `backend/model/` | the trained weights (local files) and `thresholds.json` |
 | `backend/training/` | dataset preparation, training and evaluation of the four models |
-| `backend/tools/` | `generate_evidence.py` (pattern / nesting / PDF evidence), `verify_pdf.py` (digital check of a produced PDF: A4, 5 cm square), `orphan_report.py` (read-only database reference report), `reset_password.py` (operator password reset) |
+| `backend/tools/` | `generate_evidence.py` (pattern / nesting / PDF evidence), `verify_pdf.py` (digital check of a produced PDF: A4 pages and sections), `orphan_report.py` (read-only database reference report), `reset_password.py` (operator password reset) |
 | `backend/tests/` | backend unit tests |
 | `frontend/src/` | React wizard, pattern preview, library, dashboards; `frontend/e2e/` Playwright tests |
 | `docs/` | API, architecture, pattern engine, AI models, testing, limitations and claims |

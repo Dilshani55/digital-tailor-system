@@ -88,7 +88,7 @@ Built **only from stored data** — the validated pieces saved with the pattern,
 5. **Pieces** – cut quantity, fold, per-edge seam allowances, cut size; sewing notes.
 6. **Fabric requirement** for 36", 45" and 60": layout length, length to buy (m and yd), pattern area and bought area (m² and yd²), waste, fabric use, and the layout drawing of each width (not to scale).
 
-**Cutting pattern (1:1)**
+**Cutting pattern (1:1)** - still produced when the API is asked for `part: "pattern"` or `"all"`, but **the app does not offer it** (decision of 4 Oct 2026: the app's PDF is drawn at a reduced scale only; it is not a real-size cutting template).
 
 7. **Printing instructions** (100 % / Actual size, never fit to page) and a **5 cm calibration square**.
 8. **The pattern at true size** on A4 tiles (printable area 19.0 × 27.7 cm, 1 cm overlap, crop marks, tile labels A1, A2 …). Each piece: cutting line, dashed sewing line, grainline, fold line, darts, notches, name, cut quantity, seam allowance, pattern ID. The calibration square is also on the pattern sheet.

@@ -297,7 +297,7 @@ def generate_pdf(pattern_id):
         requested_mode = "auto"
     one_way = bool(stored_rows[0].get("one_way_fabric")) if stored_rows else False
     body = request.get_json(silent=True) or {}
-    part = body.get("part", "all")
+    part = body.get("part", "report")          # the app never asks for the 1:1 parts ("pattern", "all")
     if part not in ("all", "overview", "report", "pattern"):
         return jsonify({"error": "part must be all, overview, report or pattern.", "error_code": "INVALID_PDF_PART"}), 400
     unit = body.get("unit") or snapshot.get("display_unit") or "cm"

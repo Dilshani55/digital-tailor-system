@@ -54,16 +54,13 @@ def verify(path):
     def has(*words):
         return all(w in everything for w in words)
 
+    real_size = bool(instruction_pages)              # the 1:1 cutting pattern is only there when it was asked for
     checks = {
         "every page is A4": all(abs(p.rect.width - A4_PT[0]) < 0.5 and abs(p.rect.height - A4_PT[1]) < 0.5 for p in doc),
         "pages are numbered 'Page i of n'": all(f"Page {i} of {n}" in t for i, t in enumerate(texts, 1)),
-        "print instruction: 100 % / Actual size, not 'Fit to page'": has("ACTUAL SIZE", "100 %", "Fit to page"),
-        "5 cm calibration square on the instruction page": any(per_page[i] for i in instruction_pages),
-        "5 cm calibration square on a pattern tile": any(per_page[i] for i in tile_pages),
         "confirmed design section": has("Confirmed design"),
         "measurements section": has("Bust", "Waist"),
-        "labelled pattern pieces": has("FRONT BODICE", "BACK BODICE", "GRAIN"),
-        "cutting instructions (fold / quantity / seam allowance)": has("PLACE ON FOLD", "SA "),
+        "pieces listed with cut quantity, fold and seam allowances": has("Pattern pieces and sewing notes", "On fold", "Seam allowances (cm)"),
         "fabric requirement for 36\" / 45\" / 60\"": has("36 in / 91.44 cm", "45 in / 114.3 cm", "60 in / 152.4 cm"),
         "fabric lengths in metres and yards, areas in m2 and yd2": has(" yd", " m2", " yd2"),
         "front, back and sleeve block overviews (not to scale)": has(
@@ -73,8 +70,18 @@ def verify(path):
                                                                    "Not a cutting template"),
         "layout drawing is marked not to scale": has("NOT to scale"),
     }
+    if real_size:
+        checks.update({
+            "print instruction: 100 % / Actual size, not 'Fit to page'": has("ACTUAL SIZE", "100 %", "Fit to page"),
+            "5 cm calibration square on the instruction page": any(per_page[i] for i in instruction_pages),
+            "5 cm calibration square on a pattern tile": any(per_page[i] for i in tile_pages),
+            "labelled pattern pieces": has("FRONT BODICE", "BACK BODICE", "GRAIN"),
+            "cutting instructions (fold / quantity / seam allowance)": has("PLACE ON FOLD", "SA "),
+        })
+    else:
+        checks["no page claims to be real size"] = not tile_pages and "scale 1:1" not in everything
     measured = sorted({s for page in per_page for s in page})
-    return {"file": path, "pages": n, "tile_pages": len(tile_pages), "calibration_squares_cm": measured,
+    return {"file": path, "pages": n, "real_size_pages": real_size, "tile_pages": len(tile_pages), "calibration_squares_cm": measured,
             "points_per_cm": round(PT_PER_CM, 4), "checks": checks, "passed": all(checks.values())}
 
 

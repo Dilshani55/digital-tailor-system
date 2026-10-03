@@ -52,7 +52,7 @@ mismatch** (see [THESIS_RECONCILIATION.md](THESIS_RECONCILIATION.md)).
 ## Still needed (cannot be done by code alone)
 
 1. More labelled photos for sleeve design (puff, regular) and for square and collared necks; a second reviewer for a sample of the 725 reviewed photos; a labelled set of real phone photos.
-2. Print check with a ruler on the 5 cm square.
+2. (No longer needed: the app's PDF is not printed at real size since 4 Oct 2026.)
 3. At least one muslin fit trial, or state fit as untested.
 4. Traditional fabric estimates from tailors for a few designs.
 5. A small usability session with consenting participants.

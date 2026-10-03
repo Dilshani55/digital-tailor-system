@@ -19,7 +19,7 @@
 4. **Measurements** – `logic/measurement_schema.py`: 16 fields (11 body measurements, 5 optional design values), cm/in, the design decides which are required. Missing values are errors, never defaults; unusual values give warnings, not refusals.
 5. **Generate** – `routes/patterns.py` → `ParametricEngine` → base block → transformations → seam allowance → validation. Failure ⇒ HTTP 422 and nothing saved. The stored `PatternResult` holds the pieces (with cutting lines and labelled dimensions), validation report, design spec, a snapshot of the measurements used, and the drafting information (method, every calculation, armhole and sleeve-cap lengths).
 6. **Estimate** – `routes/export.py` → `estimate_fabric` (nesting). Refused when validation failed.
-7. **PDF** – `PDFGenerator` from the stored pieces, layout, measurement snapshot and drafting information: a report part (not to scale) and the 1:1 cutting pattern.
+7. **PDF** – `PDFGenerator` from the stored pieces, layout, measurement snapshot and drafting information: the one-page overview at a reduced scale and the measurement report (the app never asks for the 1:1 part).
 8. **Library** – `GET /api/patterns/{id}` returns everything needed to redraw the pattern and list its PDFs.
 9. **Internal research API (not in the app)** – researcher-only endpoints (`/api/research/metrics`, `/api/research/fabric-comparisons`, CSV exports) for study data; the customer app only sends the optional ease-of-use rating.
 
@@ -35,7 +35,7 @@ The analyse step times the classifier inference and the generate step times the 
 | `logic/drafting/` | geometry primitives, ease, drafting values, bodice (front and back drafted separately), sleeve, base block, transformations, seam allowance, validation, and the registry of every constant with its source ([pattern-drafting-method.md](pattern-drafting-method.md)) |
 | `logic/units.py` | exact cm / inch / metre / yard and area conversions |
 | `logic/nesting_algorithm.py` | polygon nesting + `estimate_fabric` |
-| `logic/pdf_generator.py` | printable 1:1 tiled PDF |
+| `logic/pdf_generator.py` | PDF: one-page overview at a reduced scale, measurement report (a 1:1 tiled part exists in the API but is not used by the app) |
 | `logic/fabric_recommendation.py` | rule-based, explainable fabric ranking and catalogue |
 | `logic/research_metrics.py` | study metrics computed from stored data only |
 | `ai/garment_models.py` | the four garment models: loading, thresholds, suggestions, status |

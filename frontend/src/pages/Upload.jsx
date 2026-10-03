@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
-  ArrowRight, Calendar, CheckCircle2, CircleDashed, Download, FileText, FolderOpen, Grid3x3, ImageUp, PencilLine, Printer, Ruler, Scissors,
+  ArrowRight, Calendar, CheckCircle2, CircleDashed, Download, FileText, FolderOpen, Grid3x3, ImageUp, PencilLine, Ruler, Scissors,
 } from 'lucide-react';
 import StepIndicator from '../components/StepIndicator';
 import LoadingSpinner from '../components/LoadingSpinner';
@@ -10,7 +10,6 @@ import FabricRecommendation from '../components/FabricRecommendation';
 import PredictionReview from '../components/PredictionReview';
 import PatternPreview from '../components/PatternPreview';
 import NestingLayout from '../components/NestingLayout';
-import TilePreview from '../components/TilePreview';
 import GarmentIllustration from '../components/GarmentIllustration';
 import { supportReport, labelOf } from '../utils/designSchema';
 import {
@@ -41,12 +40,9 @@ const FITS = [
   { value: 'loose', label: 'Relaxed fit', note: 'More ease: looser' },
 ];
 const PDF_PARTS = [
-  { value: 'overview', label: 'Pattern overview', note: 'One page: the front, back and sleeve drawn at a reduced scale with their measurements written on them (not real size)' },
-  { value: 'report', label: 'Full measurement report', note: 'The overview plus every calculation, the piece list and the fabric layouts (not real size)' },
-  { value: 'pattern', label: 'Real-size cutting pattern', note: 'Printing instructions and the 1:1 pattern tiled on A4 pages' },
-  { value: 'all', label: 'Everything', note: 'The report and the real-size cutting pattern in one file' },
+  { value: 'overview', label: 'Pattern overview', note: 'One page: the front, back and sleeve drawn at a reduced scale with their measurements written on them' },
+  { value: 'report', label: 'Full measurement report', note: 'The overview plus every calculation, the piece list and the fabric layouts' },
 ];
-const REAL_SIZE_PARTS = ['pattern', 'all'];
 
 const emptyMeas = {
   client_name: '', ...Object.fromEntries(FIELD_KEYS.map((k) => [k, ''])), fabric_type: 'woven', fit_preference: 'standard',
@@ -554,7 +550,7 @@ export default function Upload() {
       link.click();
       window.URL.revokeObjectURL(url);
       setPdfDownloaded(true);
-      setNotice('Your pattern has downloaded. Print it at 100% (Actual size) and check the 5 cm square.');
+      setNotice('Your pattern has downloaded. It is drawn at a reduced scale: use it to read the measurements, not as a cutting template.');
     } catch (err) {
       setError(friendlyError(err, 'The download failed. Please try again.'));
     }
@@ -1037,7 +1033,7 @@ export default function Upload() {
               <div>
                 <h2 style={{ fontSize: 22 }}>{pdfReady ? 'Pattern ready to export' : 'Printable pattern (PDF)'}</h2>
                 <p className="form-hint" style={{ fontSize: 14 }}>
-                  {pdfReady ? 'Download and print your pattern with the correct settings.' : 'A full-size pattern that prints on ordinary A4 paper and is taped together from tiles.'}
+                  {pdfReady ? 'Download your pattern.' : 'The front, back and sleeve with their measurements, drawn at a reduced scale on A4.'}
                 </p>
                 {pdfReady && <span className="sr-only">Printable pattern (PDF)</span>}
               </div>
@@ -1054,14 +1050,7 @@ export default function Upload() {
             <div className="export-layout">
               <section className="section-card" style={{ marginBottom: 0 }}>
                 <ul className="export-list">
-                  {REAL_SIZE_PARTS.includes(pdfPart) ? (
-                    <>
-                      <li><span><Printer size={18} /></span><div><strong>A4 tiled pattern</strong><small>Print with the scale set to 100% / Actual size — never “fit to page”.</small></div></li>
-                      <li><span><Ruler size={18} /></span><div><strong>Calibration square 5 × 5 cm</strong><small>Measure it before you tape the pages together.</small></div></li>
-                    </>
-                  ) : (
-                    <li data-testid="pdf-overview-note"><span><Ruler size={18} /></span><div><strong>Reduced-scale overview</strong><small>The front, back and sleeve drawn small on one page with their measurements. It is for reading, not for cutting: choose the real-size cutting pattern when you want to cut fabric.</small></div></li>
-                  )}
+                  <li data-testid="pdf-overview-note"><span><Ruler size={18} /></span><div><strong>Reduced scale</strong><small>The front, back and sleeve are drawn small (for example 1:7) with their measurements written on them. The PDF is for reading the pattern, not a real-size cutting template.</small></div></li>
                   <li><span><Scissors size={18} /></span><div><strong>Fabric required {canEstimate && yardageData ? `${yardageData.purchasing_recommended_m} m` : '—'}</strong>
                     <small>{canEstimate && yardageData ? `For ${widthLabel(yardageData.fabric_width_cm)}; all three widths are in the PDF.` : 'Calculate the fabric estimate first.'}</small></div></li>
                   <li><span><Calendar size={18} /></span><div><strong>Test garment first</strong><small>Confirm the fit with a toile (test garment) before cutting the final fabric — this is a prototype pattern, not a fit-tested one.</small></div></li>
@@ -1092,7 +1081,7 @@ export default function Upload() {
                   ) : (
                     <div data-testid="pdf-ready" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                       <span className="pill good" style={{ alignSelf: 'flex-start' }}><CheckCircle2 size={13} /> {pdfInfo?.pages} {pdfInfo?.pages === 1 ? 'page' : 'pages'} · A4 · {pdfInfo?.part === 'overview' ? `reduced scale 1:${pdfInfo?.overview_scale ?? '?'}, not real size`
-                        : pdfInfo?.part === 'report' ? 'report, not real size' : '1:1 scale'}</span>
+                        : 'report, not real size'}</span>
                       <button type="button" className="btn btn-primary btn-lg btn-block" onClick={handleDownloadPDF}><Download size={18} /> Download PDF</button>
                     </div>
                   )}
@@ -1100,10 +1089,15 @@ export default function Upload() {
                 </div>
               </section>
               <section className="pdf-preview">
-                <h3 style={{ marginBottom: 10 }}>PDF preview (A4 tiled pattern)</h3>
-                {patternCurrent
-                  ? <TilePreview pieces={patternData?.pattern_pieces} pages={pdfInfo?.pages} />
-                  : <Placeholder icon={FileText} testId="pdf-placeholder">The A4 page layout of your pattern is shown here once the pattern has been generated.</Placeholder>}
+                <h3 style={{ marginBottom: 10 }}>What is in the PDF</h3>
+                {patternCurrent ? (
+                  <ul className="export-list" data-testid="pdf-contents">
+                    <li><span><FileText size={18} /></span><div><strong>Pattern overview</strong><small>Front, back and sleeve at one reduced scale, with the dimensions, the sleeve check, the fabric to buy and the measurements entered.</small></div></li>
+                    {pdfPart === 'report' && (
+                      <li><span><FileText size={18} /></span><div><strong>Measurement report</strong><small>Customer and design, measurements, each block with numbered dimensions, every calculation (&quot;Why this size?&quot;), the pieces, and the 36&quot; / 45&quot; / 60&quot; fabric layouts.</small></div></li>
+                    )}
+                  </ul>
+                ) : <Placeholder icon={FileText} testId="pdf-placeholder">The contents of the PDF are listed here once the pattern has been generated.</Placeholder>}
               </section>
             </div>
             {!patternCurrent && <Checklist items={[...readiness, patternItem, estimateItem]} onGo={go} />}

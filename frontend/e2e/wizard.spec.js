@@ -160,12 +160,12 @@ test('register -> upload -> AI review -> measurements -> fabric -> pattern -> es
   await page.getByRole('button', { name: 'Create printable PDF' }).click();
   await expect(page.getByTestId('pdf-ready')).toContainText(/1 page · A4 · reduced scale 1:\d+, not real size/, { timeout: 120_000 });
   await shot('07a-pdf-overview-ready');
-  await expect(page.getByTestId('pdf-part-report')).toBeVisible();
-  await expect(page.getByTestId('pdf-part-pattern')).toBeVisible();
-  await page.getByTestId('pdf-part-all').check();                       // the rest of this run checks the whole file, incl. the 1:1 pages
-  await expect(page.getByTestId('pdf-overview-note')).toHaveCount(0);
+  await expect(page.getByTestId('pdf-part-pattern')).toHaveCount(0);   // no real-size (1:1) pages are offered
+  await expect(page.getByTestId('pdf-part-all')).toHaveCount(0);
+  await page.getByTestId('pdf-part-report').check();                    // the rest of this run checks the full report
+  await expect(page.getByTestId('pdf-contents')).toContainText('Measurement report');
   await page.getByRole('button', { name: 'Create printable PDF' }).click();
-  await expect(page.getByTestId('pdf-ready')).toBeVisible({ timeout: 120_000 });
+  await expect(page.getByTestId('pdf-ready')).toContainText('report, not real size', { timeout: 120_000 });
   await shot('07-pdf-ready');
   const [download] = await Promise.all([
     page.waitForEvent('download'),
@@ -177,13 +177,14 @@ test('register -> upload -> AI review -> measurements -> fabric -> pattern -> es
   expect(bytes.subarray(0, 5).toString()).toBe('%PDF-');
   expect(bytes.length).toBeGreaterThan(20_000);
   mark(`PDF downloaded: ${out} (${bytes.length} bytes)`);
-  // the PDF's own vector data: A4 pages, a 5.00 x 5.00 cm calibration square, the required sections
+  // the PDF's own text and vector data: A4 pages, the required sections, and nothing printed at real size
   const python = path.resolve('../backend/venv/Scripts/python.exe');
   if (fs.existsSync(python)) {
     const report = JSON.parse(execFileSync(python, [path.resolve('../backend/tools/verify_pdf.py'), out], { encoding: 'utf-8' }));
     expect(report.passed, JSON.stringify(report.checks)).toBe(true);
-    expect(report.calibration_squares_cm).toEqual([[5, 5]]);
-    mark(`PDF verified digitally: ${report.pages} A4 pages, calibration square ${report.calibration_squares_cm[0].join(' x ')} cm`);
+    expect(report.real_size_pages).toBe(false);
+    expect(report.tile_pages).toBe(0);
+    mark(`PDF verified digitally: ${report.pages} A4 pages, reduced scale only (no 1:1 pages)`);
   }
   fs.writeFileSync(path.join(path.dirname(out), 'e2e_last_pdf_path.txt'), out);
 

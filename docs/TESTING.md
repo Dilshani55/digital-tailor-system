@@ -39,7 +39,7 @@ Counts below are from the runs of 2 Oct 2026 on the commit that contains this fi
 | `measurements.spec.js` (2 tests) | Measurements page: key-by-key typing, decimals, comma, cm / in without double conversion, save, reload, edit, zero / negative refused, large value not clamped. Wizard: steps 3–8 opened directly show their controls and no invented numbers; design chosen inside the measurement step; sleeve guide follows the value; incompatible fabric cleared with a reason; fit change invalidates the pattern |
 | `analysis.spec.js` (2 tests) | the server really loaded four different model files (MobileNetV3-Large + three YOLOv8n-cls); on real photos every feature shows its own score; a feature is pre-selected exactly when its model's score reaches its threshold; no crop-top anywhere; manual confirmation; the genuine prediction is stored next to the user's choice |
 | `pages.spec.js` | every page and sidebar link renders with no console error and no failed API call |
-| `wizard.spec.js` (2 tests) | the full workflow to a downloaded PDF: grouped measurement fields with the body guide and calculated-value hints, Front / Back / Sleeve tabs with dimensions, sleeve-cap report, "Why this size?", sewing / cutting line switch, estimate in m, yd, m², yd² with the one-way option; the default PDF is the one-page reduced-scale overview; the complete PDF is then checked digitally (`verify_pdf.py`: A4, 5.00 × 5.00 cm square, sections, block overviews, calculation pages); out-of-scope design cannot be confirmed, saved or drafted |
+| `wizard.spec.js` (2 tests) | the full workflow to a downloaded PDF: grouped measurement fields with the body guide and calculated-value hints, Front / Back / Sleeve tabs with dimensions, sleeve-cap report, "Why this size?", sewing / cutting line switch, estimate in m, yd, m², yd² with the one-way option; the default PDF is the one-page reduced-scale overview, no real-size option is offered; the full report is then checked digitally (`verify_pdf.py`: A4, sections, no page claiming real size); out-of-scope design cannot be confirmed, saved or drafted |
 
 `measurements.spec.js`, `library.spec.js` and `wizard.spec.js` also run at phone width: `$env:E2E_VIEWPORT="390x844"`.
 
@@ -67,7 +67,7 @@ accounts in it.
 
 ```powershell
 cd backend
-venv\Scripts\python tools\verify_pdf.py path\to\sewing_pattern.pdf      # A4, 5.00 cm calibration square, sections (reads the PDF's vector data)
+venv\Scripts\python tools\verify_pdf.py path\to\sewing_pattern.pdf      # A4, sections, no page claiming real size (and the 5 cm square if a 1:1 part is present)
 venv\Scripts\python tools\orphan_report.py --out ..\evidence\db_integrity   # records whose references no longer match; changes nothing
 ```
 
