@@ -161,6 +161,9 @@ its accuracy fell from 0.879 to 0.838, and on validation it was slightly worse (
 sleeve-design model was better for regular sleeves, worse for puff sleeves, unchanged for bell sleeves (F1 0.10),
 and clearly worse on validation (0.594 -> 0.426 macro-F1). So more shop photos with shop labels did not, on this
 test set, improve the two weakest models: the missing piece is still labelled bell sleeves and square necks.
+The Kaggle data and the part-model data were deleted from this computer afterwards (3 Oct 2026): the models in
+`backend/model/` were never trained on them. To repeat the experiment, download the dataset again and run
+`prepare_kaggle.py`.
 
 ## 5. How to read these numbers
 
