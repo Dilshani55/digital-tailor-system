@@ -70,7 +70,7 @@
     {"why": "a sleeve is drafted: its length and its width against the upper arm",
      "when": {"sleeve_length": ["short-sleeve", "long-sleeve"]},
      "fields": ["bicep_cm", "sleeve_cm"]},
-    {"why": "a plain or puff sleeve narrows to the arm at the sleeve end (a bell sleeve flares instead)",
+    {"why": "a plain or puff sleeve narrows to the arm at the sleeve end",
      "when": {"sleeve_length": ["short-sleeve", "long-sleeve"], "sleeve_style": ["regular-sleeve", "puff-sleeve"]},
      "fields": ["sleeve_end_cm"]}
   ]

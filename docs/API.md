@@ -49,18 +49,18 @@ Fields of earlier versions (`neck_cm, height_cm, shoulder_cm, across_back_cm, wr
   Failures are reported honestly and nothing is stored: model checkpoint missing/corrupt → `503 MODEL_UNAVAILABLE` ("choose the design manually"); unreadable photo → `422 IMAGE_NOT_ANALYSABLE`. The measured inference time is stored (`analysis_time_sec`).
 * `GET /model-status` – `{available, complete, model_type, model_version, checkpoint_sha256, models: {feature: {available, architecture, sha256, answers_automatically}}}` after really loading the model files, or `{available: false, message}` (no file paths).
 * `POST /{image_id}/confirm-attributes` – body `{garment_type, neckline_type, sleeve_length, sleeve_style}`, each one of the selectable classes; any other value (for example `crop-top`, `off-shoulder`, `boat-neck`) is rejected with `400 INVALID_DESIGN_ATTRIBUTES`. Stores the **user-confirmed** design (`design_spec`, with provenance ML-confirmed / user-corrected / manual). Only this confirmed design reaches the pattern engine.
-* `GET /design-schema` – the selectable classes (2 / 4 / 3 / 4) with per-value drafting support and the project scope matrix.
+* `GET /design-schema` – the selectable classes (2 / 4 / 3 / 3) with per-value drafting support and the project scope matrix.
 * `GET /`, `GET /{id}`, `DELETE /{id}`, `GET /view/{filename}`.
 
 ### Selectable classes
 
-garment_type: blouse, t-shirt · neckline_type: round-neck, v-neck, square-neck, collared-neck · sleeve_length: sleeveless, short-sleeve, long-sleeve · sleeve_style: none (only with sleeveless), regular-sleeve, puff-sleeve, bell-sleeve. `collared-neck` can be selected and stored but the pattern engine cannot draft it (`422 UNSUPPORTED_DESIGN` at generation). One file defines all of this for the backend and the frontend: `backend/config/garment_scope.json`.
+garment_type: blouse, t-shirt · neckline_type: round-neck, v-neck, square-neck, collared-neck · sleeve_length: sleeveless, short-sleeve, long-sleeve · sleeve_style: none (only with sleeveless), regular-sleeve, puff-sleeve. `collared-neck` can be selected and stored but the pattern engine cannot draft it (`422 UNSUPPORTED_DESIGN` at generation). One file defines all of this for the backend and the frontend: `backend/config/garment_scope.json`.
 
-### Supported scope (what can actually be drafted: 25 of the 96 combinations)
+### Supported scope (what can actually be drafted: 19 of the 72 combinations)
 
 | Garment | Necklines | Sleeve length → sleeve styles |
 |---|---|---|
-| blouse | round, v, square | sleeveless → none · short → regular, puff, bell · long → regular, puff, bell |
+| blouse | round, v, square | sleeveless → none · short → regular, puff · long → regular, puff |
 | t-shirt | round, v | short → regular · long → regular |
 
 Anything else returns `422 UNSUPPORTED_DESIGN` with an explanation; the system never substitutes another design.

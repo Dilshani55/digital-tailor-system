@@ -144,7 +144,7 @@ standard value. It is **not yet a field on the measurement page**; changing it m
 | Sleeve end | measured arm at the sleeve end + ease | so short and long sleeves follow the arm |
 | Cap height | changed only when the method's cap does not fit the armhole (section 7) | so the sleeve can always be sewn in |
 | Sleeve notches | at the same seam distance from the underarm as the bodice notches | so the marks really meet |
-| V neck, square neck, puff and bell sleeves, facings, neckband | project design values (listed in the registry) | style changes applied to the block |
+| V neck, square neck, puff sleeve, facings, neckband | project design values (listed in the registry) | style changes applied to the block |
 
 ## 7. Armhole and sleeve cap
 

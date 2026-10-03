@@ -5,7 +5,7 @@ Four separate image classifiers (run from the repository root, see README.md in 
   garment        blouse / t-shirt                          MobileNetV3-Large (torchvision, ImageNet-pretrained)
   neckline       round-neck / v-neck / square-neck / collared-neck    YOLOv8n-cls
   sleeve_length  sleeveless / short-sleeve / long-sleeve               YOLOv8n-cls
-  sleeve_design  regular-sleeve / puff-sleeve / bell-sleeve            YOLOv8n-cls  (asked only when the garment has sleeves)
+  sleeve_design  regular-sleeve / puff-sleeve (bell removed 3 Oct 2026) YOLOv8n-cls  (asked only when the garment has sleeves)
 
 Labels come from the audited manifests in data/manifests_m42 (Fashionpedia, DeepFashion2, DeepFashion-MultiModal
 and the human review of 1 Oct 2026). A value outside a task's classes is dropped for that task, never remapped.
@@ -22,7 +22,7 @@ TASKS = {
     "garment": ["blouse", "t-shirt"],
     "neckline": ["round-neck", "v-neck", "square-neck", "collared-neck"],
     "sleeve_length": ["sleeveless", "short-sleeve", "long-sleeve"],
-    "sleeve_design": ["regular-sleeve", "puff-sleeve", "bell-sleeve"],
+    "sleeve_design": ["regular-sleeve", "puff-sleeve"],          # bell-sleeve removed from the design scope on 3 Oct 2026
 }
 HEAD = {"neckline": "neckline_type", "sleeve_length": "sleeve_length", "sleeve_design": "sleeve_style"}
 WEIGHTS = {"garment": "garment_mobilenetv3.pt", "neckline": "neckline_yolov8.pt",

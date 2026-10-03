@@ -53,12 +53,12 @@ PREDICTIONS = {
 
 
 class TestTaxonomyParity(unittest.TestCase):
-    def test_the_taxonomy_is_two_garments_four_necklines_three_lengths_four_styles(self):
+    def test_the_taxonomy_is_two_garments_four_necklines_three_lengths_three_styles(self):
         self.assertEqual({h: list(v) for h, v in fs.TAXONOMY.items()}, {
             "garment_type": ["blouse", "t-shirt"],
             "neckline_type": ["round-neck", "v-neck", "square-neck", "collared-neck"],
             "sleeve_length": ["sleeveless", "short-sleeve", "long-sleeve"],
-            "sleeve_style": ["none", "regular-sleeve", "puff-sleeve", "bell-sleeve"],
+            "sleeve_style": ["none", "regular-sleeve", "puff-sleeve"],                      # bell removed 3 Oct 2026
         })
         self.assertIs(fs.MODEL_TAXONOMY, fs.UI_TAXONOMY)                     # one taxonomy, not a model one and a UI one
 
@@ -131,7 +131,7 @@ class TestOutsideScopePredictions(unittest.TestCase):
         cases = {"garment_type": ["crop-top"],
                  "neckline_type": ["boat-neck", "scoop-neck", "sweetheart-neck", "halter-neck", "high-neck", "off-shoulder"],
                  "sleeve_length": ["cap-length", "elbow-length", "three-quarter-sleeve"],
-                 "sleeve_style": ["bishop-sleeve", "flutter-sleeve", "raglan-sleeve", "dolman-sleeve", "kimono-sleeve"]}
+                 "sleeve_style": ["bell-sleeve", "bishop-sleeve", "flutter-sleeve", "raglan-sleeve", "dolman-sleeve", "kimono-sleeve"]}
         for head, labels in cases.items():
             for label in labels:
                 out = fs.annotate_predictions(self._ga(**{head: label}))
@@ -155,7 +155,7 @@ class TestOutsideScopePredictions(unittest.TestCase):
 
     def test_api_validation_rejects_removed_classes(self):
         for head, value in (("garment_type", "crop-top"), ("neckline_type", "off-shoulder"), ("neckline_type", "boat-neck"),
-                            ("sleeve_length", "elbow-length"), ("sleeve_style", "bishop-sleeve")):
+                            ("sleeve_length", "elbow-length"), ("sleeve_style", "bishop-sleeve"), ("sleeve_style", "bell-sleeve")):
             for scope in ("ui", "model"):
                 clean, errors = fs.validate_attributes(dict(GOOD, **{head: value}), scope=scope)
                 self.assertEqual(clean, {})

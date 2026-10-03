@@ -8,7 +8,7 @@ loads them from `backend/model/`; the user always confirms the design.
 | Garment type | blouse, t-shirt | MobileNetV3-Large (torchvision, ImageNet-pretrained) | `backend/model/garment_mobilenetv3.pt` |
 | Neckline | round-neck, v-neck, square-neck, collared-neck | YOLOv8n-cls (Ultralytics, ImageNet-pretrained) | `backend/model/neckline_yolov8.pt` |
 | Sleeve length | sleeveless, short-sleeve, long-sleeve | YOLOv8n-cls | `backend/model/sleeve_length_yolov8.pt` |
-| Sleeve design | regular-sleeve, puff-sleeve, bell-sleeve | YOLOv8n-cls | `backend/model/sleeve_design_yolov8.pt` |
+| Sleeve design | regular-sleeve, puff-sleeve (bell-sleeve removed 3 Oct 2026) | YOLOv8n-cls | `backend/model/sleeve_design_yolov8.pt` |
 
 The sleeve-design model is asked only when the garment has sleeves; a sleeveless garment has sleeve style `none` by
 definition. A fifth file, `backend/model/garment_detector.pt` (YOLOv8n detector: top / outerwear / dress), finds the
@@ -106,7 +106,9 @@ off-shoulder ...) are not classes: such photos are left out, never mapped to a l
 *Long-sleeve*: reaches the wrist. Cap, elbow-length and three-quarter sleeves are left out.
 
 **Sleeve design** — *regular-sleeve*: a plain set-in sleeve, smooth at the shoulder, not flared.
-*Puff-sleeve*: gathered at the shoulder and / or hem. *Bell-sleeve*: fitted at the top, flaring towards the hem.
+*Puff-sleeve*: gathered at the shoulder and / or hem. (*Bell-sleeve* - fitted at the top, flaring towards the hem - was
+removed from the scope on 3 Oct 2026: it was almost never recognised. Its photos are kept in
+`datasets/removed_bell_sleeve/`; the three-class run in `runs/sleeve_design_3class/`.)
 Raglan, dolman, kimono and flutter sleeves are left out.
 
 If a feature cannot be seen in a photo (hidden by hair, arms, a jacket), the right answer is "please select", not a

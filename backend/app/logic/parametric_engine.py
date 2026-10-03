@@ -152,14 +152,12 @@ class ParametricEngine:
         """'Why this size?': every drafting value with its calculation and source, plus the seam allowances."""
         rows = [dict(r) for r in base.explanation]
         style = final.sleeve.meta.get("sleeve_style") if final.sleeve is not None else None
-        if style in ("puff", "bell"):
+        if style == "puff":
             m = final.sleeve.meta
             rows.append({"id": "sleeve_style_width", "name": "sleeve_style_width", "piece": "sleeve", "source": "design",
-                         "status": "design", "label": f"{style.capitalize()} sleeve width at its end",
+                         "status": "design", "label": "Puff sleeve width at its end",
                          "value_cm": round(m["width_hem_cm"], 3),
-                         "formula": (f"plain sleeve {m['plain_width_bicep_cm']:.2f} x (1 + {m['spread_fraction']:g})"
-                                     if style == "puff" else
-                                     f"sleeve width {m['width_bicep_cm']:.2f} x (1 + {m['flare_fraction']:g})")})
+                         "formula": f"plain sleeve {m['plain_width_bicep_cm']:.2f} x (1 + {m['spread_fraction']:g})"})
         table = next((t["allowances_cm"] for t in final.transformations if t["id"] == "seam_allowance"), {})
         for kind, value in table.items():
             rows.append({"id": f"seam_allowance_{kind}", "name": f"seam_allowance_{kind}", "piece": "all", "source": "seam",

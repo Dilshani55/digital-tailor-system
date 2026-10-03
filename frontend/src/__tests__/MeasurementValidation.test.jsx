@@ -33,7 +33,7 @@ const D = {
   sleevelessBlouse: { garment_type: 'blouse', neckline_type: 'round-neck', sleeve_length: 'sleeveless', sleeve_style: 'none' },
   shortBlouse: { garment_type: 'blouse', neckline_type: 'round-neck', sleeve_length: 'short-sleeve', sleeve_style: 'regular-sleeve' },
   longTshirt: { garment_type: 't-shirt', neckline_type: 'round-neck', sleeve_length: 'long-sleeve', sleeve_style: 'regular-sleeve' },
-  longBell: { garment_type: 'blouse', neckline_type: 'v-neck', sleeve_length: 'long-sleeve', sleeve_style: 'bell-sleeve' },
+  longPuff: { garment_type: 'blouse', neckline_type: 'v-neck', sleeve_length: 'long-sleeve', sleeve_style: 'puff-sleeve' },
 };
 
 describe('measurementSchema utils', () => {
@@ -62,7 +62,7 @@ describe('measurementSchema utils', () => {
     expect(short).toEqual(expect.arrayContaining(['hip_cm', 'bicep_cm', 'sleeve_cm', 'sleeve_end_cm', 'shoulder_to_bust_cm']));
     expect(requiredFor(D.longTshirt)).toContain('sleeve_end_cm');
     expect(requiredFor(D.longTshirt)).not.toContain('shoulder_to_bust_cm');     // a knit T-shirt has no bust dart
-    expect(requiredFor(D.longBell)).not.toContain('sleeve_end_cm');             // a bell sleeve flares instead
+    expect(requiredFor(D.longPuff)).toContain('sleeve_end_cm');                 // every sleeve narrows to the arm at its end
     Object.values(D).forEach((d) => [...DESIGN_KEYS, ...LEGACY_KEYS].forEach((k) => expect(requiredFor(d)).not.toContain(k)));
   });
 

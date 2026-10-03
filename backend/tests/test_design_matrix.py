@@ -1,5 +1,5 @@
-"""Every one of the 96 selectable design combinations (2 garments x 4 necklines x 3 sleeve lengths x 4 sleeve
-styles): the 25 supported ones are drafted correctly, the other 71 are refused (never replaced by a different design);
+"""Every one of the 72 selectable design combinations (2 garments x 4 necklines x 3 sleeve lengths x 3 sleeve
+styles): the 19 supported ones are drafted correctly, the other 53 are refused (never replaced by a different design);
 the same pieces are laid out on 36" / 45" / 60" fabric."""
 import copy
 import itertools
@@ -18,7 +18,7 @@ ALL = [dict(zip(fs.HEADS, combo)) for combo in itertools.product(*[fs.UI_TAXONOM
 SUPPORTED = [d for d in ALL if fs.is_draftable(d)]
 UNSUPPORTED = [d for d in ALL if not fs.is_draftable(d)]
 NECK_TYPE = {"round-neck": "round_neckline", "v-neck": "v_neckline", "square-neck": "square_neckline"}
-SLEEVE_STYLE_TYPE = {"regular-sleeve": "plain_set_in", "puff-sleeve": "puff", "bell-sleeve": "bell_flare", "none": "none"}
+SLEEVE_STYLE_TYPE = {"regular-sleeve": "plain_set_in", "puff-sleeve": "puff", "none": "none"}
 
 
 def constructions(design):
@@ -56,11 +56,22 @@ def label(design, *extra):
 
 
 class TestScopeMatrix(unittest.TestCase):
-    def test_the_matrix_is_96_combinations_of_which_25_are_supported(self):
-        self.assertEqual((len(ALL), len(SUPPORTED), len(UNSUPPORTED)), (96, 25, 71))
+    def test_the_matrix_is_72_combinations_of_which_19_are_supported(self):
+        self.assertEqual((len(ALL), len(SUPPORTED), len(UNSUPPORTED)), (72, 19, 53))
         self.assertEqual({d["garment_type"] for d in ALL}, {"blouse", "t-shirt"})          # no crop top
-        self.assertEqual(sum(d["garment_type"] == "blouse" for d in SUPPORTED), 21)
+        self.assertEqual(sum(d["garment_type"] == "blouse" for d in SUPPORTED), 15)
+        self.assertFalse(any(d["sleeve_style"] == "bell-sleeve" for d in ALL))           # removed on 3 Oct 2026
         self.assertEqual(sum(d["garment_type"] == "t-shirt" for d in SUPPORTED), 4)
+
+    def test_a_bell_sleeve_saved_before_it_was_removed_is_refused_with_a_reason(self):
+        old = {"garment_type": "blouse", "neckline_type": "round-neck", "sleeve_length": "long-sleeve", "sleeve_style": "bell-sleeve"}
+        report = fs.support_report(old, with_scope=True)                      # no crash on a value that left the scope
+        self.assertFalse(report["supported"])
+        self.assertIn("bell-sleeve", report["unsupported"][0]["note"])
+        with self.assertRaises(DraftingError) as cm:                          # the engine refuses it; nothing is substituted
+            ParametricEngine(measurements(), design_spec={"attributes": old}).generate()
+        self.assertEqual(cm.exception.code, "INVALID_DESIGN_ATTRIBUTES")
+        self.assertIn("regular-sleeve, puff-sleeve", str(cm.exception))
 
     def test_a_collared_neck_is_never_supported(self):
         for d in SUPPORTED:
@@ -106,7 +117,7 @@ class TestScopeMatrix(unittest.TestCase):
 
 
 class TestEverySupportedDesign(unittest.TestCase):
-    """25 designs x the construction their garment allows x three body sizes."""
+    """19 designs x the construction their garment allows x three body sizes."""
 
     @classmethod
     def setUpClass(cls):
@@ -208,8 +219,6 @@ class TestEverySupportedDesign(unittest.TestCase):
             else:
                 self.assertLessEqual(a["cap_ease_cm"], 4.0, tag)         # plain cap: eased in, not gathered
                 self.assertAlmostEqual(sleeve["length_cm"], wanted, places=2, msg=tag)
-            if d["sleeve_style"] == "bell-sleeve":
-                self.assertGreater(sleeve["width_hem_cm"], sleeve["width_bicep_cm"], tag)
             if d["sleeve_length"] == "long-sleeve" and d["sleeve_style"] == "regular-sleeve":
                 self.assertLess(sleeve["width_hem_cm"], sleeve["width_bicep_cm"], tag)    # tapers to the wrist
 

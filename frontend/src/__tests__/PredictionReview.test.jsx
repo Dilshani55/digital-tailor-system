@@ -40,12 +40,12 @@ describe('PredictionReview Component', () => {
         threshold_used: 0.5,
       },
       sleeve_style: {
-        label: 'bell-sleeve',
-        class_index: 3,
+        label: 'puff-sleeve',
+        class_index: 1,
         confidence: 0.5942,
         top_3: [
-          { class_name: 'bell-sleeve', class_index: 3, confidence: 0.5942 },
-          { class_name: 'flutter-sleeve', class_index: 5, confidence: 0.1294 },
+          { class_name: 'puff-sleeve', class_index: 1, confidence: 0.5942 },
+          { class_name: 'regular-sleeve', class_index: 0, confidence: 0.4058 },
         ],
         requires_user_confirmation: false,
         threshold_used: 0.4,
@@ -90,9 +90,9 @@ describe('PredictionReview Component', () => {
     render(<PredictionReview garmentAttributes={mockGarmentAttributes} onConfirm={handleConfirm} />);
 
     // the model said three-quarter-sleeve (outside the selectable classes): not pre-selected, the user must
-    // choose; its bell-sleeve prediction is draftable for a blouse and is kept
+    // choose; its puff-sleeve prediction is draftable for a blouse and is kept
     expect(screen.getByTestId('select-sleeve_length').value).toBe('');
-    expect(screen.getByTestId('select-sleeve_style').value).toBe('bell-sleeve');
+    expect(screen.getByTestId('select-sleeve_style').value).toBe('puff-sleeve');
     fireEvent.change(screen.getByTestId('select-sleeve_length'), { target: { value: 'short-sleeve' } });
     const confirmBtn = screen.getByTestId('confirm-btn');
     fireEvent.click(confirmBtn);
@@ -101,7 +101,7 @@ describe('PredictionReview Component', () => {
       garment_type: 'blouse',
       neckline_type: 'v-neck',
       sleeve_length: 'short-sleeve',
-      sleeve_style: 'bell-sleeve',
+      sleeve_style: 'puff-sleeve',
     });
   });
 
@@ -191,10 +191,10 @@ describe('predictions outside the supported scope (deployed M13 model still pred
     });
   });
 
-  it('offers exactly the selectable classes in the dropdowns (2 / 4 / 3 / 4)', () => {
+  it('offers exactly the selectable classes in the dropdowns (2 / 4 / 3 / 3)', () => {
     render(<PredictionReview garmentAttributes={make()} />);
     const count = (head) => screen.getByTestId(`select-${head}`).querySelectorAll('option').length - 1;   // minus placeholder
-    expect([count('garment_type'), count('neckline_type'), count('sleeve_length'), count('sleeve_style')]).toEqual([2, 4, 3, 4]);
+    expect([count('garment_type'), count('neckline_type'), count('sleeve_length'), count('sleeve_style')]).toEqual([2, 4, 3, 3]);
     expect(ACTIVE_TAXONOMY_OPTIONS.sleeve_length.map((o) => o.value)).not.toContain('elbow-length');
   });
 });

@@ -14,7 +14,7 @@ Garment photo ─► AI suggests the design ─► YOU review and confirm it ─
       ─► printable 1:1 tiled A4 PDF ─► saved in your pattern library
 ```
 
-* **AI part.** A garment detector (YOLOv8n) finds the top in the photo, then **four separate models** look at that area: garment type (MobileNetV3-Large: blouse / T-shirt), neckline (YOLOv8n-cls: round / V / square / collared), sleeve length (YOLOv8n-cls: sleeveless / short / long) and sleeve design (YOLOv8n-cls: regular / puff / bell). A suggestion is filled in automatically only when that model's score reaches a threshold chosen on validation photos; otherwise the feature is shown as "please select". The answers are only *suggestions*: the user must confirm or correct them, and only the confirmed design reaches the pattern engine. Measured results and limits: [docs/AI_MODELS.md](docs/AI_MODELS.md).
+* **AI part.** A garment detector (YOLOv8n) finds the top in the photo, then **four separate models** look at that area: garment type (MobileNetV3-Large: blouse / T-shirt), neckline (YOLOv8n-cls: round / V / square / collared), sleeve length (YOLOv8n-cls: sleeveless / short / long) and sleeve design (YOLOv8n-cls: regular / puff). A suggestion is filled in automatically only when that model's score reaches a threshold chosen on validation photos; otherwise the feature is shown as "please select". The answers are only *suggestions*: the user must confirm or correct them, and only the confirmed design reaches the pattern engine. Measured results and limits: [docs/AI_MODELS.md](docs/AI_MODELS.md).
 * **Pattern part.** Pure, deterministic geometry (`backend/app/logic/drafting/`). No second AI model invents the pattern. The front, the back and the sleeve are drafted separately from one published draft (a B.Sc. Fashion Technology course text – **not** Aldrich's block; see [docs/pattern-drafting-method.md](docs/pattern-drafting-method.md)). Every constant is listed in `assumptions.py` with its kind (rule of the source, design value, ease, seam allowance, or project extension), and the pattern shows a "Why this size?" list of every calculation.
 * **Measurements.** 11 body measurements and 5 optional design values, in cm or inches, with a front / back body guide and a how-to-measure note for each ([docs/measurement-guide.md](docs/measurement-guide.md)).
 * **Fabric part.** Fabric recommendation is rule-based and explains itself. The fabric quantity comes from laying the real cutting-line polygons on the cloth (Bottom-Left-Fill heuristic), reported as a length to buy (m and yd) and as areas (m² and yd²) for each width ([docs/fabric-calculation.md](docs/fabric-calculation.md)).
@@ -25,10 +25,10 @@ Garment photo ─► AI suggests the design ─► YOU review and confirm it ─
 
 | Garment | Necklines | Sleeve length → sleeve styles | Construction |
 |---|---|---|---|
-| Blouse | round, V, square | sleeveless → none · short → regular, puff, bell · long → regular, puff, bell | woven bodice (darts) |
+| Blouse | round, V, square | sleeveless → none · short → regular, puff · long → regular, puff | woven bodice (darts) |
 | T-shirt | round, V | short → regular · long → regular | knit bodice (neckband, no darts) |
 
-That is 25 of the 96 combinations the form can express. A collared neck is recognised by the AI and can be selected,
+That is 19 of the 72 combinations the form can express (the bell sleeve was removed from the scope on 3 Oct 2026). A collared neck is recognised by the AI and can be selected,
 but has **no pattern geometry yet**: generation refuses it with the reason. The matrix lives in
 [`backend/config/garment_scope.json`](backend/config/garment_scope.json).
 

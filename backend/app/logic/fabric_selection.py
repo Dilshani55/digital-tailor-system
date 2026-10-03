@@ -70,13 +70,6 @@ def _score(fid, fabric, attrs, fit):
             rule(-10, "Puff sleeve: a very fluid fabric lets the gathers collapse.")
         if weight == "Heavy":
             rule(-10, "Puff sleeve: heavy fabric makes bulky gathers.")
-    elif style == "bell-sleeve":
-        if drape >= 4:
-            rule(+15, "Bell sleeve: a fluid fabric lets the flare hang in soft folds.")
-        elif drape <= 2:
-            rule(-15, "Bell sleeve: a stiff fabric makes the flare stand out rigidly.")
-        if weight == "Heavy":
-            rule(-10, "Bell sleeve: heavy fabric weighs the flare down.")
 
     garment = attrs.get("garment_type")
     if garment == "blouse" and 2 <= drape <= 4:

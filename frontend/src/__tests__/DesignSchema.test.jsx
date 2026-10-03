@@ -26,13 +26,13 @@ describe('designSchema', () => {
   it('has the four features and their selectable classes (2 / 4 / 3 / 4); no crop top, no off-shoulder', () => {
     expect(HEADS).toEqual(['garment_type', 'neckline_type', 'sleeve_length', 'sleeve_style']);
     const total = HEADS.reduce((n, h) => n + DESIGN_SCHEMA[h].length, 0);
-    expect(total).toBe(13);
-    expect(HEADS.map((h) => DESIGN_SCHEMA[h].length)).toEqual([2, 4, 3, 4]);
+    expect(total).toBe(12);
+    expect(HEADS.map((h) => DESIGN_SCHEMA[h].length)).toEqual([2, 4, 3, 3]);
     expect(ACTIVE_TAXONOMY_OPTIONS.garment_type.map((o) => o.value)).toEqual(['blouse', 't-shirt']);
     expect(ACTIVE_TAXONOMY_OPTIONS.neckline_type.map((o) => o.value))
       .toEqual(['round-neck', 'v-neck', 'square-neck', 'collared-neck']);
     expect(ACTIVE_TAXONOMY_OPTIONS.sleeve_length.map((o) => o.value)).toEqual(['sleeveless', 'short-sleeve', 'long-sleeve']);
-    expect(ACTIVE_TAXONOMY_OPTIONS.sleeve_style.map((o) => o.value)).toEqual(['none', 'regular-sleeve', 'puff-sleeve', 'bell-sleeve']);
+    expect(ACTIVE_TAXONOMY_OPTIONS.sleeve_style.map((o) => o.value)).toEqual(['none', 'regular-sleeve', 'puff-sleeve']);   // bell removed 3 Oct 2026
   });
 
   it('every option has a support level and unsupported ones explain why', () => {

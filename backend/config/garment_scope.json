@@ -1,5 +1,5 @@
 {
-  "_comment": "SINGLE SOURCE OF TRUTH for the garment taxonomy the user can select, what the drafting engine supports, and which combinations can be drafted. Read by backend/app/logic/feature_schema.py and frontend/src/utils/designSchema.js. The AI models suggest these values (garment 2 classes, neckline 4, sleeve length 3, sleeve style 3; 'none' is not predicted - it follows from 'sleeveless'). Change it only together with the engine and its tests.",
+  "_comment": "SINGLE SOURCE OF TRUTH for the garment taxonomy the user can select, what the drafting engine supports, and which combinations can be drafted. Read by backend/app/logic/feature_schema.py and frontend/src/utils/designSchema.js. The AI models suggest these values (garment 2 classes, neckline 4, sleeve length 3, sleeve style 2; 'none' is not predicted - it follows from 'sleeveless'). Change it only together with the engine and its tests.",
   "schema_version": 3,
   "heads": [
     "garment_type",
@@ -92,12 +92,6 @@
         "label": "Puff Sleeve",
         "support": "implemented",
         "note": "Cap spread to 1.5x and crown raised 2.5 cm; the extra cap length is gathered between the notches. Short: hem gathered into a sleeve band. Long: tapers to the wrist."
-      },
-      {
-        "value": "bell-sleeve",
-        "label": "Bell Sleeve",
-        "support": "implemented",
-        "note": "Fitted cap; flares from the underarm to a curved hem (short +60%, long +90% of the eased bicep width)."
       }
     ]
   },
@@ -115,13 +109,11 @@
         ],
         "short-sleeve": [
           "regular-sleeve",
-          "puff-sleeve",
-          "bell-sleeve"
+          "puff-sleeve"
         ],
         "long-sleeve": [
           "regular-sleeve",
-          "puff-sleeve",
-          "bell-sleeve"
+          "puff-sleeve"
         ]
       }
     },

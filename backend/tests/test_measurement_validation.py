@@ -54,8 +54,8 @@ SHORT_BLOUSE = {"garment_type": "blouse", "neckline_type": "round-neck",
                 "sleeve_length": "short-sleeve", "sleeve_style": "regular-sleeve"}
 LONG_TSHIRT = {"garment_type": "t-shirt", "neckline_type": "round-neck",
                "sleeve_length": "long-sleeve", "sleeve_style": "regular-sleeve"}
-LONG_BELL = {"garment_type": "blouse", "neckline_type": "v-neck",
-             "sleeve_length": "long-sleeve", "sleeve_style": "bell-sleeve"}
+LONG_PUFF = {"garment_type": "blouse", "neckline_type": "v-neck",
+             "sleeve_length": "long-sleeve", "sleeve_style": "puff-sleeve"}
 BODICE = ["bust_cm", "waist_cm", "shoulder_width_cm", "back_waist_length_cm", "garment_length_cm"]
 BELOW_WAIST = ["hip_cm", "waist_to_hip_cm"]
 DESIGN_VALUES = ["bust_point_distance_cm", "neck_width_cm", "front_neck_depth_cm", "back_neck_depth_cm", "armhole_depth_cm"]
@@ -117,9 +117,10 @@ class TestRequiredForDesign(unittest.TestCase):
         self.assertNotIn("wrist_cm", req)
         self.assertNotIn("height_cm", req)
 
-    def test_a_plain_sleeve_needs_its_end_measurement_but_a_bell_sleeve_does_not(self):
+    def test_every_sleeve_needs_its_end_measurement_and_a_sleeveless_design_none(self):
         self.assertIn("sleeve_end_cm", ms.required_for_design(LONG_TSHIRT))
-        self.assertNotIn("sleeve_end_cm", ms.required_for_design(LONG_BELL))
+        self.assertIn("sleeve_end_cm", ms.required_for_design(LONG_PUFF))
+        self.assertNotIn("sleeve_end_cm", ms.required_for_design(SLEEVELESS_BLOUSE))
 
     def test_only_a_woven_blouse_needs_the_bust_point(self):
         self.assertIn("shoulder_to_bust_cm", ms.required_for_design(SHORT_BLOUSE))
@@ -128,21 +129,21 @@ class TestRequiredForDesign(unittest.TestCase):
     def test_design_values_and_legacy_measurements_are_never_required(self):
         import itertools
         for gt, sl, ss in itertools.product(("blouse", "t-shirt"), ("sleeveless", "short-sleeve", "long-sleeve"),
-                                            ("none", "regular-sleeve", "puff-sleeve", "bell-sleeve")):
+                                            ("none", "regular-sleeve", "puff-sleeve")):
             req = ms.required_for_design({"garment_type": gt, "neckline_type": "round-neck", "sleeve_length": sl, "sleeve_style": ss})
             self.assertFalse(set(req) & (set(DESIGN_VALUES) | set(ms.LEGACY_KEYS)), (gt, sl, ss))
 
     def test_height_is_never_required(self):
         import itertools
         for gt, sl, ss in itertools.product(("blouse", "t-shirt"), ("sleeveless", "short-sleeve", "long-sleeve"),
-                                            ("none", "regular-sleeve", "puff-sleeve", "bell-sleeve")):
+                                            ("none", "regular-sleeve", "puff-sleeve")):
             self.assertNotIn("height_cm", ms.required_for_design(
                 {"garment_type": gt, "neckline_type": "round-neck", "sleeve_length": sl, "sleeve_style": ss}))
 
     def test_every_required_set_drafts_and_nothing_less_is_invented(self):
         """With exactly the required fields the engine drafts; the unrequired ones stay None."""
         from app.logic.parametric_engine import ParametricEngine
-        for design, length in ((SLEEVELESS_BLOUSE, 62.0), (SHORT_BLOUSE, 62.0), (LONG_TSHIRT, 62.0), (LONG_BELL, 62.0)):
+        for design, length in ((SLEEVELESS_BLOUSE, 62.0), (SHORT_BLOUSE, 62.0), (LONG_TSHIRT, 62.0), (LONG_PUFF, 62.0)):
             req = ms.required_for_design(design)
             m = {k: (VALID_CM[k] if k in req else None) for k in ms.FIELD_KEYS}
             m["garment_length_cm"] = length

@@ -196,32 +196,3 @@ def build_puff_sleeve(dv, cap_height, hem_y, *, spread, rise, gathered_hem, name
                   {"width_hem_cm": hem_w, "length_cm": hem, "sleeve_kind": sleeve_kind, "sleeve_style": "puff",
                    "gathered_cap": True, "gathered_hem": gathered_hem, "spread_fraction": spread, "crown_rise_cm": rise,
                    "plain_width_bicep_cm": dv.sleeve_width}, front, back)
-
-
-def build_bell_sleeve(dv, cap_height, hem_y, *, flare, name="Sleeve", sleeve_kind="short"):
-    """
-    Bell sleeve = the fitted plain cap, flaring from the underarm to a hem `flare` x the sleeve width wider. The
-    hem is a cubic curve that meets both underarm seams at a right angle, so the flared sides join into a smooth
-    hem after sewing.
-    """
-    _check_length(cap_height, hem_y)
-    w = dv.sleeve_width
-    hem_w = w * (1.0 + flare)
-    dx = (hem_w - w) / 2.0                                    # shift so the flared hem starts at x = 0
-    x_l, x_r = 0.0, hem_w
-    slope = dx / (hem_y - cap_height)                         # outward run per cm of seam drop
-    k = hem_w / 3.0
-    f0, b0 = cap_paths(w, cap_height)
-    front, back = [_shift_x(s, dx) for s in f0], [_shift_x(s, dx) for s in b0]
-    lines = [
-        g.Line("underarm_right", (dx + w, cap_height), (x_r, hem_y)),
-        # perpendicular to the seam at both ends: tangent (-1, slope) at the right, (-1, -slope) at the left
-        g.Cubic("hem", (x_r, hem_y), (x_r - k, hem_y + slope * k), (x_l + k, hem_y + slope * k), (x_l, hem_y)),
-        g.Line("underarm_left", (x_l, hem_y), (dx, cap_height)),
-    ]
-    cx = dx + w / 2.0
-    points = {"CROWN": (cx, 0.0), "UNDERARM_LEFT": (dx, cap_height), "UNDERARM_RIGHT": (dx + w, cap_height),
-              "HEM_LEFT": (x_l, hem_y), "HEM_RIGHT": (x_r, hem_y), "HEM_CENTRE": (cx, hem_y + 0.75 * slope * k)}
-    return _piece(name, w, cap_height, lines, points, ((cx, cap_height), (cx, hem_y)),
-                  {"width_hem_cm": hem_w, "length_cm": hem_y, "sleeve_kind": sleeve_kind, "sleeve_style": "bell",
-                   "flare_fraction": flare}, front, back)

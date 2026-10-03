@@ -10,7 +10,7 @@ photo ─► garment detector (YOLOv8n) ─► crop + 10 % margin, padded to a s
       ─► garment type   MobileNetV3-Large   blouse · t-shirt
       ─► neckline       YOLOv8n-cls         round · V · square · collared
       ─► sleeve length  YOLOv8n-cls         sleeveless · short · long
-      ─► sleeve design  YOLOv8n-cls         regular · puff · bell      (not asked when the garment is sleeveless: style = none)
+      ─► sleeve design  YOLOv8n-cls         regular · puff             (not asked when the garment is sleeveless: style = none)
 ```
 
 Four separate classifiers, one per feature, each in its own file in `backend/model/`. Loading and inference:
@@ -23,7 +23,7 @@ All weights are PyTorch `.pt` files (TensorFlow / Keras is not used).
 | `garment_mobilenetv3.pt` | garment type | `d964ee832c94e39f` |
 | `neckline_yolov8.pt` | neckline | `257aa70a91994cf2` |
 | `sleeve_length_yolov8.pt` | sleeve length | `0e513c2604e8444b` |
-| `sleeve_design_yolov8.pt` | sleeve design | `5d7ae2a0cd8363c4` |
+| `sleeve_design_yolov8.pt` | sleeve design (regular / puff, 3 Oct 2026) | `8687530edb650a97` |
 
 **When is a suggestion filled in automatically?** Only when the model's score is at or above its threshold in
 `backend/model/thresholds.json`. The threshold is the lowest score at which the answers on the **validation** photos
@@ -50,7 +50,7 @@ photos are never repeated):
 | Garment type | blouse 3,000 · t-shirt 3,000 (almost all proxy labels) | 600 · 600 | 42 · 40 human-verified; plus 1,908 proxy-labelled |
 | Neckline | round 2,500 · V 1,762 · square 189 ×5 · collared 166 ×5 | 100 · 100 · 32 · 47 | 527 · 197 · 24 · 64 |
 | Sleeve length | sleeveless 4,000 · short 4,000 · long 4,000 | 600 · 600 · 600 | 369 · 1,018 · 1,317 |
-| Sleeve design | regular 169 ×2 · puff 147 ×3 · bell 61 ×5 | 52 · 20 · 17 | 66 · 35 · 13 |
+| Sleeve design | regular 169 ×2 · puff 147 ×3 (bell 61 ×5 until 3 Oct 2026) | 52 · 20 | 66 · 35 |
 
 Checks made on the data before training (1 Oct 2026):
 
@@ -75,7 +75,7 @@ result is kept. No model was retrained after looking at test results.
 | Garment type | 14 epochs, AdamW (backbone 1e-4, head 1e-3), label smoothing 0.05, best by validation macro-F1 | 77 min | 11 (validation macro-F1 0.901) |
 | Neckline | up to 30 epochs, patience 8 | 47 min | 10 (stopped early after 18) |
 | Sleeve length | 20 epochs, patience 6 | 121 min | 16 |
-| Sleeve design | up to 60 epochs, patience 15 | 20 min | 14 (stopped early after 29) |
+| Sleeve design (regular / puff) | up to 60 epochs, patience 15 | 6 min | 1 (validation top-1 0.806; stopped early after 16) |
 
 Scripts and commands: [backend/training/README.md](../backend/training/README.md).
 
@@ -93,7 +93,7 @@ detector); "whole photo" is what happens when no garment is found.
 | Garment type (human-verified labels) | 82 | 0.512 | **0.890 / 0.890** | 0.890 / 0.890 | 0.732 / 0.730 |
 | Neckline | 812 | 0.649 | **0.712 / 0.596** | 0.773 / 0.674 | 0.599 / 0.416 |
 | Sleeve length | 2,704 | 0.487 | **0.880 / 0.865** | 0.913 / 0.901 | 0.693 / 0.655 |
-| Sleeve design | 114 | 0.579 | **0.605 / 0.455** | 0.623 / 0.497 | 0.535 / 0.367 |
+| Sleeve design (regular / puff) | 101 | 0.653 | **0.683 / 0.640** | 0.713 / 0.685 | 0.683 / 0.501 |
 
 ### Per class (test set, detector crop)
 
@@ -108,9 +108,8 @@ detector); "whole photo" is what happens when no garment is found.
 | Sleeve length | sleeveless | 369 | 0.85 | 0.79 | 0.82 |
 | Sleeve length | short | 1,018 | 0.89 | 0.86 | 0.87 |
 | Sleeve length | long | 1,317 | 0.89 | 0.92 | 0.90 |
-| Sleeve design | regular | 66 | 0.69 | 0.73 | 0.71 |
-| Sleeve design | puff | 35 | 0.56 | 0.57 | 0.56 |
-| Sleeve design | bell | 13 | 0.13 | 0.08 | 0.10 |
+| Sleeve design | regular | 66 | 0.74 | 0.79 | 0.76 |
+| Sleeve design | puff | 35 | 0.55 | 0.49 | 0.52 |
 
 ### What is filled in automatically (detector crop)
 
@@ -119,7 +118,7 @@ detector); "whole photo" is what happens when no garment is found.
 | Garment type | 0.557 | 90.0 % / 97.9 % | 90.0 % / 97.6 % |
 | Neckline | 0.955 | 90.3 % / 55.2 % | 91.0 % / 42.5 % |
 | Sleeve length | 0.424 | 94.0 % / 100 % | **88.1 %** / 99.8 % |
-| Sleeve design | none | – | never: always "please select" |
+| Sleeve design | 0.872 | 94.1 % / 23.6 % | **89.5 %** / 18.8 % |
 
 ### Other sets
 
@@ -131,7 +130,7 @@ detector); "whole photo" is what happens when no garment is found.
 | Neckline | benchmark (round and V only) | 31 | 0.677 / 0.636 | 86.7 % on 48.4 % |
 | Sleeve length | DeepFashion-MultiModal | 2,652 | 0.975 / 0.973 | 97.5 % on 99.9 % |
 | Sleeve length | benchmark (short and long only) | 42 | 0.929 / 0.935 | 92.9 % on 100 % |
-| Sleeve design | benchmark (puff 8, bell 3) | 11 | 0.636 / 0.438 | never |
+| Sleeve design | benchmark (puff 8) | 8 | 0.875 / 0.933 | no photo reaches the threshold |
 
 ### Experiment: more training photos from the Kaggle Fashion Product Images dataset (3 Oct 2026) - not adopted
 
@@ -140,7 +139,7 @@ product. Used: women's and girls' topwear (Tops, Tshirts, Shirts, Tunics, Kurtis
 "Collar" or "Sleeve Styling" maps onto an app class: 3,307 products, each cropped with the app's garment detector
 (`backend/training/prepare_kaggle.py`). Round and scoop neck -> round-neck; V-neck -> v-neck; square neck ->
 square-neck; mandarin, polo, shirt, spread and other collars -> collared-neck; regular / puff / bell and flared
-sleeves -> the three sleeve designs. The labels are the shop's; nobody checked them for this project.
+sleeves -> the three sleeve designs then in use. The labels are the shop's; nobody checked them for this project.
 
 *New unique training photos.* Neckline: collared 166 -> 788, square 189 -> 253, V 1,762 -> 2,192 (round stays at the
 2,500 cap). Sleeve design: regular 169 -> 592, puff 147 -> 281, bell 61 -> 72 (the dataset has almost no bell sleeves).
@@ -173,9 +172,14 @@ test set, improve the two weakest models: the missing piece is still labelled be
 * **Neckline** as a forced answer is only moderately better than always answering "round" (0.712 against 0.649).
   It is useful because of the threshold: on the 42.5 % of test photos where it is confident it is 91 % correct, and
   the rest are left to the user. Square and collared necks rest on 24 and 64 test photos.
-* **Sleeve design does not work well enough**: 0.605 accuracy against 0.579 for always answering "regular", and bell
-  sleeves are almost never recognised (13 test photos, 61 training photos). It is therefore never filled in
-  automatically. More labelled puff, bell and regular sleeves are needed.
+* **Sleeve design is still weak.** The bell sleeve was removed from the design scope on 3 Oct 2026 (it was almost
+  never recognised: F1 0.10 on 13 test photos, 61 training photos) and the model was retrained on regular and puff
+  only (bell photos moved aside to `datasets/removed_bell_sleeve/`, not deleted). On the same test photos without
+  the bell ones (101) it reaches 0.683 / 0.640 against 0.653 for always answering "regular". It now has a
+  threshold: on validation 94 % of its automatic answers were right, on the test set 89.5 % on 19 % of the photos
+  (just below the 90 % aim; the threshold was not changed after seeing this). Puff sleeves are found in only half
+  of the cases (recall 0.49). The previous three-class model and its results are kept in
+  `backend/training/runs/sleeve_design_3class/` and `runs/evaluation_3class_sleeve.md`.
 * The gap between "detector crop" and "dataset crop" (neckline 0.71 against 0.77) is the cost of detector misses and
   loose boxes. The gap to "whole photo" shows why the detector is used.
 * All test photos are shop, street or model photos from the datasets. **No photo taken by a user of this app with a

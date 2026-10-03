@@ -3,7 +3,7 @@
     garment_type   blouse / t-shirt                              MobileNetV3-Large   backend/model/garment_mobilenetv3.pt
     neckline_type  round / v / square / collared                 YOLOv8n-cls         backend/model/neckline_yolov8.pt
     sleeve_length  sleeveless / short / long                     YOLOv8n-cls         backend/model/sleeve_length_yolov8.pt
-    sleeve_style   regular / puff / bell (only with sleeves)     YOLOv8n-cls         backend/model/sleeve_design_yolov8.pt
+    sleeve_style   regular / puff (only with sleeves)       YOLOv8n-cls         backend/model/sleeve_design_yolov8.pt
 
 Each model is an image classifier that looks at the garment area (found by the garment detector) padded to a
 square. The neckline and the sleeve style can also have a PART model (neckline_part_yolov8.pt,

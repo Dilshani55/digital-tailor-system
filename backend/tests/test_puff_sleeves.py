@@ -1,5 +1,5 @@
-"""Puff and bell sleeve transformations: real geometry, validated, nestable at 36" / 45" / 60"."""
-import math
+"""Puff sleeve transformations: real geometry, validated, nestable at 36" / 45" / 60" (the bell sleeve was
+removed from the design scope on 3 Oct 2026)."""
 import unittest
 
 from app.logic import feature_schema as fs
@@ -54,31 +54,6 @@ class TestPuffSleeve(unittest.TestCase):
                                plain["measurements"]["length_cm"] - plain["measurements"]["cap_height_cm"], 3)
 
 
-class TestBellSleeve(unittest.TestCase):
-    def test_bell_keeps_the_fitted_cap_and_flares_to_a_curved_hem(self):
-        for length in ("short-sleeve", "long-sleeve"):
-            plain_r = _gen("blouse", length, "regular-sleeve")
-            r = _gen("blouse", length, "bell-sleeve")
-            bell = _piece(r, "sleeve")
-            m = bell["measurements"]
-            self.assertAlmostEqual(r["armhole_sleeve"]["cap_ease_cm"], plain_r["armhole_sleeve"]["cap_ease_cm"], 3)
-            self.assertAlmostEqual(m["width_hem_cm"], m["width_bicep_cm"] * (1 + A["bell_flare_fraction"][length]), 3)
-            hem = next(s for s in bell["segments"] if s["id"] == "hem")
-            self.assertEqual(hem["type"], "cubic")
-            p0, p1, p2, p3 = hem["p"]
-            seam_r = next(s for s in bell["segments"] if s["id"] == "underarm_right")["p"]
-            seam_dir = (seam_r[1][0] - seam_r[0][0], seam_r[1][1] - seam_r[0][1])
-            tangent = (p1[0] - p0[0], p1[1] - p0[1])
-            cos = (seam_dir[0] * tangent[0] + seam_dir[1] * tangent[1]) / (math.hypot(*seam_dir) * math.hypot(*tangent))
-            self.assertAlmostEqual(cos, 0.0, 4)                              # hem meets the seam at 90 degrees
-            self.assertGreater(bell["points"]["HEM_CENTRE"][1], bell["points"]["HEM_LEFT"][1])   # curved, longer at centre
-            xs = [q[0] for q in bell["cutting_line"]]
-            self.assertTrue(r["validation"]["final_pattern"]["passed"])
-            self.assertTrue(r["validation"]["final_pattern"]["checks"]["bell sleeve flares"]["ok"])
-            self.assertGreaterEqual(min(q[0] for q in bell["outline"]), -1e-9)
-            self.assertGreater(max(xs) - min(xs), m["width_hem_cm"])         # seam allowance outside the hem width
-
-
 class TestAllDraftableCombinations(unittest.TestCase):
     def test_every_scope_combination_drafts_and_validates_for_three_body_sizes(self):
         count = 0
@@ -92,12 +67,12 @@ class TestAllDraftableCombinations(unittest.TestCase):
                                 r = _gen(garment, length, style, size, fabric, neck)
                                 self.assertTrue(r["validation"]["final_pattern"]["passed"], (garment, length, style, neck, size))
                                 count += 1
-        self.assertEqual(count, 25 * 3)            # every draftable combination x three body sizes
+        self.assertEqual(count, 19 * 3)            # every draftable combination x three body sizes
 
 
 class TestNestingAtStandardWidths(unittest.TestCase):
-    def test_puff_and_bell_patterns_fit_36_45_60_inch_fabric_without_changing_the_pieces(self):
-        for style in ("puff-sleeve", "bell-sleeve"):
+    def test_puff_and_plain_patterns_fit_36_45_60_inch_fabric_without_changing_the_pieces(self):
+        for style in ("puff-sleeve", "regular-sleeve"):
             r = _gen("blouse", "long-sleeve", style, "large")
             before = [(p["name"], p["cut_bounding_box"]) for p in r["pattern_pieces"]]
             lengths = []

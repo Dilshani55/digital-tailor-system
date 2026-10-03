@@ -198,7 +198,10 @@ def support_report(clean, with_scope=False):
     drafting engine both use it."""
     unsupported, approximated = [], []
     for head in HEADS:
-        level, note = support_of(head, clean[head])
+        # a value that is no longer selectable (e.g. a bell sleeve saved before 3 Oct 2026) cannot be drafted:
+        # it is reported as unsupported with a reason, never a crash and never swapped for another value
+        level, note = support_of(head, clean.get(head)) or (
+            UNSUPPORTED, f"'{clean.get(head)}' is not one of the selectable {head.replace('_', ' ')} values any more.")
         item = {"head": head, "value": clean[head], "note": note}
         if level == UNSUPPORTED:
             unsupported.append(item)

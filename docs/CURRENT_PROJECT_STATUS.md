@@ -19,12 +19,12 @@ mismatch** (see [THESIS_RECONCILIATION.md](THESIS_RECONCILIATION.md)).
 | Wizard: every step can be opened and shows its own controls; validation only on save / generate / export; stale results invalidated | Complete (changed) | `Wizard.test.jsx`, E2E `measurements.spec.js`, `wizard.spec.js` |
 | Image upload (content-checked, size-limited, random names) | Complete | `test_hardening.py` |
 | AI: garment detector + four separate models (garment type MobileNetV3-Large; neckline, sleeve length, sleeve design YOLOv8n-cls) | Complete (replaced the single M40 model on 2 Oct 2026) | [AI_MODELS.md](AI_MODELS.md); `test_garment_models.py`, `test_garment_detector.py`, `test_analyse_garment_crop.py`, E2E `analysis.spec.js` |
-| AI accuracy | Research risk — 90 % for every feature NOT reached | test set, app's crop, accuracy / macro-F1: garment type 0.89 / 0.89 (82 photos), sleeve length 0.88 / 0.87, neckline 0.71 / 0.60, sleeve design 0.61 / 0.46. Filled in automatically: garment type (90 % correct on 98 % of test photos), sleeve length (88 % on almost all), neckline (91 % on 43 %). Sleeve design is always "please select" |
+| AI accuracy | Research risk — 90 % for every feature NOT reached | test set, app's crop, accuracy / macro-F1: garment type 0.89 / 0.89 (82 photos), sleeve length 0.88 / 0.87, neckline 0.71 / 0.60, sleeve design (regular / puff) 0.68 / 0.64. Filled in automatically: garment type (90 % correct on 98 % of test photos), sleeve length (88 % on almost all), neckline (91 % on 43 %). Sleeve design: 89.5 % correct on 19 % of test photos (the rest "please select") |
 | AI label review (725 photos: collared neck, regular sleeve) | Done by one reviewer; second reviewer pending | answered in about 24 minutes; some label noise ([HUMAN_VALIDATION.md](HUMAN_VALIDATION.md) §5) |
 | Crop top | Removed (decision of 1 Oct 2026) | two garments: blouse and T-shirt; a sleeveless design is a sleeveless blouse |
 | Base block (front and back drafted separately, sleeve fitted to the measured armhole), transformations, per-edge seam allowance, geometry validation | Complete (rebuilt 2 Oct 2026) | `test_base_block.py` (incl. the source's own sample as a reference test), `test_design_transformations.py`, `test_seam_allowance.py` |
 | Armhole lengths (front, back, total), sleeve-cap report (PASS / REVIEW), "Why this size?" calculation list, block overviews with dimensions | Complete (added) | API, pattern preview tabs and PDF; `test_parametric.py`, `PatternPreview.test.jsx`, E2E `wizard.spec.js` |
-| All 96 design combinations: 25 drafted, 71 refused, none substituted | Complete | the engine itself enforces the scope; `test_design_matrix.py` |
+| All 72 design combinations: 19 drafted, 53 refused, none substituted (bell sleeve removed 3 Oct 2026) | Complete | the engine itself enforces the scope; `test_design_matrix.py` |
 | Drafting method traceability | Partial / proposal mismatch | one named published draft (a B.Sc. course text), every constant classified in the registry; **not Aldrich** (could not be verified); project extensions and figure-read values are unverified by a fitting. [pattern-drafting-method.md](pattern-drafting-method.md) |
 | Fit validity | Pending human validation | no muslin / body fit trial; sheet in [HUMAN_VALIDATION.md](HUMAN_VALIDATION.md) |
 | Fabric recommendation (rule-based, explained) | Complete | `FabricRecommendation.test.jsx`, `test_fabric_selection_and_widths.py` |
@@ -51,7 +51,7 @@ mismatch** (see [THESIS_RECONCILIATION.md](THESIS_RECONCILIATION.md)).
 
 ## Still needed (cannot be done by code alone)
 
-1. More labelled photos for sleeve design (bell, puff, regular) and for square and collared necks; a second reviewer for a sample of the 725 reviewed photos; a labelled set of real phone photos.
+1. More labelled photos for sleeve design (puff, regular) and for square and collared necks; a second reviewer for a sample of the 725 reviewed photos; a labelled set of real phone photos.
 2. Print check with a ruler on the 5 cm square.
 3. At least one muslin fit trial, or state fit as untested.
 4. Traditional fabric estimates from tailors for a few designs.

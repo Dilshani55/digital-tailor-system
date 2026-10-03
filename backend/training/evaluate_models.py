@@ -205,8 +205,9 @@ def markdown(results):
     for r in results:
         for name, e in r["sets"].items():
             a = e["detector_crop"]["auto_answer"]
-            auto = "never (please select)" if a["threshold"] is None else \
-                f"{a['accuracy_when_answered']:.1%} correct on {a['coverage']:.1%} of photos (score >= {a['threshold']})"
+            auto = ("never (please select)" if a["threshold"] is None else
+                    f"none of these photos reaches the threshold (score >= {a['threshold']})" if a["accuracy_when_answered"] is None else
+                    f"{a['accuracy_when_answered']:.1%} correct on {a['coverage']:.1%} of photos (score >= {a['threshold']})")
             cells = " | ".join(f"{e[m]['accuracy']:.3f} / {e[m]['macro_f1']:.3f}" for m in MODES)
             out.append(f"| {r['task']} | {name} | {e['n']} | {e['detector_crop']['majority_class_accuracy']:.3f} | {cells} | {auto} |")
     out += ["", "## Per class (test set, detector crop)", "", "| Model | Class | Test photos | Precision | Recall | F1 |", "|---|---|---:|---:|---:|---:|"]

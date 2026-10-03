@@ -174,11 +174,6 @@ def _sleeve_checks(front, back, sleeve_piece, res, dv):
         flat = _flat_cap_ok(sleeve_piece, front, back)
         res.check("sleeve notches meet the armhole notches", flat[0], flat[1],
                   "Sleeve notches are not at the bodice notches' distance from the underarm")
-    if sleeve_piece.meta.get("sleeve_style") == "bell":
-        wider = sleeve_piece.meta["width_hem_cm"] > sleeve_piece.meta["width_bicep_cm"]
-        res.check("bell sleeve flares", wider,
-                  f"hem {sleeve_piece.meta['width_hem_cm']:.1f} cm > sleeve {sleeve_piece.meta['width_bicep_cm']:.1f} cm",
-                  "Bell sleeve hem is not wider than the sleeve at the underarm")
     return {"front_armhole_seam_cm": front.meta["armhole_length_cm"], "back_armhole_seam_cm": back.meta["armhole_length_cm"],
             "total_armhole_seam_cm": total, "sleeve_cap_seam_cm": cap, "cap_ease_cm": ease,
             "sleeve_cap_front_cm": sleeve_piece.meta["cap_front_length_cm"],

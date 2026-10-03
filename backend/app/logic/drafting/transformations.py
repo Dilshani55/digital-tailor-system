@@ -178,14 +178,6 @@ def apply_design(base, attributes, seam_allowances=None):
                 extras.append(_strip("Sleeve Band", "sleeve_band", band_len, 2.0 * A["puff_band_height_cm"], 2,
                                      {"length_cm": band_len, "finished_height_cm": A["puff_band_height_cm"],
                                       "rule": "length = arm at the sleeve end + ease; cut double and folded"}))
-        elif style_attr == "bell-sleeve":
-            flare = A["bell_flare_fraction"][length_attr]
-            sleeve_piece = sleeve_mod.build_bell_sleeve(dv, cap_h, sleeve_hem, flare=flare,
-                                                        name=f"Bell Sleeve ({label})", sleeve_kind=label)
-            style_record = {
-                "id": "sleeve_style", "type": "bell_flare", "design": style_attr, "status": "applied",
-                "flare_fraction": flare, "hem_width_cm": round(sleeve_piece.meta["width_hem_cm"], 3),
-                "note": "Fitted cap; flares from the underarm to a curved hem meeting both seams at 90 degrees."}
         else:
             sleeve_piece = sleeve_mod.build_sleeve(dv, cap_h, sleeve_hem, name=f"Sleeve ({label})", sleeve_kind=label)
             style_record = {

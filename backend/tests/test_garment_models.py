@@ -22,7 +22,7 @@ FAKE = {
     "garment_type": [("blouse", 0.80), ("t-shirt", 0.20)],
     "neckline_type": [("round-neck", 0.10), ("v-neck", 0.60), ("square-neck", 0.25), ("collared-neck", 0.05)],
     "sleeve_length": [("sleeveless", 0.02), ("short-sleeve", 0.95), ("long-sleeve", 0.03)],
-    "sleeve_style": [("regular-sleeve", 0.50), ("puff-sleeve", 0.30), ("bell-sleeve", 0.20)],
+    "sleeve_style": [("regular-sleeve", 0.60), ("puff-sleeve", 0.40)],
 }
 
 
@@ -234,8 +234,8 @@ class TestParts(_ModelDir):
     def test_the_scores_of_both_sleeves_are_averaged(self):
         self.inputs(sleeve_style="sleeve")
         self.found(sleeves=[[0, 100, 80, 300], [320, 100, 400, 300]])
-        self.part_answers["sleeve_style"] = [[("bell-sleeve", 0.1), ("puff-sleeve", 0.7), ("regular-sleeve", 0.2)],
-                                             [("bell-sleeve", 0.1), ("puff-sleeve", 0.5), ("regular-sleeve", 0.4)]]
+        self.part_answers["sleeve_style"] = [[("puff-sleeve", 0.7), ("regular-sleeve", 0.3)],
+                                             [("puff-sleeve", 0.5), ("regular-sleeve", 0.5)]]
         p = gm.predict_attributes(self.photo)["predictions"]["sleeve_style"]
         self.assertEqual((p["label"], p["confidence"], p["part_found"]), ("puff-sleeve", 0.6, True))
 
@@ -402,7 +402,7 @@ class TestRoutes(unittest.TestCase):
     def test_design_schema_lists_exactly_the_selectable_classes(self):
         body = self.app.test_client().get("/api/images/design-schema", headers=self.h).get_json()
         self.assertEqual({h: [o["value"] for o in body["heads"][h]] for h in body["heads"]}, {h: list(v) for h, v in fs.TAXONOMY.items()})
-        self.assertEqual(body["active_class_count"], 13)
+        self.assertEqual(body["active_class_count"], 12)                      # bell sleeve removed 3 Oct 2026
         self.assertEqual(set(body["scope"]), {"blouse", "t-shirt"})
         self.assertNotIn("crop", json.dumps(body).lower())
 

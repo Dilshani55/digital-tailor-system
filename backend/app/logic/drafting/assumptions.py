@@ -105,8 +105,6 @@ CONSTANTS = {
     "puff_crown_rise_cm": _c(DESIGN, 2.5, "Puff sleeve: crown raised by 2.5 cm so the gathered cap stands up."),
     "puff_gather_excess_range_cm": _c(DESIGN, (4.0, 30.0), "Accepted (puff cap seam - armhole seam), gathered between the notches."),
     "puff_band_height_cm": _c(DESIGN, 2.5, "Short puff sleeve: finished band height; the band is cut double."),
-    "bell_flare_fraction": _c(DESIGN, {"short-sleeve": 0.6, "long-sleeve": 0.9},
-        "Bell sleeve: hem width = sleeve width x (1 + fraction); the cap stays the fitted cap."),
     "facing_width_cm": _c(DESIGN, 4.0, "Armhole facing strip width (sleeveless)."),
     "neckband_stretch_factor": _c(DESIGN, 0.85, "Knit neckband length = 0.85 x neckline seam length."),
     "neckband_height_cm": _c(DESIGN, 3.0, "Neckband strip height."),
