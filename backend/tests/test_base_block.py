@@ -348,6 +348,18 @@ class TestSleeve(unittest.TestCase):
         deeper = base("medium", bicep_cm=36.0, armhole_depth_cm=23.0)               # the remedy the message names
         self.assertTrue(deeper.validation["passed"])
 
+    def test_an_entered_armhole_depth_that_makes_the_armhole_too_small_is_named_in_the_error(self):
+        # a measured profile that drafts with the calculated armhole depth, but not with a much smaller entered one
+        self.assertTrue(base("medium", bicep_cm=32.0).validation["passed"])
+        with self.assertRaises(DraftingError) as ctx:
+            base("medium", bicep_cm=32.0, armhole_depth_cm=15.0)
+        err = ctx.exception
+        self.assertEqual(err.code, "SLEEVE_TOO_WIDE_FOR_ARMHOLE")
+        self.assertIn("armhole depth entered (15.0 cm", err.field_errors["armhole_depth_cm"][0]["message"])
+        self.assertIn("Leave armhole depth empty", err.field_errors["armhole_depth_cm"][0]["message"])
+        self.assertIn("see armhole depth", err.field_errors["bicep_cm"][0]["message"])
+        self.assertIn("armhole depth entered", err.message)
+
     def test_solver_hits_its_target_and_refuses_the_impossible(self):
         h = sleeve.solve_cap_height(36.0, 45.0)
         self.assertAlmostEqual(sleeve.cap_length(36.0, h), 45.0, places=4)

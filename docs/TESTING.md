@@ -4,7 +4,7 @@ Counts below are from the runs of 2 Oct 2026 on the commit that contains this fi
 
 | Suite | Command (from the folder shown) | Count | Notes |
 |---|---|---|---|
-| Backend | `backend`: `venv\Scripts\python -m unittest discover -s tests -t .` | 474 | Database access is mocked; no MongoDB needed. `pymupdf` (requirements-dev.txt) is needed for the PDF tests — without it they skip visibly. The tests of the real models skip when the files in `backend/model/` are absent. |
+| Backend | `backend`: `venv\Scripts\python -m unittest discover -s tests -t .` | 475 | Database access is mocked; no MongoDB needed. `pymupdf` (requirements-dev.txt) is needed for the PDF tests — without it they skip visibly. The tests of the real models skip when the files in `backend/model/` are absent. |
 | Frontend | `frontend`: `npm test` | 165 | vitest + Testing Library, mocked API. |
 | Lint | `frontend`: `npm run lint` | 0 errors, 0 warnings | ESLint 8: recommended + React + hooks rules (`frontend/.eslintrc.cjs`). |
 | Production build | `frontend`: `npm run build` | – | must finish without errors. |

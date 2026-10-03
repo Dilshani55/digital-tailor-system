@@ -87,7 +87,23 @@ def fit_cap(dv, armhole_total):
     info = {"method_cap_height_cm": h0, "method_cap_seam_cm": seam0, "method_cap_ease_cm": ease0}
     if dv.cap_ease_min - 1e-9 <= ease0 <= dv.cap_ease_max + 1e-9:
         return {**info, "cap_height_cm": h0, "mode": "method"}
-    return {**info, "cap_height_cm": solve_cap_height(dv.sleeve_width, armhole_total + dv.sleeve_cap_ease), "mode": "adjusted"}
+    try:
+        height = solve_cap_height(dv.sleeve_width, armhole_total + dv.sleeve_cap_ease)
+    except DraftingError as exc:
+        method = dv.armhole_depth_method
+        if exc.code == "SLEEVE_TOO_WIDE_FOR_ARMHOLE" and method and dv.armhole_depth < method - 0.05:
+            # the armhole is smaller than the method's because an armhole depth was entered: say so, on that field
+            note = (f"The armhole depth entered ({dv.armhole_depth:.1f} cm = {dv.armhole_depth / 2.54:.2f} in) is less than "
+                    f"the {method:.1f} cm ({method / 2.54:.2f} in) the drafting method calculates, so the armhole is too "
+                    "small for this sleeve. Leave armhole depth empty to use the calculated value, or enter a larger one.")
+            exc.field_errors = {**(exc.field_errors or {}),
+                                "armhole_depth_cm": [{"code": "NOT_DRAFTABLE", "message": note}]}
+            exc.field_errors["bicep_cm"] = [{"code": "NOT_DRAFTABLE", "message":
+                                             "The sleeve (upper arm plus ease) does not fit the smaller armhole - see armhole depth."}]
+            exc.message = f"{exc.message} {note}"
+            exc.args = (exc.message,)
+        raise
+    return {**info, "cap_height_cm": height, "mode": "adjusted"}
 
 
 def _check_length(cap_height, hem_y):

@@ -65,6 +65,7 @@ class DraftingValues:
     sleeve_cap_ease: float
     cap_ease_min: float
     cap_ease_max: float
+    armhole_depth_method: Optional[float] = None   # what the method gives; differs from armhole_depth when one was entered
 
     # earlier names, still read by a few callers
     @property
@@ -175,6 +176,7 @@ def compute_drafting_values(m, ease: EaseProfile):
         sleeve_length=sleeve_len, sleeve_width=sleeve_w, sleeve_width_method=sleeve_w_method,
         sleeve_cap_height_method=cap_h, sleeve_end_width=end_w,
         sleeve_cap_ease=ease.sleeve_cap_cm, cap_ease_min=ease.cap_ease_min_cm, cap_ease_max=ease.cap_ease_max_cm,
+        armhole_depth_method=depth_method,
     )
     _check_feasible(dv, m)
     return dv, explain(dv, m, ease, depth_less)
