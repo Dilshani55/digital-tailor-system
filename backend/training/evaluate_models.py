@@ -5,6 +5,8 @@
     backend\\venv\\Scripts\\python backend\\training\\evaluate_models.py --candidate neckline sleeve_design
         # the models in runs/candidate_model instead of backend/model -> runs/evaluation_candidate.json / .md
         # (nothing in backend/model is touched; see "Switching to a candidate" in README.md)
+    backend\\venv\\Scripts\\python backend\\training\\evaluate_models.py --candidate-dir=backend/training/runs/candidate_kaggle neckline sleeve_design
+        # the models in that folder -> runs/evaluation_candidate_kaggle.json / .md
 
 For every task the photos in datasets/attributes/<task>/eval.jsonl (never trained on) are run through the production
 inference code (app/ai/garment_models.py) in three ways, reported separately:
@@ -34,9 +36,13 @@ import sys
 import numpy as np
 
 CANDIDATE = "--candidate" in sys.argv
+CANDIDATE_DIR = next((a.split("=", 1)[1] for a in sys.argv if a.startswith("--candidate-dir=")), None)
 if CANDIDATE:                                   # must be set before the app code reads it
     sys.argv.remove("--candidate")
     os.environ["GARMENT_MODEL_DIR"] = os.path.abspath("backend/training/runs/candidate_model")
+if CANDIDATE_DIR:                               # another candidate folder (e.g. runs/candidate_kaggle)
+    sys.argv = [a for a in sys.argv if not a.startswith("--candidate-dir=")]
+    os.environ["GARMENT_MODEL_DIR"] = os.path.abspath(CANDIDATE_DIR)
 
 sys.path.insert(0, "backend")
 sys.path.insert(0, "backend/training")
@@ -226,7 +232,8 @@ def main():
     tasks = sys.argv[1:] or list(C.TASKS)
     os.makedirs(OUT, exist_ok=True)
     cache = json.load(open(DETECTOR_CACHE)) if os.path.exists(DETECTOR_CACHE) else {}
-    name = "evaluation_candidate" if CANDIDATE else "evaluation"
+    name = (f"evaluation_{os.path.basename(os.path.normpath(CANDIDATE_DIR))}" if CANDIDATE_DIR
+            else "evaluation_candidate" if CANDIDATE else "evaluation")
     path = f"{OUT}/{name}.json"
     done = {r["task"]: r for r in json.load(open(path))["results"]} if os.path.exists(path) else {}
     for task in tasks:

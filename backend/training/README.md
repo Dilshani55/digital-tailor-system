@@ -55,7 +55,9 @@ candidate's results are reported as an experiment. Thresholds are chosen on vali
 | `common.py` | the four tasks, their classes, and how a dataset record becomes a label for each task |
 | `prepare_datasets.py` | builds `datasets/attributes/<task>/train|val|test/<class>/*.jpg` (garment crop padded to a square, 256 px) and `eval.jsonl` (validation and test photos for the evaluation with the detector) |
 | `train_models.py` | trains the models; keeps the weights of the best validation epoch; copies them to `backend/model/` |
-| `evaluate_models.py` | runs the models through the production inference code on photos never trained on, three ways (detector crop = what the app does, the dataset's own crop, the whole photo); chooses the thresholds on validation; writes `runs/evaluation.json` and `runs/evaluation.md` |
+| `prepare_kaggle.py` | adds the Kaggle Fashion Product Images photos (shop labels for neck, collar, sleeve styling) to the neckline and sleeve-design TRAINING folders (`datasets/attributes_kaggle/`); validation and test unchanged; photos cropped with the app's garment detector |
+| `train_kaggle.py` | trains neckline and sleeve design on those folders with the same settings into `runs/candidate_kaggle/` (never into `backend/model/`) |
+| `evaluate_models.py` | runs the models through the production inference code on photos never trained on, three ways (detector crop = what the app does, the dataset's own crop, the whole photo); chooses the thresholds on validation; writes `runs/evaluation.json` and `runs/evaluation.md`; `--candidate-dir=<folder>` tests the models in another folder (report `runs/evaluation_<folder name>.md`) |
 
 ## Data
 

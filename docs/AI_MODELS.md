@@ -133,6 +133,36 @@ detector); "whole photo" is what happens when no garment is found.
 | Sleeve length | benchmark (short and long only) | 42 | 0.929 / 0.935 | 92.9 % on 100 % |
 | Sleeve design | benchmark (puff 8, bell 3) | 11 | 0.636 / 0.438 | never |
 
+### Experiment: more training photos from the Kaggle Fashion Product Images dataset (3 Oct 2026) - not adopted
+
+*Data.* Kaggle "Fashion Product Images Dataset" (paramaggarwal, MIT licence), the full version with one JSON file per
+product. Used: women's and girls' topwear (Tops, Tshirts, Shirts, Tunics, Kurtis, Kurtas) whose shop-entered "Neck",
+"Collar" or "Sleeve Styling" maps onto an app class: 3,307 products, each cropped with the app's garment detector
+(`backend/training/prepare_kaggle.py`). Round and scoop neck -> round-neck; V-neck -> v-neck; square neck ->
+square-neck; mandarin, polo, shirt, spread and other collars -> collared-neck; regular / puff / bell and flared
+sleeves -> the three sleeve designs. The labels are the shop's; nobody checked them for this project.
+
+*New unique training photos.* Neckline: collared 166 -> 788, square 189 -> 253, V 1,762 -> 2,192 (round stays at the
+2,500 cap). Sleeve design: regular 169 -> 592, puff 147 -> 281, bell 61 -> 72 (the dataset has almost no bell sleeves).
+
+*Training.* The same YOLOv8n-cls model, settings and seed; only the training photos differ; the validation photos and
+the frozen test set are unchanged (`backend/training/train_kaggle.py`; sleeve-design training cap raised from 400 to
+800 before training). Weights: `backend/training/runs/candidate_kaggle/` (not in Git).
+
+*Result* (same frozen test set, detector crop, accuracy / macro-F1; `runs/evaluation_candidate_kaggle.md`):
+
+| Model | Current | With the Kaggle photos | Decision (rule: macro-F1 higher and accuracy not lower) |
+|---|---|---|---|
+| Neckline (812 test photos) | 0.712 / 0.596 | 0.720 / 0.586 | not adopted: macro-F1 lower |
+| Sleeve design (114 test photos) | 0.605 / 0.455 | 0.614 / 0.446 | not adopted: macro-F1 lower |
+
+Per class, the neckline model found more collared necks (recall 0.59 -> 0.80, F1 0.58 -> 0.60) and V-necks (F1
+0.61 -> 0.63) but fewer square necks (F1 0.40 -> 0.31); on the shop test set (DeepFashion-MultiModal, 1,170 photos)
+its accuracy fell from 0.879 to 0.838, and on validation it was slightly worse (0.718 -> 0.706 macro-F1). The
+sleeve-design model was better for regular sleeves, worse for puff sleeves, unchanged for bell sleeves (F1 0.10),
+and clearly worse on validation (0.594 -> 0.426 macro-F1). So more shop photos with shop labels did not, on this
+test set, improve the two weakest models: the missing piece is still labelled bell sleeves and square necks.
+
 ## 5. How to read these numbers
 
 * **Garment type** is the strongest result, but the human-verified test set is small (82 photos): one photo is 1.2
