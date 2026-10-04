@@ -385,8 +385,8 @@ button.wstep:disabled { cursor: not-allowed; }
 .fabric-recommendation .section-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
 .fabric-recommendation .section-head p { font-size: 13px; color: var(--ink-2); margin-top: 3px; }
 .method-badge { font-size: 12px; font-weight: 700; color: var(--accent); background: var(--accent-soft); border-radius: 99px; padding: 5px 11px; }
-.fabric-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr)); gap: 14px; }
-.fabric-card { border: 1px solid var(--line); border-radius: 14px; background: var(--surface); overflow: hidden; display: flex; flex-direction: column; }
+.fabric-grid { display: grid; grid-auto-flow: column; grid-auto-columns: min(100%, 260px); gap: 14px; overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x proximity; padding: 2px 2px 14px; scrollbar-width: thin; scrollbar-color: var(--line-strong) var(--surface-soft); }
+.fabric-card { min-width: 0; scroll-snap-align: start; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); overflow: hidden; display: flex; flex-direction: column; }
 .fabric-card.selected { border: 2px solid var(--accent); box-shadow: 0 6px 18px rgba(44, 91, 69, .12); }
 .fabric-top-choice { border-color: var(--accent); }
 .fabric-card-main { border: 0; background: transparent; text-align: left; padding: 10px 10px 0; cursor: pointer; display: flex; flex-direction: column; color: inherit; font: inherit; }
@@ -409,7 +409,6 @@ button.wstep:disabled { cursor: not-allowed; }
 .fabric-card-body strong { font-size: 15px; }
 .fabric-card-body small { font-size: 12px; color: var(--ink-3); }
 .fabric-material-group { margin-top: 22px; }
-.fabric-material-group .fabric-grid { grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr)); }
 .fabric-property-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 16px 0; }
 .fabric-property-grid > div { padding: 12px; background: var(--surface-soft); border: 1px solid var(--line); border-radius: 10px; }
 .fabric-property-grid dt { font-size: 12px; color: var(--ink-2); }
@@ -457,7 +456,7 @@ button.wstep:disabled { cursor: not-allowed; }
 .published-fabric-modal table { width: 100%; text-align: left; font-size: 12px; border-collapse: collapse; }
 .published-fabric-modal td, .published-fabric-modal th { padding: 10px 8px; border-bottom: 1px solid var(--line); }
 @media (max-width: 560px) {
-  .fabric-grid, .fabric-preference-grid { grid-template-columns: minmax(0, 1fr); }
+  .fabric-preference-grid { grid-template-columns: minmax(0, 1fr); }
   .fabric-priority-actions .btn, .fabric-compare-actions .btn { width: 100%; }
   .fabric-preferences { padding: 14px; }
   .published-fabric-modal { padding: 16px; }

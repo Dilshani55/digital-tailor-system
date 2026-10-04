@@ -212,11 +212,11 @@ export default function FabricRecommendation({ confirmedAttributes, fitPreferenc
       {showMaterials && recommended.length > 0 && <div className="fabric-material-group">
         <h4 className="fabric-list-heading" ref={resultsRef} tabIndex={-1}>Recommended materials</h4>
         <p className="form-hint">The closest match to your fabric goals.</p>
-        <div className="fabric-grid" data-testid="ranked-fabrics">{recommended.map(card)}</div>
+        <div className="fabric-grid" data-testid="ranked-fabrics" role="region" aria-label="Recommended materials" tabIndex={0}>{recommended.map(card)}</div>
       </div>}
       {showMaterials && other.length > 0 && <div className="fabric-material-group">
         <h4 className="fabric-list-heading">Other materials</h4>
-        <div className="fabric-grid" data-testid="other-fabrics">{other.map(card)}</div>
+        <div className="fabric-grid" data-testid="other-fabrics" role="region" aria-label="Other materials" tabIndex={0}>{other.map(card)}</div>
       </div>}
 
       {modalFabric && (
