@@ -7,6 +7,7 @@ import path from 'node:path';
 
 const API = process.env.E2E_API_URL || 'http://127.0.0.1:5055/api';
 const IMAGE = path.resolve(process.env.E2E_IMAGE || '../backend/training/data/eval_real_product_set/images/blouse_01.jpg');
+const REPLACEMENT_IMAGE = path.resolve('../backend/training/data/eval_real_product_set/images/t-shirt_01.jpg');
 const MEAS = {
   bust_cm: 88, waist_cm: 70, hip_cm: 94, shoulder_width_cm: 37, back_waist_length_cm: 40, shoulder_to_bust_cm: 25,
   waist_to_hip_cm: 20, garment_length_cm: 65, bicep_cm: 28, sleeve_cm: 24, sleeve_end_cm: 27,
@@ -251,24 +252,44 @@ test('register -> upload -> AI review -> measurements -> fabric -> pattern -> es
   }
   fs.writeFileSync(path.join(path.dirname(out), 'e2e_last_pdf_path.txt'), out);
 
-  // 8. feedback; then a measurement change makes the pattern/estimate/PDF out of date (free step navigation)
+  // 8. feedback survives refresh; replacing the earlier photo clears all dependent steps immediately.
   await page.getByLabel(/Comments \(optional\)/).fill('Refresh kept my completed steps.');
   await page.reload();
   await expect(page.getByLabel(/Comments \(optional\)/)).toHaveValue('Refresh kept my completed steps.');
   await page.getByLabel(/How easy was it/).selectOption('5');
   await page.getByRole('button', { name: 'Send feedback' }).click();
   await expect(page.getByText(/Thank you/)).toBeVisible();
-  await page.getByRole('button', { name: /^Step 4: Measurements/ }).click();
-  await page.locator('#meas-bust_cm').fill('90');
+  await page.getByRole('button', { name: /^Step 2: Upload image/ }).click();
+  await page.getByTestId('image-input').setInputFiles(REPLACEMENT_IMAGE);
+  for (const label of ['AI review', 'Measurements', 'Fabric & fit', 'Pattern preview', 'Fabric estimate', 'Download PDF']) {
+    await expect(page.getByRole('button', { name: new RegExp(`^Step \\d+: ${label}`) })).toHaveAttribute('data-status', 'pending');
+  }
   await page.reload();
-  await expect(page.locator('#meas-bust_cm')).toHaveValue('90');
-  await expect(page.getByRole('button', { name: /^Step 6: Pattern preview \(Needs update\)/ })).toBeVisible();
+  await expect(page.getByText(path.basename(REPLACEMENT_IMAGE), { exact: true })).toBeVisible();
+  await expect(page.locator('.upload-zone img')).toBeVisible();
+  await page.getByRole('button', { name: /^Step 3: AI review/ }).click();
+  await expect(page.getByTestId('confirmed-badge')).toHaveCount(0);
+  for (const head of ['garment_type', 'neckline_type', 'sleeve_length', 'sleeve_style']) {
+    await expect(page.getByTestId(`select-${head}`)).toHaveValue('');
+    await expect(page.getByTestId(`top-3-${head}`)).toHaveCount(0);
+  }
+  await page.getByRole('button', { name: /^Step 4: Measurements/ }).click();
+  await expect(page.locator('#meas-bust_cm')).toHaveValue('');
+  await expect(page.locator('#meas-sleeve_cm')).toHaveValue('');
+  await page.getByRole('button', { name: /^Step 5: Fabric & fit/ }).click();
+  await expect(page.getByTestId('fit-standard')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByText('no fabric chosen yet', { exact: true })).toBeVisible();
+  await expect(page.getByTestId('ranked-fabrics')).toHaveCount(0);
   await page.getByRole('button', { name: /^Step 6: Pattern preview/ }).click();
-  await expect(page.getByTestId('step-empty')).toContainText(/generated again/);
+  await expect(page.getByTestId('step-empty')).toContainText('No pattern yet');
   await expect(page.getByTestId('pattern-preview')).toHaveCount(0);
+  await page.getByRole('button', { name: /^Step 7: Fabric estimate/ }).click();
+  await expect(page.getByTestId('width-comparison')).toHaveCount(0);
   await page.getByRole('button', { name: /^Step 8: Download PDF/ }).click();
-  await expect(page.getByTestId('step-empty')).toContainText(/out of date/);
-  mark('free navigation: edited measurement marks pattern, estimate and PDF as needing regeneration');
+  await expect(page.getByTestId('step-empty')).toContainText('No pattern to export yet');
+  await expect(page.getByTestId('pdf-ready')).toHaveCount(0);
+  await expect(page.getByLabel(/Comments \(optional\)/)).toHaveCount(0); // feedback is offered again only with a new PDF
+  mark('replacement photo immediately clears analysis, confirmation, measurements, fabric, pattern, estimate, PDF and feedback; refresh keeps them cleared');
   await page.goto('/history');
   await expect(page.locator('.library-item').first()).toBeVisible();
   await expect(page.locator('.library-item').first().locator('.tag').first()).toHaveText('PDF ready');

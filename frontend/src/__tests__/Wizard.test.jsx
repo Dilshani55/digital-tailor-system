@@ -134,6 +134,107 @@ async function reachStep4(opts) {
 describe('creation wizard — full workflow', () => {
   beforeEach(stubAll);
 
+  it('immediately clears analysis, design, measurements and all later results when another valid photo is selected, including after refresh', async () => {
+    await reachStep4();
+    fireEvent.click(screen.getByText('pick-published-sample'));
+    fireEvent.click(screen.getByText('Confirm and generate pattern'));
+    await heading('Pattern preview');
+    fireEvent.click(screen.getByText('Continue to fabric estimate'));
+    await screen.findByTestId('width-comparison');
+    fireEvent.click(screen.getByText('Continue to PDF export'));
+    fireEvent.click(screen.getByText('Create printable PDF'));
+    await screen.findByTestId('pdf-ready');
+    fireEvent.click(stepButton('Upload image'));
+    // Rejecting an invalid replacement must leave the accepted workflow intact.
+    fireEvent.change(screen.getByTestId('image-input'), { target: { files: [new File(['x'], 'invalid.pdf', { type: 'application/pdf' })] } });
+    expect(stepButton('AI review')).toHaveAttribute('data-status', 'done');
+    const photo = new File(['new'], 'replacement.jpg', { type: 'image/jpeg' });
+    fireEvent.change(screen.getByTestId('image-input'), { target: { files: [photo] } });
+    ['AI review', 'Measurements', 'Fabric & fit', 'Pattern preview', 'Fabric estimate', 'Download PDF'].forEach((label) => {
+      expect(stepButton(label)).toHaveAttribute('data-status', 'pending');
+    });
+    await reloadWizard();
+    await heading('Upload a garment photo');
+    expect(screen.getByText('replacement.jpg')).toBeVisible();
+    fireEvent.click(stepButton('AI review'));
+    expect(screen.queryByTestId('confirmed-badge')).toBeNull();
+    expect(screen.getByTestId('select-garment_type')).toHaveValue('');
+    expect(screen.getByTestId('select-neckline_type')).toHaveValue('');
+    fireEvent.click(stepButton('Measurements'));
+    expect(document.querySelector('#meas-bust_cm')).toHaveValue('');
+    expect(document.querySelector('#meas-sleeve_cm')).toHaveValue('');
+    fireEvent.click(stepButton('Fabric & fit'));
+    expect(screen.getByTestId('fit-standard')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByText('no fabric chosen yet')).toBeVisible();
+    fireEvent.click(stepButton('Pattern preview'));
+    expect(screen.queryByTestId('pattern-preview')).toBeNull();
+    fireEvent.click(stepButton('Fabric estimate'));
+    expect(screen.queryByTestId('width-comparison')).toBeNull();
+    fireEvent.click(stepButton('Download PDF'));
+    expect(screen.queryByTestId('pdf-ready')).toBeNull();
+    // Failure while analysing the new photo cannot revive the old confirmation.
+    imagesAPI.analyse.mockRejectedValueOnce(new Error('Network failed'));
+    fireEvent.click(stepButton('Upload image'));
+    fireEvent.click(screen.getByText('Upload and analyse'));
+    await screen.findByRole('alert');
+    expect(stepButton('AI review')).toHaveAttribute('data-status', 'pending');
+    expect(stepButton('Measurements')).toHaveAttribute('data-status', 'pending');
+  });
+
+  it('clears dependent fields on actual confirmed-design edits, while opening Edit & Re-confirm alone preserves them', async () => {
+    await reachStep4();
+    fireEvent.click(screen.getByText('pick-poplin'));
+    fireEvent.click(stepButton('AI review'));
+    fireEvent.click(screen.getByTestId('edit-reconfirm-btn'));
+    expect(stepButton('Measurements')).toHaveAttribute('data-status', 'done');
+    fireEvent.change(screen.getByTestId('select-neckline_type'), { target: { value: 'v-neck' } });
+    expect(stepButton('AI review')).toHaveAttribute('data-status', 'pending');
+    expect(stepButton('Measurements')).toHaveAttribute('data-status', 'pending');
+    expect(stepButton('Fabric & fit')).toHaveAttribute('data-status', 'pending');
+    await reloadWizard();
+    expect(screen.getByTestId('select-neckline_type')).toHaveValue('v-neck');
+    fireEvent.click(stepButton('Measurements'));
+    expect(document.querySelector('#meas-bust_cm')).toHaveValue('');
+    expect(document.querySelector('#meas-sleeve_cm')).toHaveValue('');
+    fireEvent.click(stepButton('Customer & design'));
+    expect(screen.getByLabelText('Customer name')).toHaveValue('Test Customer');
+    fireEvent.click(stepButton('Upload image'));
+    expect(screen.getByText('top.jpg')).toBeVisible();
+  });
+
+  it('clears all subsequent steps when customer details change, without replacing the edited customer field', async () => {
+    await reachStep4();
+    fireEvent.click(screen.getByText('pick-poplin'));
+    fireEvent.click(stepButton('Customer & design'));
+    fireEvent.change(screen.getByLabelText('Contact / reference (optional)'), { target: { value: 'changed@example.com' } });
+    expect(screen.getByLabelText('Contact / reference (optional)')).toHaveValue('changed@example.com');
+    fireEvent.click(stepButton('Upload image'));
+    expect(screen.queryByRole('img', { name: 'Selected garment preview' })).toBeNull();
+    fireEvent.click(stepButton('Measurements'));
+    expect(document.querySelector('#meas-bust_cm')).toHaveValue('');
+    await reloadWizard();
+    fireEvent.click(stepButton('Customer & design'));
+    expect(screen.getByLabelText('Customer name')).toHaveValue('Test Customer');
+    expect(screen.getByLabelText('Contact / reference (optional)')).toHaveValue('changed@example.com');
+    expect(stepButton('AI review')).toHaveAttribute('data-status', 'pending');
+  });
+
+  it('ignores a late confirmation response after the user changes the design again', async () => {
+    await startWizard();
+    fireEvent.change(screen.getByTestId('image-input'), { target: { files: [new File(['x'], 'top.jpg', { type: 'image/jpeg' })] } });
+    fireEvent.click(screen.getByText('Upload and analyse'));
+    await heading('Review the AI suggestions');
+    let complete;
+    imagesAPI.confirmAttributes.mockImplementationOnce(() => new Promise((resolve) => { complete = resolve; }));
+    chooseDesign();
+    expect(screen.getByTestId('confirm-btn')).toBeDisabled();
+    fireEvent.change(screen.getByTestId('select-neckline_type'), { target: { value: 'v-neck' } });
+    complete({ data: { confirmed_attributes: CONFIRMED } });
+    await waitFor(() => expect(screen.getByTestId('confirm-btn')).not.toBeDisabled());
+    expect(screen.queryByTestId('confirmed-badge')).toBeNull();
+    expect(screen.getByTestId('select-neckline_type')).toHaveValue('v-neck');
+  });
+
   it('restores the fabric step and earlier customer, confirmed design, measurements and selected sample after reload', async () => {
     await reachStep4({ contact: 'amara@example.com', project: 'Refresh blouse' });
     fireEvent.click(screen.getByText('pick-published-sample'));
@@ -220,10 +321,10 @@ describe('creation wizard — full workflow', () => {
     fireEvent.click(stepButton('Measurements'));
     fireEvent.change(document.querySelector('#meas-bust_cm'), { target: { value: '91.5' } });
     await reloadWizard();
-    expect(stepButton('Pattern preview')).toHaveAttribute('data-status', 'stale');
+    expect(stepButton('Pattern preview')).toHaveAttribute('data-status', 'pending');
     fireEvent.click(stepButton('Download PDF'));
     expect(screen.queryByTestId('pdf-ready')).toBeNull();
-    expect(screen.getByTestId('step-empty')).toHaveTextContent('out of date');
+    expect(screen.getByTestId('step-empty')).toHaveTextContent('No pattern to export yet');
   });
 
   it('waits for restoration before saving, so defaults never overwrite an existing draft', async () => {
@@ -299,7 +400,7 @@ describe('creation wizard — full workflow', () => {
     fireEvent.click(stepButton('Fabric & fit'));
     await heading('Choose fabric and fit');
     fireEvent.click(screen.getByText('pick-poplin'));
-    fireEvent.click(screen.getByRole('button', { name: 'Regenerate pattern' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm and generate pattern' }));
     await heading('Pattern preview');
     expect(patternsAPI.generate.mock.calls[1][0]).not.toHaveProperty('fabric_preferences');
   });
@@ -478,7 +579,7 @@ describe('creation wizard — full workflow', () => {
     expect(measurementsAPI.save).not.toHaveBeenCalled();
   });
 
-  it('marks the pattern, estimate and PDF as out of date when a measurement changes', async () => {
+  it('clears later fabric choices and results when a measurement changes', async () => {
     await reachStep4();
     fireEvent.click(screen.getByText('pick-poplin'));
     fireEvent.click(screen.getByText('Confirm and generate pattern'));
@@ -487,14 +588,15 @@ describe('creation wizard — full workflow', () => {
     fireEvent.click(stepButton('Measurements'));
     fireEvent.change(document.querySelector('#meas-bust_cm'), { target: { value: '91.5' } });
     expect(screen.getByTestId('meas-unsaved')).toBeTruthy();
-    ['Measurements', 'Pattern preview'].forEach((label) => expect(stepButton(label).getAttribute('data-status')).toBe('stale'));
+    expect(stepButton('Measurements')).toHaveAttribute('data-status', 'stale');
+    ['Fabric & fit', 'Pattern preview', 'Fabric estimate', 'Download PDF'].forEach((label) => expect(stepButton(label)).toHaveAttribute('data-status', 'pending'));
     fireEvent.click(stepButton('Pattern preview'));
-    expect((await screen.findByTestId('step-empty')).textContent).toMatch(/generated again/);
+    expect((await screen.findByTestId('step-empty')).textContent).toMatch(/No pattern yet/);
     expect(screen.queryByTestId('pattern-preview')).toBeNull();               // the old pattern is not shown as current
     fireEvent.click(stepButton('Download PDF'));
-    expect((await screen.findByTestId('step-empty')).textContent).toMatch(/out of date/);
+    expect((await screen.findByTestId('step-empty')).textContent).toMatch(/No pattern to export yet/);
     fireEvent.click(stepButton('Fabric & fit'));
-    fireEvent.click(screen.getByText('Regenerate pattern'));
+    fireEvent.click(screen.getByText('Confirm and generate pattern'));
     expect(screen.getByRole('alert').textContent).toMatch(/save the measurements/i);   // stale values are not drafted
     expect(patternsAPI.generate).toHaveBeenCalledTimes(1);
   });
@@ -506,8 +608,8 @@ describe('creation wizard — full workflow', () => {
     await heading('Pattern preview');
     fireEvent.click(stepButton('Fabric & fit'));
     fireEvent.click(screen.getByTestId('fit-loose'));
-    expect(stepButton('Pattern preview').getAttribute('data-status')).toBe('stale');
-    expect(screen.getByText('Regenerate pattern')).toBeTruthy();
+    expect(stepButton('Pattern preview').getAttribute('data-status')).toBe('pending');
+    expect(screen.getByText('Confirm and generate pattern')).toBeTruthy();
   });
 
   it('rejects a non-image or oversized file with a plain message', async () => {

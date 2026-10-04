@@ -1,5 +1,24 @@
 # Testing
 
+## Wizard edits clear dependent steps (4 October 2026)
+
+Actual edits now clear later draft inputs/results in order: customer details clear the uploaded photo onward; a replacement photo clears AI analysis and confirmation onward; edits to an already confirmed design clear measurements onward; measurement edits clear fabric choices onward; fabric/fit/priority edits clear the pattern onward; layout changes clear PDF and feedback. Reset controls return to their defaults. Navigation and restoration do not trigger resets, and saved server profiles/patterns are retained. A late confirmation response cannot re-confirm an obsolete design.
+
+The focused frontend run passed **97 tests** across Wizard (31), MeasurementValidation (29), PredictionReview (22) and FabricRecommendation (15). Wizard's 31 tests also passed after refining the customer-contact regression. Lint and the production build passed. The new regressions cover immediate photo replacement, rejection of invalid replacement files, failed reanalysis, edits versus simply opening the design editor, customer-detail edits, dependent results and reset persistence after refresh.
+
+Two real-browser checks passed on isolated React/Flask/MongoDB servers at ports 3059/5159: account-specific draft restoration/reset (`wizard-draft.spec.js`) and the complete AI-image wizard (`wizard.spec.js`, `register -> upload`), including a verified 10-page A4 PDF, photo replacement clearing all later steps across reload and reopening the original saved pattern from the library. The first full-flow attempt reached the reset checks but a new assertion incorrectly expected the feedback form to remain visible without a PDF; that assertion was corrected and the full-flow rerun passed. These checks exercise software behavior; they are not participant or textile validation. The complete test suites were not rerun for this change.
+
+```powershell
+# From frontend
+npm.cmd run test -- src/__tests__/Wizard.test.jsx src/__tests__/MeasurementValidation.test.jsx src/__tests__/PredictionReview.test.jsx src/__tests__/FabricRecommendation.test.jsx
+npm.cmd run lint
+npm.cmd run build
+# With isolated frontend/backend servers running
+$env:E2E_BASE_URL = 'http://127.0.0.1:3059'
+$env:E2E_API_URL = 'http://127.0.0.1:5159/api'
+npm.cmd run e2e -- e2e/wizard.spec.js e2e/wizard-draft.spec.js --grep 'register -> upload|drafts survive'
+```
+
 ## Wizard refresh checks (4 October 2026)
 
 The wizard now saves a versioned account-specific draft in IndexedDB, including the original photo File. It waits for restoration before writing defaults. The focused frontend run passed **122 tests** across Wizard, MeasurementValidation, PredictionReview, FabricRecommendation, DesignSchema and IntegrityCleanup; lint and production build passed. The reload regressions cover earlier-step inputs, unconfirmed review edits, entered units, saved IDs, generated results, stale-result detection, explicit customer selection, failed storage and draft reset. Existing measurement tests now wait for draft restoration before interacting.

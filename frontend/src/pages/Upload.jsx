@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   ArrowRight, Calendar, CheckCircle2, CircleDashed, Download, FileText, FolderOpen, Grid3x3, ImageUp, PencilLine, Ruler, Scissors,
@@ -185,7 +185,9 @@ function CreationWizard({ initialDraft: draft, onDraftChange, onStartNew, onFini
   const [garmentAttributes, setGarmentAttributes] = useState(draft.garmentAttributes ?? null);
   const [confirmedAttributes, setConfirmedAttributes] = useState(draft.confirmedAttributes ?? null);
   const [isAttributesConfirmed, setIsAttributesConfirmed] = useState(draft.isAttributesConfirmed ?? false);
+  const [designWasConfirmed, setDesignWasConfirmed] = useState(draft.designWasConfirmed ?? Boolean(draft.isAttributesConfirmed));
   const [reviewDraft, setReviewDraft] = useState(draft.reviewDraft ?? null);
+  const confirmRevision = useRef(0);
   const [confirmLoading, setConfirmLoading] = useState(false);
   const [confirmError, setConfirmError] = useState('');
   // null = unknown (status request failed), true/false = what the server reported
@@ -235,13 +237,13 @@ function CreationWizard({ initialDraft: draft, onDraftChange, onStartNew, onFini
 
   useEffect(() => {
     onDraftChange({ step, started, customerContact, projectName, imageFile, imageId, garmentAttributes,
-      confirmedAttributes, isAttributesConfirmed, reviewDraft, measurementId, meas, unit, measUnits, savedMeasKey,
+      confirmedAttributes, isAttributesConfirmed, designWasConfirmed, reviewDraft, measurementId, meas, unit, measUnits, savedMeasKey,
       activeField, manualDesign, measWarnings, selectedFabricId, selectedFabricName, fabricPreferences,
       selectedFabricPreferences, patternId, patternData, patternKey, fabricWidth, cuttingMode, oneWay,
       pdfPart, yardageData, estimates, yardageError, exportId, pdfInfo, pdfDownloaded, feedbackScore,
       feedbackComment, feedbackSubmitted });
   }, [onDraftChange, step, started, customerContact, projectName, imageFile, imageId, garmentAttributes,
-    confirmedAttributes, isAttributesConfirmed, reviewDraft, measurementId, meas, unit, measUnits, savedMeasKey,
+    confirmedAttributes, isAttributesConfirmed, designWasConfirmed, reviewDraft, measurementId, meas, unit, measUnits, savedMeasKey,
     activeField, manualDesign, measWarnings, selectedFabricId, selectedFabricName, fabricPreferences,
     selectedFabricPreferences, patternId, patternData, patternKey, fabricWidth, cuttingMode, oneWay,
     pdfPart, yardageData, estimates, yardageError, exportId, pdfInfo, pdfDownloaded, feedbackScore,
@@ -258,6 +260,65 @@ function CreationWizard({ initialDraft: draft, onDraftChange, onStartNew, onFini
     setError('');
     setStep(n);
     if (n !== S.CUSTOMER) setStarted(true);
+  };
+
+  // Only an input edit clears dependent steps. Navigation/restoration never calls
+  // this: unchanged drafts keep their completed work across refreshes.
+  const clearAfter = (changedStep) => {
+    setError('');
+    setNotice('');
+    if (changedStep < S.UPLOAD) setImageFile(null);
+    if (changedStep < S.REVIEW) {
+      setImageId(null);
+      setGarmentAttributes(null);
+      setConfirmedAttributes(null);
+      setIsAttributesConfirmed(false);
+      setDesignWasConfirmed(false);
+      setReviewDraft(null);
+      setManualDesign(false);
+      setConfirmError('');
+      setConfirmLoading(false);
+      confirmRevision.current += 1;
+    }
+    if (changedStep < S.MEASURE) {
+      setMeas((previous) => ({ ...emptyMeas, client_name: previous.client_name }));
+      setMeasUnits({});
+      setSavedMeasKey(null);
+      setActiveField('bust_cm');
+      setFieldErrors({});
+      setMeasWarnings([]);
+    }
+    if (changedStep < S.FABRIC) {
+      setSelectedFabricId('');
+      setSelectedFabricName('');
+      setFabricPreferences(null);
+      setSelectedFabricPreferences(null);
+      setFabricValidationError('');
+      setMeas((previous) => ({ ...previous, fit_preference: 'standard',
+        fabric_type: confirmedAttributes?.garment_type === 't-shirt' && changedStep >= S.REVIEW ? 'knit' : 'woven' }));
+    }
+    if (changedStep < S.PREVIEW) {
+      setPatternId(null);
+      setPatternData(null);
+      setPatternKey(null);
+    }
+    if (changedStep < S.ESTIMATE) {
+      setFabricWidth(getPreferences().fabricWidth);
+      setCuttingMode('auto');
+      setOneWay(false);
+      setYardageData(null);
+      setEstimates(null);
+      setYardageError(false);
+    }
+    if (changedStep < S.EXPORT) {
+      setExportId(null);
+      setPdfInfo(null);
+      setPdfDownloaded(false);
+      setPdfPart('overview');
+      setFeedbackScore(5);
+      setFeedbackComment('');
+      setFeedbackSubmitted(false);
+    }
   };
 
   // unsaved-changes guard: active once the user has started, cleared when the PDF has been downloaded
@@ -325,6 +386,9 @@ function CreationWizard({ initialDraft: draft, onDraftChange, onStartNew, onFini
 
   // ── 1: customer & design ──────────────────────────────────────────────────
   const handleSelectSavedClient = (profileId) => {
+    if ((profileId || null) === measurementId) return;
+    if (profileId && !savedProfiles.some((profile) => profile.measurement_id === profileId)) return;
+    clearAfter(step === S.CUSTOMER ? S.CUSTOMER : S.MEASURE);
     if (!profileId) {
       setMeas({ ...emptyMeas, fabric_type: meas.fabric_type, fit_preference: meas.fit_preference });
       setMeasUnits({});
@@ -363,6 +427,7 @@ function CreationWizard({ initialDraft: draft, onDraftChange, onStartNew, onFini
       setError(problem);
       return;
     }
+    clearAfter(S.UPLOAD);
     setImageFile(file);
     setError('');
   };
@@ -373,6 +438,7 @@ function CreationWizard({ initialDraft: draft, onDraftChange, onStartNew, onFini
       setError(problem);
       return;
     }
+    clearAfter(S.UPLOAD);
     setLoading(true);
     setLoadingMessage('Uploading and analysing your garment photo…');
     setError('');
@@ -390,6 +456,7 @@ function CreationWizard({ initialDraft: draft, onDraftChange, onStartNew, onFini
       if (ca && Object.keys(ca).length > 0) {
         setConfirmedAttributes(ca);
         setIsAttributesConfirmed(true);
+        setDesignWasConfirmed(true);
       } else {
         setConfirmedAttributes(null);
         setIsAttributesConfirmed(false);
@@ -403,6 +470,7 @@ function CreationWizard({ initialDraft: draft, onDraftChange, onStartNew, onFini
   };
 
   const chooseManually = () => {
+    clearAfter(S.UPLOAD);
     setImageId(null);
     setGarmentAttributes(null);
     setReviewDraft(null);
@@ -412,11 +480,27 @@ function CreationWizard({ initialDraft: draft, onDraftChange, onStartNew, onFini
 
   // ── 3: confirm the design ─────────────────────────────────────────────────
   const applyConfirmed = (attrs) => {
+    if (isAttributesConfirmed && JSON.stringify(attrs) !== JSON.stringify(confirmedAttributes)) clearAfter(S.REVIEW);
     setReviewDraft(null);
     setConfirmedAttributes(attrs);
     setIsAttributesConfirmed(true);
+    setDesignWasConfirmed(true);
     // a knit garment defaults to knit fabric; the chosen fabric decides in the fabric step
     setMeas((m) => (attrs.garment_type === 't-shirt' && m.fabric_type === 'woven' ? { ...m, fabric_type: 'knit' } : m));
+  };
+
+  const handleReviewDraft = (next) => {
+    const previous = reviewDraft?.selections || confirmedAttributes;
+    const changed = previous && Object.keys(next.selections).some((key) => next.selections[key] !== previous[key]);
+    if (changed || confirmLoading) {
+      if (designWasConfirmed) clearAfter(S.REVIEW);
+      confirmRevision.current += 1;
+      setConfirmLoading(false);
+      setConfirmError('');
+      setConfirmedAttributes(null);
+      setIsAttributesConfirmed(false);
+    }
+    setReviewDraft(next);
   };
 
   const handleConfirmGarmentAttributes = async (confirmedData) => {
@@ -427,13 +511,16 @@ function CreationWizard({ initialDraft: draft, onDraftChange, onStartNew, onFini
     }
     setConfirmLoading(true);
     setConfirmError('');
+    const revision = ++confirmRevision.current;
     try {
       const res = await imagesAPI.confirmAttributes(imageId, confirmedData);
+      if (revision !== confirmRevision.current) return;
       applyConfirmed(res.data.confirmed_attributes || confirmedData);
     } catch (err) {
+      if (revision !== confirmRevision.current) return;
       setConfirmError(friendlyError(err, 'We could not save your design choices. Please try again.'));
     } finally {
-      setConfirmLoading(false);
+      if (revision === confirmRevision.current) setConfirmLoading(false);
     }
   };
 
@@ -445,6 +532,8 @@ function CreationWizard({ initialDraft: draft, onDraftChange, onStartNew, onFini
     if (newUnit === unit) return;
     setUnit(newUnit);
     setFieldErrors({});
+    // This changes PDF display units, not the original measurement values.
+    clearAfter(S.ESTIMATE);
   };
 
   const handleSaveMeasurements = async () => {
@@ -514,12 +603,7 @@ function CreationWizard({ initialDraft: draft, onDraftChange, onStartNew, onFini
     }
     setLoading(true);
     setLoadingMessage('Drafting and checking your pattern…');
-    setError('');
-    setPatternData(null);
-    setYardageData(null);
-    setEstimates(null);
-    setExportId(null);
-    setPdfInfo(null);
+    clearAfter(S.FABRIC);
     try {
       await measurementsAPI.update(measurementId, { fabric_type: meas.fabric_type, fit_preference: meas.fit_preference || 'standard' });
       const patRes = await patternsAPI.generate({
@@ -564,7 +648,7 @@ function CreationWizard({ initialDraft: draft, onDraftChange, onStartNew, onFini
     if (!patternId || !patternCurrent) return;
     setLoading(true);
     setLoadingMessage('Laying out the pattern pieces on 36", 45" and 60" fabric…');
-    setError('');
+    clearAfter(S.ESTIMATE);
     try {
       const res = await exportAPI.estimates(patternId, { selected_width_cm: width, cutting_mode: mode, one_way: nap });
       const rows = res.data.estimates || [];
@@ -718,17 +802,30 @@ function CreationWizard({ initialDraft: draft, onDraftChange, onStartNew, onFini
                 <div className="form-field">
                   <label className="form-label" htmlFor="client-name">Customer name</label>
                   <input id="client-name" className="form-input" type="text" value={meas.client_name} disabled={Boolean(measurementId)}
-                         onChange={(e) => setMeas({ ...meas, client_name: e.target.value })} placeholder="e.g. Amara Silva" />
+                         onChange={(e) => {
+                           if (e.target.value === meas.client_name) return;
+                           clearAfter(S.CUSTOMER);
+                           setMeasurementId(null);
+                           setMeas((previous) => ({ ...previous, client_name: e.target.value }));
+                         }} placeholder="e.g. Amara Silva" />
                 </div>
                 <div className="form-field">
                   <label className="form-label" htmlFor="client-contact">Contact / reference (optional)</label>
                   <input id="client-contact" className="form-input" type="text" maxLength={120} value={customerContact}
-                         onChange={(e) => setCustomerContact(e.target.value)} placeholder="e-mail, phone or order number" />
+                         onChange={(e) => {
+                           if (e.target.value === customerContact) return;
+                           clearAfter(S.CUSTOMER);
+                           setCustomerContact(e.target.value);
+                         }} placeholder="e-mail, phone or order number" />
                 </div>
                 <div className="form-field" style={{ gridColumn: '1/-1' }}>
                   <label className="form-label" htmlFor="project-name">Design / project name (optional)</label>
                   <input id="project-name" className="form-input" type="text" maxLength={80} value={projectName}
-                         onChange={(e) => setProjectName(e.target.value)} placeholder="e.g. Wedding blouse" />
+                         onChange={(e) => {
+                           if (e.target.value === projectName) return;
+                           clearAfter(S.CUSTOMER);
+                           setProjectName(e.target.value);
+                         }} placeholder="e.g. Wedding blouse" />
                   <span className="form-hint">Printed on the PDF and shown in the pattern library.</span>
                 </div>
               </div>
@@ -803,7 +900,7 @@ function CreationWizard({ initialDraft: draft, onDraftChange, onStartNew, onFini
                 )}
               </div>
               <PredictionReview garmentAttributes={garmentAttributes} confirmedAttributes={confirmedAttributes}
-                                draft={reviewDraft} onDraftChange={setReviewDraft}
+                                draft={reviewDraft} onDraftChange={handleReviewDraft}
                                 onConfirm={handleConfirmGarmentAttributes} isSubmitting={confirmLoading} error={confirmError} />
             </div>
             <NavRow>
@@ -828,7 +925,7 @@ function CreationWizard({ initialDraft: draft, onDraftChange, onStartNew, onFini
                   Confirm it here (or in the AI review step) and the list below updates.
                 </p>
                 <PredictionReview garmentAttributes={garmentAttributes} confirmedAttributes={confirmedAttributes}
-                                  draft={reviewDraft} onDraftChange={setReviewDraft}
+                                  draft={reviewDraft} onDraftChange={handleReviewDraft}
                                   onConfirm={handleConfirmGarmentAttributes} isSubmitting={confirmLoading} error={confirmError} />
               </section>
             )}
@@ -886,13 +983,14 @@ function CreationWizard({ initialDraft: draft, onDraftChange, onStartNew, onFini
                                  units={measUnits} unit={unit} errors={fieldErrors} active={activeField} onActive={setActiveField}
                                  serverWarnings={measWarnings}
                                  onChange={(key, value) => {
-                                   setError('');
+                                   if (String(meas[key] ?? '') === value && (measUnits[key] || 'cm') === unit) return;
+                                   clearAfter(S.MEASURE);
                                    setFieldErrors((prev) => {
                                      if (!prev[key]) return prev;
                                      const { [key]: _removed, ...rest } = prev;
                                      return rest;
                                    });
-                                   setMeas({ ...meas, [key]: value });
+                                   setMeas((previous) => ({ ...previous, [key]: value }));
                                    setMeasUnits({ ...measUnits, [key]: unit });
                                  }} />
             </div>
@@ -917,7 +1015,11 @@ function CreationWizard({ initialDraft: draft, onDraftChange, onStartNew, onFini
               <div className="choice-grid" role="group" aria-labelledby="fit-h">
                 {FITS.map((f) => (
                   <button key={f.value} type="button" className="choice-card" aria-pressed={meas.fit_preference === f.value}
-                          data-testid={`fit-${f.value}`} onClick={() => setMeas({ ...meas, fit_preference: f.value })}>
+                          data-testid={`fit-${f.value}`} onClick={() => {
+                            if (f.value === meas.fit_preference) return;
+                            clearAfter(S.FABRIC);
+                            setMeas((previous) => ({ ...previous, fit_preference: f.value }));
+                          }}>
                     <GarmentIllustration type={confirmedAttributes?.garment_type} className="garment" label={`${f.label} fit`} />
                     {f.label}<small>{f.note}</small>
                   </button>
@@ -930,8 +1032,16 @@ function CreationWizard({ initialDraft: draft, onDraftChange, onStartNew, onFini
                 fitPreference={meas.fit_preference}
                 selectedFabricId={selectedFabricId}
                 preferences={fabricPreferences}
-                onPreferencesChange={setFabricPreferences}
+                onPreferencesChange={(next) => {
+                  if (JSON.stringify(next) === JSON.stringify(fabricPreferences)) return;
+                  clearAfter(S.FABRIC);
+                  setSelectedFabricId('');
+                  setSelectedFabricName('');
+                  setSelectedFabricPreferences(null);
+                  setFabricPreferences(next);
+                }}
                 onSelectFabric={(id, name, type, selectionPreferences) => {
+                  if (id !== selectedFabricId || JSON.stringify(selectionPreferences || null) !== JSON.stringify(selectedFabricPreferences)) clearAfter(S.FABRIC);
                   setSelectedFabricId(id);
                   setSelectedFabricName(name);
                   setSelectedFabricPreferences(selectionPreferences || null);
@@ -1162,7 +1272,7 @@ function CreationWizard({ initialDraft: draft, onDraftChange, onStartNew, onFini
                     {PDF_PARTS.map((o) => (
                       <label key={o.value} className="form-hint" style={{ display: 'flex', gap: 8, alignItems: 'baseline', marginTop: 4 }}>
                         <input type="radio" name="pdf-part" value={o.value} checked={pdfPart === o.value} data-testid={`pdf-part-${o.value}`}
-                               onChange={() => { setPdfPart(o.value); setExportId(null); setPdfInfo(null); }} />
+                               onChange={() => { clearAfter(S.ESTIMATE); setPdfPart(o.value); }} />
                         <span><strong>{o.label}</strong> — {o.note}</span>
                       </label>
                     ))}
