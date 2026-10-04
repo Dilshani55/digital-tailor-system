@@ -273,6 +273,12 @@ button.wstep:disabled { cursor: not-allowed; }
 .wizard-title { margin-bottom: 20px; }
 .wizard-title h2 { font-size: 28px; font-weight: 600; margin-bottom: 4px; }
 .wizard-title p { font-size: 14px; color: var(--ink-2); max-width: 760px; }
+.wizard-toolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 12px; }
+.saved-drafts { margin-bottom: 24px; }
+.draft-list { display: grid; gap: 12px; margin-top: 16px; }
+.draft-card { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
+.draft-card h4 { margin-top: 6px; overflow-wrap: anywhere; }
+.draft-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .wizard-nav { display: flex; gap: 10px; margin-top: 22px; justify-content: flex-end; flex-wrap: wrap; }
 .wizard-alert { margin-bottom: 16px; }
 

@@ -274,8 +274,9 @@ test('register -> upload -> AI review -> measurements -> fabric -> pattern -> es
     await expect(page.getByTestId(`top-3-${head}`)).toHaveCount(0);
   }
   await page.getByRole('button', { name: /^Step 4: Measurements/ }).click();
-  await expect(page.locator('#meas-bust_cm')).toHaveValue('');
-  await expect(page.locator('#meas-sleeve_cm')).toHaveValue('');
+  await expect(page.locator('#meas-bust_cm')).toHaveValue('88.9'); // saved customer's body data is reused automatically
+  await expect(page.locator('#meas-sleeve_cm')).toHaveValue('24');
+  await expect(page.getByRole('button', { name: /^Step 4: Measurements/ })).toHaveAttribute('data-status', 'pending'); // validate/save for the new design
   await page.getByRole('button', { name: /^Step 5: Fabric & fit/ }).click();
   await expect(page.getByTestId('fit-standard')).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByText('no fabric chosen yet', { exact: true })).toBeVisible();
@@ -289,7 +290,7 @@ test('register -> upload -> AI review -> measurements -> fabric -> pattern -> es
   await expect(page.getByTestId('step-empty')).toContainText('No pattern to export yet');
   await expect(page.getByTestId('pdf-ready')).toHaveCount(0);
   await expect(page.getByLabel(/Comments \(optional\)/)).toHaveCount(0); // feedback is offered again only with a new PDF
-  mark('replacement photo immediately clears analysis, confirmation, measurements, fabric, pattern, estimate, PDF and feedback; refresh keeps them cleared');
+  mark('replacement photo clears analysis, confirmation and later choices/results across refresh; selected customer measurements automatically refill for review');
   await page.goto('/history');
   await expect(page.locator('.library-item').first()).toBeVisible();
   await expect(page.locator('.library-item').first().locator('.tag').first()).toHaveText('PDF ready');

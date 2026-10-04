@@ -1,5 +1,23 @@
 # Testing
 
+## Separate drafts and saved customer measurements (4 October 2026)
+
+Leaving Create pattern clears its automatic resume marker. Returning (including browser Back) starts a fresh form and lists account-specific Saved drafts with customer/project, step and saved time. Continue draft explicitly restores that workflow; refreshing an active workflow restores it automatically. Start new pattern preserves previous work under a separate draft ID, Save draft & exit waits for storage before navigation, Delete draft removes only that draft, and Finish removes only the finished draft. Blank forms are not saved. The previous account-keyed IndexedDB record is offered as a legacy draft without requiring a database version change.
+
+When a selected saved customer's fields were cleared by changing the photo/design, entering Measurements refills their saved values and original units automatically. A restored blank customer draft is repaired the same way. A new edit cancels a pending refill and is preserved across refresh; data must still be validated/saved for the current design before generation. A successful measurement save refreshes the saved profile cache. Unsaved new-customer inputs still clear after earlier edits.
+
+The focused frontend checks passed **105 tests**: Wizard (39), MeasurementValidation (29), PredictionReview (22), FabricRecommendation (15). Wizard's final 39-test run passed after correcting a new assertion to check the step's Pending status. Lint and production build passed. Three real-browser regressions passed on isolated React/Flask/MongoDB servers at 3059/5159: multiple drafts, account isolation, refresh, sidebar exit/browser Back, explicit resume/save/delete/Finish; legacy draft compatibility; and the complete AI-image workflow with a verified 10-page A4 PDF, replacement-photo invalidation, automatic customer measurement refill and saved-library reopening. The full test suites were not rerun; these are software checks, not participant validation.
+
+```powershell
+# From frontend, with test servers running for the browser checks
+npm.cmd run test -- src/__tests__/Wizard.test.jsx src/__tests__/MeasurementValidation.test.jsx src/__tests__/PredictionReview.test.jsx src/__tests__/FabricRecommendation.test.jsx
+npm.cmd run lint
+npm.cmd run build
+$env:E2E_BASE_URL = 'http://127.0.0.1:3059'
+$env:E2E_API_URL = 'http://127.0.0.1:5159/api'
+npm.cmd run e2e -- e2e/wizard-draft.spec.js e2e/wizard.spec.js --grep 'refresh keeps active|existing account draft|register -> upload'
+```
+
 ## Wizard edits clear dependent steps (4 October 2026)
 
 Actual edits now clear later draft inputs/results in order: customer details clear the uploaded photo onward; a replacement photo clears AI analysis and confirmation onward; edits to an already confirmed design clear measurements onward; measurement edits clear fabric choices onward; fabric/fit/priority edits clear the pattern onward; layout changes clear PDF and feedback. Reset controls return to their defaults. Navigation and restoration do not trigger resets, and saved server profiles/patterns are retained. A late confirmation response cannot re-confirm an obsolete design.

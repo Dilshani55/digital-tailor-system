@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import {
   ArrowRight, Calendar, CheckCircle2, CircleDashed, Download, FileText, FolderOpen, Grid3x3, ImageUp, PencilLine, Ruler, Scissors,
 } from 'lucide-react';
-import StepIndicator from '../components/StepIndicator';
+import StepIndicator, { WIZARD_STEPS } from '../components/StepIndicator';
 import LoadingSpinner from '../components/LoadingSpinner';
 import MeasureFigure from '../components/MeasureFigure';
 import FabricRecommendation from '../components/FabricRecommendation';
@@ -21,7 +21,8 @@ import { formatResult, NOT_CALCULATED } from '../utils/results';
 import { friendlyError, imageProblem } from '../utils/friendlyError';
 import { getPreferences, widthLabel } from '../utils/preferences';
 import { setUnsaved, beforeUnloadHandler } from '../utils/unsavedChanges';
-import { wizardOwner, readWizardDraft, saveWizardDraft, clearWizardDraft } from '../utils/wizardDraft';
+import { wizardOwner, readWizardDraft, saveWizardDraft, clearWizardDraft, listWizardDrafts,
+  activeWizardDraft, activateWizardDraft, clearActiveWizardDraft, createWizardDraftId } from '../utils/wizardDraft';
 import {
   imagesAPI, measurementsAPI, patternsAPI, exportAPI, researchAPI,
 } from '../services/api';
@@ -99,26 +100,44 @@ const Title = ({ title, help }) => (
 );
 
 const NavRow = ({ children }) => <div className="wizard-nav">{children}</div>;
+const hasDraftWork = (values) => Boolean(values && (values.started || values.meas?.client_name
+  || values.customerContact || values.projectName || values.imageFile || values.measurementId));
 
 export default function Upload() {
   const owner = wizardOwner();
   const [draft, setDraft] = useState(null);
+  const [draftId, setDraftId] = useState(null);
+  const [savedDrafts, setSavedDrafts] = useState([]);
+  const [showDrafts, setShowDrafts] = useState(true);
   const [loadedOwner, setLoadedOwner] = useState(null);
   const [restorationFailed, setRestorationFailed] = useState(false);
   const [revision, setRevision] = useState(0);
   const [storageError, setStorageError] = useState('');
+  const [draftBusy, setDraftBusy] = useState(false);
+  const latestValues = useRef(null);
   const navigate = useNavigate();
   const location = useLocation();
   const incomingProfile = location.state?.selectedProfile;
 
   useEffect(() => {
     let active = true;
-    readWizardDraft(owner).then((saved) => {
-      if (active) { setDraft(incomingProfile ? null : saved); setRestorationFailed(false); setLoadedOwner(owner); }
+    const activeId = incomingProfile ? null : activeWizardDraft(owner);
+    Promise.all([listWizardDrafts(owner), activeId ? readWizardDraft(owner, activeId) : Promise.resolve(null)]).then(([drafts, saved]) => {
+      if (active) {
+        setSavedDrafts(drafts);
+        setDraft(saved);
+        setDraftId(saved ? activeId : createWizardDraftId());
+        setShowDrafts(!saved && !incomingProfile);
+        if (!saved) clearActiveWizardDraft();
+        setRestorationFailed(false);
+        setLoadedOwner(owner);
+      }
     }).catch(() => {
       if (active) {
         setStorageError('Your browser could not restore the pattern draft. Keep this page open while you work.');
         setDraft(null);
+        setDraftId(createWizardDraftId());
+        setSavedDrafts([]);
         setRestorationFailed(true);
         setLoadedOwner(owner);
       }
@@ -129,28 +148,80 @@ export default function Upload() {
   }, [owner]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const persist = useCallback((values) => {
-    if (restorationFailed) return; // Do not overwrite a draft we could not read.
-    saveWizardDraft(owner, values).then(() => setStorageError('')).catch(() => {
+    latestValues.current = values;
+    if (restorationFailed || !hasDraftWork(values)) return; // Never replace an unread draft or save an empty form.
+    activateWizardDraft(owner, draftId);
+    setShowDrafts(false);
+    saveWizardDraft(owner, values, draftId).then(() => setStorageError('')).catch(() => {
       setStorageError('Your browser could not save this draft. Keep this page open to avoid losing your latest changes.');
     });
-  }, [owner, restorationFailed]);
+  }, [owner, draftId, restorationFailed]);
 
   const startNew = async () => {
-    if (!window.confirm('Start a new pattern and clear this draft? Saved patterns stay in the library.')) return;
+    setDraftBusy(true);
     try {
-      await clearWizardDraft(owner);
+      if (restorationFailed) throw new Error('Storage unavailable');
+      if (hasDraftWork(latestValues.current)) await saveWizardDraft(owner, latestValues.current, draftId);
+      setSavedDrafts(await listWizardDrafts(owner));
+      clearActiveWizardDraft();
+      latestValues.current = null;
       setDraft(null);
+      setDraftId(createWizardDraftId());
+      setShowDrafts(true);
       setRestorationFailed(false);
       setRevision((value) => value + 1);
       setStorageError('');
     } catch {
-      setStorageError('The draft could not be cleared. Please try again.');
-    }
+      setStorageError('Your current draft could not be saved. Please try again before starting a new pattern.');
+    } finally { setDraftBusy(false); }
+  };
+
+  const resume = async (id) => {
+    setDraftBusy(true);
+    try {
+      const saved = await readWizardDraft(owner, id);
+      if (!saved) throw new Error('Draft unavailable');
+      activateWizardDraft(owner, id);
+      latestValues.current = saved;
+      setDraftId(id);
+      setDraft(saved);
+      setShowDrafts(false);
+      setRevision((value) => value + 1);
+      setStorageError('');
+    } catch {
+      setStorageError('This draft could not be opened. Please try again.');
+    } finally { setDraftBusy(false); }
+  };
+
+  const removeDraft = async (id) => {
+    if (!window.confirm('Delete this saved draft? Saved patterns stay in the library.')) return;
+    setDraftBusy(true);
+    try {
+      await clearWizardDraft(owner, id);
+      setSavedDrafts((drafts) => drafts.filter((item) => item.id !== id));
+      setStorageError('');
+    } catch {
+      setStorageError('The draft could not be deleted. Please try again.');
+    } finally { setDraftBusy(false); }
+  };
+
+  const saveAndExit = async () => {
+    setDraftBusy(true);
+    try {
+      if (restorationFailed) throw new Error('Storage unavailable');
+      await saveWizardDraft(owner, latestValues.current, draftId);
+      clearActiveWizardDraft();
+      setUnsaved(false);
+      navigate('/dashboard');
+    } catch {
+      setStorageError('The draft could not be saved. Keep this page open and try again.');
+    } finally { setDraftBusy(false); }
   };
 
   const finish = async () => {
     try {
-      await clearWizardDraft(owner);
+      await clearWizardDraft(owner, draftId);
+      clearActiveWizardDraft();
       setUnsaved(false);
       navigate('/dashboard');
     } catch {
@@ -159,11 +230,35 @@ export default function Upload() {
   };
 
   if (loadedOwner !== owner) return <LoadingSpinner message="Restoring your pattern draft…" />;
-  return <CreationWizard key={`${owner}:${revision}`} initialDraft={draft || {}} onDraftChange={persist}
-    onStartNew={startNew} onFinish={finish} storageError={storageError} />;
+  return <>
+    {showDrafts && savedDrafts.length > 0 && (
+      <section className="wizard-container section-card saved-drafts" aria-label="Saved drafts">
+        <h3>Saved drafts</h3>
+        <p className="form-hint">Start a new pattern below, or continue a saved draft. Drafts stay in this browser.</p>
+        <div className="draft-list">
+          {savedDrafts.map((item) => (
+            <article key={item.id} className="draft-card" data-testid={`saved-draft-${item.id}`}>
+              <div>
+                <span className="tag">Draft</span>
+                <h4>{item.projectName || item.clientName}</h4>
+                <p className="form-hint">{item.clientName} · Step {item.step}: {WIZARD_STEPS.find((s) => s.id === item.step)?.label}</p>
+                {item.savedAt && <small className="form-hint">Saved {new Date(item.savedAt).toLocaleString()}</small>}
+              </div>
+              <div className="draft-actions">
+                <button type="button" className="btn btn-primary btn-sm" onClick={() => resume(item.id)} disabled={draftBusy}>Continue draft</button>
+                <button type="button" className="btn btn-outline btn-sm" onClick={() => removeDraft(item.id)} disabled={draftBusy}>Delete draft</button>
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>
+    )}
+    <CreationWizard key={`${owner}:${revision}`} initialDraft={draft || {}} onDraftChange={persist}
+      onStartNew={startNew} onSaveDraft={saveAndExit} draftBusy={draftBusy} onFinish={finish} storageError={storageError} />
+  </>;
 }
 
-function CreationWizard({ initialDraft: draft, onDraftChange, onStartNew, onFinish, storageError }) {
+function CreationWizard({ initialDraft: draft, onDraftChange, onStartNew, onSaveDraft, draftBusy, onFinish, storageError }) {
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -197,6 +292,8 @@ function CreationWizard({ initialDraft: draft, onDraftChange, onStartNew, onFini
   const [savedProfiles, setSavedProfiles] = useState([]);
   const [measurementId, setMeasurementId] = useState(draft.measurementId ?? null);
   const [meas, setMeas] = useState({ ...emptyMeas, ...draft.meas });
+  const [needsProfileMeasurements, setNeedsProfileMeasurements] = useState(draft.needsProfileMeasurements
+    ?? Boolean(draft.measurementId && FIELD_KEYS.every((key) => draft.meas?.[key] === '' || draft.meas?.[key] == null)));
   const [unit, setUnit] = useState(() => draft.unit ?? getPreferences().unit);
   const [fieldErrors, setFieldErrors] = useState({});
   const [measUnits, setMeasUnits] = useState(draft.measUnits ?? {}); // unit each value was typed in (missing = cm)
@@ -237,13 +334,13 @@ function CreationWizard({ initialDraft: draft, onDraftChange, onStartNew, onFini
 
   useEffect(() => {
     onDraftChange({ step, started, customerContact, projectName, imageFile, imageId, garmentAttributes,
-      confirmedAttributes, isAttributesConfirmed, designWasConfirmed, reviewDraft, measurementId, meas, unit, measUnits, savedMeasKey,
+      confirmedAttributes, isAttributesConfirmed, designWasConfirmed, reviewDraft, measurementId, needsProfileMeasurements, meas, unit, measUnits, savedMeasKey,
       activeField, manualDesign, measWarnings, selectedFabricId, selectedFabricName, fabricPreferences,
       selectedFabricPreferences, patternId, patternData, patternKey, fabricWidth, cuttingMode, oneWay,
       pdfPart, yardageData, estimates, yardageError, exportId, pdfInfo, pdfDownloaded, feedbackScore,
       feedbackComment, feedbackSubmitted });
   }, [onDraftChange, step, started, customerContact, projectName, imageFile, imageId, garmentAttributes,
-    confirmedAttributes, isAttributesConfirmed, designWasConfirmed, reviewDraft, measurementId, meas, unit, measUnits, savedMeasKey,
+    confirmedAttributes, isAttributesConfirmed, designWasConfirmed, reviewDraft, measurementId, needsProfileMeasurements, meas, unit, measUnits, savedMeasKey,
     activeField, manualDesign, measWarnings, selectedFabricId, selectedFabricName, fabricPreferences,
     selectedFabricPreferences, patternId, patternData, patternKey, fabricWidth, cuttingMode, oneWay,
     pdfPart, yardageData, estimates, yardageError, exportId, pdfInfo, pdfDownloaded, feedbackScore,
@@ -282,6 +379,7 @@ function CreationWizard({ initialDraft: draft, onDraftChange, onStartNew, onFini
     }
     if (changedStep < S.MEASURE) {
       setMeas((previous) => ({ ...emptyMeas, client_name: previous.client_name }));
+      setNeedsProfileMeasurements(Boolean(measurementId));
       setMeasUnits({});
       setSavedMeasKey(null);
       setActiveField('bust_cm');
@@ -346,9 +444,23 @@ function CreationWizard({ initialDraft: draft, onDraftChange, onStartNew, onFini
       setUnit('cm');
       setFieldErrors({});
       setMeasurementId(p.measurement_id);
+      setNeedsProfileMeasurements(false);
       navigate(location.pathname, { replace: true, state: null });
     }
   }, [location.state, location.pathname, navigate]);
+
+  // A selected saved customer keeps their body measurements when the design/photo
+  // changes. Load once on entering this step; an edit cancels any pending refill.
+  useEffect(() => {
+    if (step !== S.MEASURE || !measurementId || !needsProfileMeasurements) return;
+    const profile = savedProfiles.find((item) => item.measurement_id === measurementId);
+    if (!profile) return;
+    setMeas((previous) => ({ ...profileToMeas(profile), client_name: previous.client_name || profile.client_name,
+      fit_preference: previous.fit_preference, fabric_type: previous.fabric_type }));
+    setMeasUnits(storedEntries(profile).units);
+    setSavedMeasKey(null);
+    setNeedsProfileMeasurements(false);
+  }, [step, measurementId, needsProfileMeasurements, savedProfiles]);
 
   const uniqueProfiles = useMemo(() => savedProfiles.reduce((acc, cur) => {
     const name = (cur.client_name || '').trim().toLowerCase();
@@ -389,6 +501,7 @@ function CreationWizard({ initialDraft: draft, onDraftChange, onStartNew, onFini
     if ((profileId || null) === measurementId) return;
     if (profileId && !savedProfiles.some((profile) => profile.measurement_id === profileId)) return;
     clearAfter(step === S.CUSTOMER ? S.CUSTOMER : S.MEASURE);
+    setNeedsProfileMeasurements(false);
     if (!profileId) {
       setMeas({ ...emptyMeas, fabric_type: meas.fabric_type, fit_preference: meas.fit_preference });
       setMeasUnits({});
@@ -571,7 +684,10 @@ function CreationWizard({ initialDraft: draft, onDraftChange, onStartNew, onFini
       setMeasWarnings(res.data.warnings || []);
       setFieldErrors({});
       setMeasurementId(res.data.measurement_id || res.data.profile_id || measurementId);
+      setNeedsProfileMeasurements(false);
       setSavedMeasKey(measKey);
+      // Keep the saved customer snapshot current for a later photo/design change.
+      await measurementsAPI.getAll().then((profiles) => setSavedProfiles(profiles.data.measurements || [])).catch(() => {});
       go(S.FABRIC);
     } catch (err) {
       const parsed = parseFieldErrors(err);
@@ -771,8 +887,13 @@ function CreationWizard({ initialDraft: draft, onDraftChange, onStartNew, onFini
   return (
     <div className="view active" id="v-wizard">
       <div className="wizard-container">
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
-          <button type="button" className="btn btn-outline btn-sm" onClick={onStartNew} disabled={loading || confirmLoading}>Start new pattern</button>
+        <div className="wizard-toolbar">
+          <span className="form-hint">{hasDraftWork({ started, meas, customerContact, projectName, imageFile, measurementId }) && !storageError ? 'Drafts are saved automatically in this browser' : ''}</span>
+          <div className="draft-actions">
+            <button type="button" className="btn btn-outline btn-sm" onClick={onSaveDraft}
+                    disabled={loading || confirmLoading || draftBusy || !hasDraftWork({ started, meas, customerContact, projectName, imageFile, measurementId })}>Save draft & exit</button>
+            <button type="button" className="btn btn-outline btn-sm" onClick={onStartNew} disabled={loading || confirmLoading || draftBusy}>Start new pattern</button>
+          </div>
         </div>
         <StepIndicator currentStep={step} setStep={go} status={stepStatus} />
 
@@ -985,6 +1106,7 @@ function CreationWizard({ initialDraft: draft, onDraftChange, onStartNew, onFini
                                  onChange={(key, value) => {
                                    if (String(meas[key] ?? '') === value && (measUnits[key] || 'cm') === unit) return;
                                    clearAfter(S.MEASURE);
+                                   setNeedsProfileMeasurements(false);
                                    setFieldErrors((prev) => {
                                      if (!prev[key]) return prev;
                                      const { [key]: _removed, ...rest } = prev;

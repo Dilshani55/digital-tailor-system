@@ -1,14 +1,17 @@
 // End-to-end behaviour of the 8-step creation wizard against a mocked API.
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import Upload from '../pages/Upload';
 import { imagesAPI, measurementsAPI, patternsAPI, exportAPI, researchAPI } from '../services/api';
 import { friendlyError, imageProblem } from '../utils/friendlyError';
-import { readWizardDraft, saveWizardDraft, clearWizardDraft } from '../utils/wizardDraft';
+import { readWizardDraft, saveWizardDraft, clearWizardDraft, listWizardDrafts, activeWizardDraft,
+  activateWizardDraft, clearActiveWizardDraft, createWizardDraftId } from '../utils/wizardDraft';
 
 vi.mock('../utils/wizardDraft', () => ({
   wizardOwner: () => 'test-user', readWizardDraft: vi.fn(), saveWizardDraft: vi.fn(), clearWizardDraft: vi.fn(),
+  listWizardDrafts: vi.fn(), activeWizardDraft: vi.fn(), activateWizardDraft: vi.fn(), clearActiveWizardDraft: vi.fn(),
+  createWizardDraftId: vi.fn(),
 }));
 
 vi.mock('../services/api', () => ({
@@ -60,6 +63,9 @@ const ESTIMATES = (selectedCm = 114.3) => ({ data: {
 function stubAll() {
   vi.clearAllMocks();
   readWizardDraft.mockResolvedValue(null);
+  listWizardDrafts.mockResolvedValue([]);
+  activeWizardDraft.mockReturnValue('test-draft');
+  createWizardDraftId.mockReturnValue('test-draft');
   saveWizardDraft.mockResolvedValue(undefined);
   clearWizardDraft.mockResolvedValue(undefined);
   measurementsAPI.getAll.mockResolvedValue({ data: { measurements: [] } });
@@ -133,6 +139,131 @@ async function reachStep4(opts) {
 
 describe('creation wizard — full workflow', () => {
   beforeEach(stubAll);
+
+  it('opens a fresh customer form after leaving, and resumes an old draft only when Continue draft is chosen', async () => {
+    activeWizardDraft.mockReturnValue(null);
+    listWizardDrafts.mockResolvedValue([{ id: 'first-draft', clientName: 'First customer', projectName: 'First blouse', step: 4 }]);
+    readWizardDraft.mockResolvedValue({ step: 4, started: true, meas: { client_name: 'First customer', bust_cm: '88' },
+      confirmedAttributes: CONFIRMED, isAttributesConfirmed: true });
+    await renderWizard();
+    expect(screen.getByLabelText('Customer name')).toHaveValue('');
+    expect(readWizardDraft).not.toHaveBeenCalled();
+    expect(saveWizardDraft).not.toHaveBeenCalled();
+    expect(screen.getByRole('region', { name: 'Saved drafts' })).toHaveTextContent('First blouse');
+    expect(screen.getByTestId('saved-draft-first-draft')).toHaveTextContent('Step 4: Measurements');
+    fireEvent.click(screen.getByRole('button', { name: 'Continue draft' }));
+    await heading('Body measurements');
+    expect(readWizardDraft).toHaveBeenCalledWith('test-user', 'first-draft');
+    expect(activateWizardDraft).toHaveBeenCalledWith('test-user', 'first-draft');
+    expect(document.querySelector('#meas-bust_cm')).toHaveValue('88');
+    fireEvent.click(stepButton('Customer & design'));
+    expect(screen.getByLabelText('Customer name')).toHaveValue('First customer');
+    expect(screen.queryByRole('region', { name: 'Saved drafts' })).toBeNull();
+  });
+
+  it('saves the current snapshot before exiting to the dashboard', async () => {
+    render(<MemoryRouter initialEntries={['/upload']}><Routes>
+      <Route path="/upload" element={<Upload />} />
+      <Route path="/dashboard" element={<h2>Dashboard after draft save</h2>} />
+    </Routes></MemoryRouter>);
+    await heading('Customer and design');
+    fireEvent.change(screen.getByLabelText('Customer name'), { target: { value: 'Draft to continue' } });
+    fireEvent.click(stepButton('Measurements'));
+    fireEvent.change(document.querySelector('#meas-bust_cm'), { target: { value: '91.5' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save draft & exit' }));
+    await heading('Dashboard after draft save');
+    expect(saveWizardDraft.mock.calls.at(-1)).toEqual(['test-user', expect.objectContaining({ step: 4,
+      meas: expect.objectContaining({ client_name: 'Draft to continue', bust_cm: '91.5' }) }), 'test-draft']);
+    expect(clearActiveWizardDraft).toHaveBeenCalled();
+    expect(clearWizardDraft).not.toHaveBeenCalled();
+  });
+
+  it('keeps current inputs open when Save draft & exit fails', async () => {
+    await startWizard({ name: 'Keep my unsaved work' });
+    saveWizardDraft.mockRejectedValueOnce(new Error('Quota exceeded'));
+    fireEvent.click(screen.getByRole('button', { name: 'Save draft & exit' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('could not be saved');
+    expect(screen.getByRole('heading', { name: 'Upload a garment photo' })).toBeVisible();
+    fireEvent.click(stepButton('Customer & design'));
+    expect(screen.getByLabelText('Customer name')).toHaveValue('Keep my unsaved work');
+    expect(clearWizardDraft).not.toHaveBeenCalled();
+  });
+
+  it('deletes only the chosen saved draft, after confirming, without touching saved patterns', async () => {
+    activeWizardDraft.mockReturnValue(null);
+    listWizardDrafts.mockResolvedValue([{ id: 'legacy', clientName: 'Old customer', step: 3 },
+      { id: 'other-draft', clientName: 'Other customer', step: 5 }]);
+    await renderWizard();
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true);
+    const oldCard = screen.getByTestId('saved-draft-legacy');
+    fireEvent.click(oldCard.querySelectorAll('button')[1]);
+    expect(clearWizardDraft).not.toHaveBeenCalled();
+    fireEvent.click(oldCard.querySelectorAll('button')[1]);
+    await waitFor(() => expect(screen.queryByTestId('saved-draft-legacy')).toBeNull());
+    expect(clearWizardDraft).toHaveBeenCalledWith('test-user', 'legacy');
+    expect(screen.getByTestId('saved-draft-other-draft')).toBeVisible();
+    expect(screen.getByLabelText('Customer name')).toHaveValue('');
+    confirm.mockRestore();
+  });
+
+  it('removes only the finished workflow draft and clears its automatic refresh marker', async () => {
+    await renderWizard();
+    fireEvent.click(stepButton('Download PDF'));
+    fireEvent.click(screen.getByRole('button', { name: 'Finish', exact: true }));
+    await waitFor(() => expect(clearWizardDraft).toHaveBeenCalledWith('test-user', 'test-draft'));
+    expect(clearActiveWizardDraft).toHaveBeenCalled();
+  });
+
+  it('automatically fills an already selected saved customer after changing the photo and confirming the design', async () => {
+    const profile = { measurement_id: 'saved-customer', client_name: 'Upeksha', ...VALID,
+      shoulder_width_cm: 14.25 * 2.54, original_values: { shoulder_width_cm: { value: 14.25, unit: 'in' } } };
+    measurementsAPI.getAll.mockResolvedValue({ data: { measurements: [profile] } });
+    await renderWizard();
+    await waitFor(() => expect(document.querySelector('#saved-client option[value="saved-customer"]')).toBeTruthy());
+    fireEvent.change(document.querySelector('#saved-client'), { target: { value: 'saved-customer' } });
+    fireEvent.click(stepButton('Upload image'));
+    fireEvent.change(screen.getByTestId('image-input'), { target: { files: [new File(['x'], 'top.jpg', { type: 'image/jpeg' })] } });
+    fireEvent.click(screen.getByText('Upload and analyse'));
+    await heading('Review the AI suggestions');
+    chooseDesign();
+    await waitFor(() => expect(screen.getByTestId('confirmed-badge')).toBeVisible());
+    fireEvent.click(screen.getByText('Continue to measurements'));
+    await waitFor(() => expect(document.querySelector('#meas-bust_cm')).toHaveValue('88'));
+    expect(document.querySelector('#saved-client-meas')).toHaveValue('saved-customer');
+    expect(document.querySelector('#meas-waist_cm')).toHaveValue('70');
+    fireEvent.click(screen.getByTestId('unit-in'));
+    expect(document.querySelector('#meas-shoulder_width_cm')).toHaveValue('14.25');
+    fireEvent.click(screen.getByTestId('unit-cm'));
+    fireEvent.change(document.querySelector('#meas-bust_cm'), { target: { value: '91.5' } });
+    await reloadWizard();
+    expect(document.querySelector('#meas-bust_cm')).toHaveValue('91.5');
+  });
+
+  it('repairs a restored draft whose selected saved customer has blank measurements without needing a dropdown click', async () => {
+    readWizardDraft.mockResolvedValue({ step: 4, measurementId: 'saved-customer', meas: { client_name: 'Upeksha' },
+      confirmedAttributes: CONFIRMED, isAttributesConfirmed: true });
+    measurementsAPI.getAll.mockResolvedValue({ data: { measurements: [{ measurement_id: 'saved-customer', client_name: 'Upeksha', ...VALID }] } });
+    render(<MemoryRouter><Upload /></MemoryRouter>);
+    await heading('Body measurements');
+    await waitFor(() => expect(document.querySelector('#meas-bust_cm')).toHaveValue('88'));
+    expect(document.querySelector('#meas-sleeve_cm')).toHaveValue('24');
+    expect(stepButton('Measurements')).toHaveAttribute('data-status', 'pending'); // validate/save for the current design
+  });
+
+  it('never replaces a new measurement edit with a delayed saved-profile response', async () => {
+    readWizardDraft.mockResolvedValue({ step: 4, measurementId: 'saved-customer', meas: { client_name: 'Upeksha' } });
+    let loadProfiles;
+    measurementsAPI.getAll.mockImplementationOnce(() => new Promise((resolve) => { loadProfiles = resolve; }));
+    render(<MemoryRouter><Upload /></MemoryRouter>);
+    await heading('Body measurements');
+    fireEvent.change(document.querySelector('#meas-bust_cm'), { target: { value: '91.5' } });
+    loadProfiles({ data: { measurements: [{ measurement_id: 'saved-customer', client_name: 'Upeksha', ...VALID }] } });
+    await waitFor(() => expect(document.querySelector('#saved-client-meas option[value="saved-customer"]')).toBeTruthy());
+    expect(document.querySelector('#meas-bust_cm')).toHaveValue('91.5');
+    await reloadWizard();
+    expect(document.querySelector('#meas-bust_cm')).toHaveValue('91.5');
+    expect(document.querySelector('#meas-waist_cm')).toHaveValue('');
+  });
 
   it('immediately clears analysis, design, measurements and all later results when another valid photo is selected, including after refresh', async () => {
     await reachStep4();
@@ -356,21 +487,20 @@ describe('creation wizard — full workflow', () => {
     expect(screen.getByLabelText('Customer name')).toHaveValue('Work in memory');
   });
 
-  it('only clears a draft when Start new pattern is confirmed and leaves saved patterns alone', async () => {
+  it('starts a fresh pattern while keeping the current work as a separate draft', async () => {
     await reachStep4();
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true);
-    fireEvent.click(screen.getByRole('button', { name: 'Start new pattern' }));
-    expect(clearWizardDraft).not.toHaveBeenCalled();
-    expect(screen.getByRole('heading', { name: 'Choose fabric and fit' })).toBeVisible();
+    createWizardDraftId.mockReturnValueOnce('second-draft');
+    listWizardDrafts.mockResolvedValue([{ id: 'test-draft', clientName: 'Test Customer', step: 5 }]);
     fireEvent.click(screen.getByRole('button', { name: 'Start new pattern' }));
     await heading('Customer and design');
-    expect(clearWizardDraft).toHaveBeenCalledWith('test-user');
+    expect(clearWizardDraft).not.toHaveBeenCalled();
+    expect(clearActiveWizardDraft).toHaveBeenCalled();
+    expect(screen.getByTestId('saved-draft-test-draft')).toHaveTextContent('Test Customer');
     expect(screen.getByLabelText('Customer name')).toHaveValue('');
     expect(stepButton('AI review')).toHaveAttribute('data-status', 'pending');
     expect(stepButton('Measurements')).toHaveAttribute('data-status', 'pending');
-    await reloadWizard();
-    expect(screen.getByLabelText('Customer name')).toHaveValue('');
-    confirm.mockRestore();
+    fireEvent.change(screen.getByLabelText('Customer name'), { target: { value: 'Second customer' } });
+    await waitFor(() => expect(saveWizardDraft.mock.calls.at(-1)).toEqual(['test-user', expect.objectContaining({ meas: expect.objectContaining({ client_name: 'Second customer' }) }), 'second-draft']));
   });
 
   it('opens an explicitly selected customer in a fresh workflow rather than reviving a different customer draft', async () => {

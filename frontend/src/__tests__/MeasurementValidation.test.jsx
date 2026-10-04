@@ -23,6 +23,8 @@ vi.mock('../components/FabricRecommendation', () => ({ default: () => <div data-
 vi.mock('../utils/wizardDraft', () => ({
   wizardOwner: () => 'measurement-test-user', readWizardDraft: async () => null,
   saveWizardDraft: async () => {}, clearWizardDraft: async () => {},
+  listWizardDrafts: async () => [], activeWizardDraft: () => null, activateWizardDraft: () => {},
+  clearActiveWizardDraft: () => {}, createWizardDraftId: () => 'measurement-draft',
 }));
 
 // what a short-sleeved woven blouse needs (the optional design values are left empty = calculated)

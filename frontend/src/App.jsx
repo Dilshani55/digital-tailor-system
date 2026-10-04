@@ -1,4 +1,6 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { useEffect } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { clearActiveWizardDraft } from './utils/wizardDraft';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import Navbar         from './components/Navbar';
 import Sidebar        from './components/Sidebar';
@@ -35,6 +37,10 @@ function ProtectedLayout({ children }) {
 
 function AppRoutes() {
   const { loading } = useAuth();
+  const { pathname } = useLocation();
+  useEffect(() => {
+    if (pathname !== '/upload') clearActiveWizardDraft();
+  }, [pathname]);
   if (loading) return <LoadingSpinner />;
 
   return (
