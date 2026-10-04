@@ -85,7 +85,11 @@ test('Measurements page: typing, decimals, cm/in, save, reload, edit', async ({ 
   await shot(page, 'measurements-page-inches');
   expect(await pageOverflow(page)).toBeLessThanOrEqual(1);
   await page.getByRole('button', { name: 'Save measurements' }).click();
-  await expect(page.getByText('New measurement profile saved.')).toBeVisible();
+  await expect(page.getByText('Customer saved successfully.')).toBeVisible();
+  await expect(page.locator('#profile-name')).toHaveValue('');
+  await expect(page.locator('#profile-select')).toHaveValue('');
+  await expect(bust).toHaveValue('');
+  await expect(waist).toHaveValue('');
   let saved = await profile();
   expect(saved.bust_cm).toBeCloseTo(33.3 * 2.54, 9);                                  // exact: 1 in = 2.54 cm
   expect(saved.waist_cm).toBe(70.25);
@@ -102,7 +106,10 @@ test('Measurements page: typing, decimals, cm/in, save, reload, edit', async ({ 
   // edit one field and save: the untouched inch value is not rewritten
   await typeSlowly(page.locator('#profile-hip_cm'), '37.5');
   await page.getByRole('button', { name: 'Save measurements' }).click();
-  await expect(page.getByText('Measurements updated.')).toBeVisible();
+  await expect(page.getByText('Customer saved successfully.')).toBeVisible();
+  await expect(page.locator('#profile-name')).toHaveValue('');
+  await expect(page.locator('#profile-select')).toHaveValue('');
+  await expect(page.locator('#profile-hip_cm')).toHaveValue('');
   saved = await profile();
   expect(saved.hip_cm).toBeCloseTo(95.25, 9);
   expect(saved.bust_cm).toBeCloseTo(33.3 * 2.54, 9);
@@ -110,6 +117,7 @@ test('Measurements page: typing, decimals, cm/in, save, reload, edit', async ({ 
   expect((await (await request.get(`${API}/measurements/`, { headers: auth })).json()).measurements).toHaveLength(1);
 
   // zero and negative values are refused beside the field, by the page and by the server
+  await page.locator('#profile-select').selectOption(saved.measurement_id);
   await page.getByTestId('page-unit-cm').click();
   await typeSlowly(waist, '0');
   await page.getByRole('button', { name: 'Save measurements' }).click();
@@ -122,7 +130,7 @@ test('Measurements page: typing, decimals, cm/in, save, reload, edit', async ({ 
   // a very large value is not clamped or replaced (no fixed body-size limits)
   await typeSlowly(waist, '212.75');
   await page.getByRole('button', { name: 'Save measurements' }).click();
-  await expect(page.getByText('Measurements updated.')).toBeVisible();
+  await expect(page.getByText('Customer saved successfully.')).toBeVisible();
   expect((await profile()).waist_cm).toBe(212.75);
 
   expect(problems, problems.join('\n')).toEqual([]);

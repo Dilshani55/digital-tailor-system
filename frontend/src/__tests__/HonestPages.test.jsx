@@ -1,6 +1,6 @@
 // Pages that used to show invented values (fake notifications, a default pattern count of "2",
 // made-up e-mail addresses, a hard-coded "ONLINE" database status) must now show only real data.
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import Customers from '../pages/Customers';
@@ -64,28 +64,21 @@ describe('Customers', () => {
     expect(screen.queryByText(/No customer profiles found/)).toBeNull();
   });
 
-  it('adds a customer: measurements optional but must be positive numbers; nothing invented', async () => {
+  it('adds a customer with profile details only and requires a name', async () => {
     measurementsAPI.getAll.mockResolvedValue({ data: { measurements: [] } });
     patternsAPI.getAll.mockResolvedValue({ data: { patterns: [] } });
     measurementsAPI.save.mockResolvedValue({ data: { measurement_id: 'new' } });
     render(<MemoryRouter><Customers /></MemoryRouter>);
     fireEvent.click(await screen.findByText('Add customer'));
-    fireEvent.change(screen.getByLabelText('Full Name'), { target: { value: 'Kavindi' } });
-    const field = (label) => screen.getByLabelText(new RegExp(`^${label} \\(cm\\)`));
-    fireEvent.change(field('Bust around'), { target: { value: '-90' } });
+    expect(screen.queryByRole('spinbutton')).toBeNull();
+    expect(screen.queryByText(/The other drafting measurements/)).toBeNull();
     fireEvent.click(screen.getByText('Save Customer'));
-    expect((await screen.findByTestId('customer-form-error')).textContent).toMatch(/Bust around: Must be greater than 0/);
+    expect((await screen.findByTestId('customer-form-error')).textContent).toMatch(/Please enter the customer name/);
     expect(measurementsAPI.save).not.toHaveBeenCalled();
-    fireEvent.change(field('Bust around'), { target: { value: '90.5' } });
-    fireEvent.change(field('Waist around'), { target: { value: '72' } });
+    fireEvent.change(screen.getByLabelText('Full Name'), { target: { value: '  Kavindi  ' } });
     fireEvent.click(screen.getByText('Save Customer'));
     await waitFor(() => expect(measurementsAPI.save).toHaveBeenCalled());
-    const body = measurementsAPI.save.mock.calls[0][0];
-    expect(body).toMatchObject({ client_name: 'Kavindi', bust_cm: 90.5, waist_cm: 72, unit: 'cm' });
-    expect(body).not.toHaveProperty('hip_cm');          // not entered -> not sent, never defaulted
-    expect(body).not.toHaveProperty('height_cm');
-    expect(body).not.toHaveProperty('email');
-    expect(body).not.toHaveProperty('notes');
+    expect(measurementsAPI.save).toHaveBeenCalledWith({ client_name: 'Kavindi' });
   });
 });
 
@@ -139,6 +132,66 @@ describe('Settings', () => {
 });
 
 describe('Measurements page', () => {
+  it.each(['create', 'update'])('clears all inputs after a successful %s and saves the next customer as a new profile', async (mode) => {
+    measurementsAPI.getAll.mockResolvedValue({ data: { measurements: [PROFILE] } })
+      .mockResolvedValueOnce({ data: { measurements: mode === 'update' ? [PROFILE] : [] } });
+    measurementsAPI.save.mockResolvedValue({ data: { measurement_id: 'next' } });
+    let finishSave;
+    const pendingSave = new Promise((resolve) => { finishSave = resolve; });
+    const saveMethod = mode === 'update' ? measurementsAPI.update : measurementsAPI.save;
+    saveMethod.mockReturnValueOnce(pendingSave);
+    render(<MemoryRouter><Measurements /></MemoryRouter>);
+
+    const name = await screen.findByLabelText('Customer name');
+    fireEvent.change(name, { target: { value: 'First customer' } });
+    fireEvent.click(screen.getByTestId('page-unit-in'));
+    const fields = [...document.querySelectorAll('input[id^="profile-"][inputmode="decimal"]')];
+    expect(fields).toHaveLength(16);
+    fields.forEach((field) => fireEvent.change(field, { target: { value: '12.5' } }));
+    fireEvent.change(screen.getByLabelText('Usual fabric construction'), { target: { value: 'knit' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save measurements' }));
+
+    expect(saveMethod).toHaveBeenCalledTimes(1);
+    expect(name).toHaveValue('First customer');
+    fields.forEach((field) => expect(field).toHaveValue('12.5')); // kept until the save succeeds
+    expect(screen.queryByText('Customer saved successfully.')).toBeNull();
+
+    await act(async () => finishSave({ data: { measurement_id: 'm1', warnings: [{ field: 'bust_cm', message: 'Check this saved value.' }] } }));
+    expect(screen.getByRole('status')).toHaveTextContent('Customer saved successfully.');
+    expect(name).toHaveValue('');
+    fields.forEach((field) => expect(field).toHaveValue(''));
+    expect(screen.getByLabelText('Profile')).toHaveValue('');
+    expect(screen.getByLabelText('Usual fabric construction')).toHaveValue('woven');
+    expect(screen.getByTestId('page-unit-cm')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('option', { name: 'Amara Silva' })).toBeTruthy();
+
+    fireEvent.change(name, { target: { value: 'Next customer' } });
+    expect(screen.queryByText('Customer saved successfully.')).toBeNull();
+    fireEvent.change(screen.getByLabelText(/^Bust around \(cm\)/), { target: { value: '91' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save measurements' }));
+    await waitFor(() => expect(measurementsAPI.save).toHaveBeenCalledTimes(mode === 'create' ? 2 : 1));
+    const nextPayload = measurementsAPI.save.mock.calls.at(-1)[0];
+    expect(nextPayload).toMatchObject({ client_name: 'Next customer', bust_cm: 91, units: { bust_cm: 'cm' } });
+    expect(nextPayload.waist_cm).toBeUndefined();
+    expect(measurementsAPI.update).toHaveBeenCalledTimes(mode === 'update' ? 1 : 0);
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Customer saved successfully.'));
+  });
+
+  it('still clears the form and confirms a successful save if refreshing the profile list fails', async () => {
+    measurementsAPI.getAll.mockRejectedValue(new Error('refresh unavailable'))
+      .mockResolvedValueOnce({ data: { measurements: [] } });
+    measurementsAPI.save.mockResolvedValue({ data: { measurement_id: 'new' } });
+    render(<MemoryRouter><Measurements /></MemoryRouter>);
+    fireEvent.change(await screen.findByLabelText('Customer name'), { target: { value: 'Kavindi' } });
+    fireEvent.change(screen.getByLabelText(/^Bust around \(cm\)/), { target: { value: '88' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save measurements' }));
+    expect(await screen.findByRole('status')).toHaveTextContent('Customer saved successfully.');
+    await waitFor(() => expect(measurementsAPI.getAll).toHaveBeenCalledTimes(2));
+    expect(screen.getByLabelText('Customer name')).toHaveValue('');
+    expect(screen.getByLabelText(/^Bust around \(cm\)/)).toHaveValue('');
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
   it('uses the schema labels, all 16 optional fields, a front/back guide and no rejecting ranges', async () => {
     measurementsAPI.getAll.mockResolvedValue({ data: { measurements: [PROFILE] } });
     render(<MemoryRouter><Measurements /></MemoryRouter>);
@@ -204,6 +257,11 @@ describe('Measurements page', () => {
     render(<MemoryRouter><Measurements /></MemoryRouter>);
     fireEvent.click(await screen.findByText('Save measurements'));
     expect((await screen.findByTestId('profile-error-waist_cm')).textContent).toMatch(/cannot exceed/);
+    expect(screen.getByLabelText('Customer name')).toHaveValue('Amara Silva');
+    expect(screen.getByLabelText('Profile')).toHaveValue('m1');
+    expect(screen.getByLabelText(/^Bust around \(cm\)/)).toHaveValue('88');
+    expect(screen.getByLabelText(/^Waist around \(cm\)/)).toHaveValue('70');
+    expect(screen.queryByText('Customer saved successfully.')).toBeNull();
   });
 
   it('switching the unit only changes the display; typed values are saved with their own unit', async () => {

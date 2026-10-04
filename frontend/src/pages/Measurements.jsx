@@ -31,15 +31,16 @@ export default function Measurements() {
   const [fieldErrors, setFieldErrors] = useState({});
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
-  const [serverWarnings, setServerWarnings] = useState([]);
   const inputs = useRef({});
 
   const loadProfile = (p) => {
     setFormData(p ? fromProfile(p) : EMPTY);
     setTypedUnits(p ? storedEntries(p).units : {});   // each value keeps the unit it was entered in
     setUnit('cm');
+    setActiveField('bust_cm');
     setFieldErrors({});
     setError('');
+    setSuccess('');
   };
 
   useEffect(() => {
@@ -73,6 +74,7 @@ export default function Measurements() {
       return rest;
     });
     setError('');
+    setSuccess('');
   };
 
   // the unit only changes how values are shown; typed values keep their own unit (no double conversion)
@@ -102,23 +104,20 @@ export default function Measurements() {
     // a design value that was emptied goes back to its calculated value
     const cleared = DESIGN_KEYS.filter((k) => formData[k] === '' || formData[k] === null || formData[k] === undefined);
     try {
-      let res;
       if (selectedProfileId) {
-        res = await measurementsAPI.update(selectedProfileId, { ...payload, clear: cleared });
-        setSuccess('Measurements updated.');
+        await measurementsAPI.update(selectedProfileId, { ...payload, clear: cleared });
       } else {
-        res = await measurementsAPI.save(payload);
-        if (res.data?.measurement_id) setSelectedProfileId(res.data.measurement_id);
-        setSuccess('New measurement profile saved.');
+        await measurementsAPI.save(payload);
       }
-      setServerWarnings(res?.data?.warnings || []);
+      // Start a fresh customer only after the server confirms the save.
+      selectProfile('');
+      setSuccess('Customer saved successfully.');
       try {
         const updated = await measurementsAPI.getAll();
         setProfiles(updated.data.measurements || []);
       } catch {
         // the save itself succeeded; the list is refreshed the next time the page opens
       }
-      setTimeout(() => setSuccess(''), 3000);
     } catch (err) {
       const parsed = parseFieldErrors(err);
       if (parsed._form) {
@@ -172,9 +171,6 @@ export default function Measurements() {
       {error && (
         <div role="alert" style={{ padding: '12px 16px', background: '#FEF2F2', border: '1px solid #FCA5A5', borderRadius: '8px', color: '#991B1B', fontSize: '13px', marginBottom: '20px' }}>{error}</div>
       )}
-      {success && (
-        <div role="status" style={{ padding: '12px 16px', background: 'rgba(21, 128, 61, 0.1)', border: '1px solid var(--text-accent)', borderRadius: '8px', color: 'var(--text-accent)', fontSize: '13px', marginBottom: '20px' }}>{success}</div>
-      )}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(340px, 100%), 1fr))', gap: '24px', alignItems: 'start' }}>
         <form className="ui-card" style={{ padding: 'clamp(14px, 4vw, 24px)', minWidth: 0 }} onSubmit={handleSave} noValidate>
@@ -194,7 +190,7 @@ export default function Measurements() {
           <MeasurementFields idPrefix="profile" keys={FIELD_KEYS} required={[]} values={formData} units={typedUnits} unit={unit}
                              errors={fieldErrors} active={activeField} onActive={setActiveField} onChange={setField}
                              errorTestId={(k) => `profile-error-${k}`} guideTestId={(k) => `profile-guide-${k}`}
-                             inputRefs={inputs} serverWarnings={serverWarnings} />
+                             inputRefs={inputs} />
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(150px, 100%), 1fr))', gap: '14px 18px' }}>
             <div className="form-field">
@@ -207,6 +203,9 @@ export default function Measurements() {
           </div>
 
           <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '14px' }}>Every value must be a number greater than 0; decimals are fine. Inches are converted exactly (1 in = 2.54 cm). An unusual value is never refused: it only shows a &quot;please check&quot; note.</p>
+          {success && (
+            <div role="status" style={{ padding: '12px 16px', background: 'rgba(21, 128, 61, 0.1)', border: '1px solid var(--text-accent)', borderRadius: '8px', color: 'var(--text-accent)', fontSize: '13px', marginTop: '14px' }}>{success}</div>
+          )}
           <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '16px', borderTop: '1px solid var(--border)', paddingTop: '16px' }}>
             <button type="button" className="btn btn-outline" onClick={reset}>Reset</button>
             <button type="submit" className="btn btn-primary">Save measurements</button>

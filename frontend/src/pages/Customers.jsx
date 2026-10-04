@@ -2,15 +2,11 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Filter, Pencil, Plus, Scissors, Search, Trash2, Users } from 'lucide-react';
 import { measurementsAPI, patternsAPI } from '../services/api';
-import { validateMeasurements, parseFieldErrors, buildPayload, MEASUREMENT_FIELDS, FIELD_KEYS } from '../utils/measurementSchema';
-
-// quick-add fields on the customer form (all optional; the pattern wizard asks for what a design needs)
-const QUICK_FIELDS = ['bust_cm', 'waist_cm', 'hip_cm', 'shoulder_width_cm'];
+import { parseFieldErrors, FIELD_KEYS } from '../utils/measurementSchema';
 import LoadingSpinner from '../components/LoadingSpinner';
 
-const FIELD_LABEL = Object.fromEntries(MEASUREMENT_FIELDS.map((f) => [f.key, f.label]));
 const PAGE_SIZE = 10;
-const EMPTY = { client_name: '', email: '', notes: '', bust_cm: '', waist_cm: '', hip_cm: '', shoulder_width_cm: '', fabric_type: 'woven' };
+const EMPTY = { client_name: '', email: '', notes: '' };
 const initials = (name) => (name || '?').split(' ').filter(Boolean).map((n) => n[0]).join('').slice(0, 2).toUpperCase();
 const measured = (p) => FIELD_KEYS.filter((k) => p[k] !== null && p[k] !== undefined && p[k] !== '').length;
 
@@ -53,18 +49,11 @@ export default function Customers() {
     e.preventDefault();
     setFormError('');
     if (!newClient.client_name.trim()) { setFormError('Please enter the customer name.'); return; }
-    const errs = validateMeasurements(newClient, []);
-    if (Object.keys(errs).length) {
-      setFormError(QUICK_FIELDS.filter((k) => errs[k]).map((k) => `${FIELD_LABEL[k]}: ${errs[k]}`).join(' '));
-      return;
-    }
     try {
       await measurementsAPI.save({
         client_name: newClient.client_name.trim(),
         ...(newClient.email.trim() ? { email: newClient.email.trim() } : {}),
         ...(newClient.notes.trim() ? { notes: newClient.notes.trim() } : {}),
-        ...buildPayload(newClient, {}, 'cm'),
-        fabric_type: newClient.fabric_type,
       });
       setShowAdd(false);
       setNewClient(EMPTY);
@@ -202,16 +191,6 @@ export default function Customers() {
                 <input id="new-client-email" type="email" className="form-input" placeholder="e.g. amara@example.com" value={newClient.email}
                        onChange={(e) => setNewClient({ ...newClient, email: e.target.value })} />
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                {QUICK_FIELDS.map((key) => (
-                  <div className="form-field" key={key}>
-                    <label className="form-label" htmlFor={`new-client-${key}`}>{FIELD_LABEL[key]} (cm)</label>
-                    <input id={`new-client-${key}`} type="number" step="any" inputMode="decimal" className="form-input"
-                           value={newClient[key]} onChange={(e) => setNewClient({ ...newClient, [key]: e.target.value })} />
-                  </div>
-                ))}
-              </div>
-              <p className="form-hint">The other drafting measurements are added later in the pattern wizard or on the Measurements page.</p>
               <div className="form-field">
                 <label className="form-label" htmlFor="new-client-notes">Notes & Fit Preferences (optional)</label>
                 <textarea id="new-client-notes" className="form-input" placeholder="e.g. Prefers a looser fit." value={newClient.notes}
