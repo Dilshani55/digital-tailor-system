@@ -62,7 +62,8 @@ test('register -> upload -> AI review -> measurements -> fabric -> pattern -> es
   await page.getByRole('button', { name: 'Upload and analyse' }).click();
   await expect(page.getByRole('heading', { name: 'Review the AI suggestions' })).toBeVisible({ timeout: 180_000 });
   await expect(page.getByTestId('head-card-garment_type')).toBeVisible();
-  await expect(page.getByTestId('confidence-tag-garment_type')).toContainText('%');
+  await expect(page.getByTestId('confidence-tag-garment_type')).toHaveCount(0);
+  await expect(page.getByTestId('prediction-review-container')).not.toContainText('%');
   await shot('02-ai-review');
   mark('AI analysis returned 4 head predictions with confidences');
 
@@ -75,7 +76,7 @@ test('register -> upload -> AI review -> measurements -> fabric -> pattern -> es
   for (const [head, value] of Object.entries({ garment_type: 'blouse', neckline_type: 'round-neck', sleeve_length: 'short-sleeve', sleeve_style: 'regular-sleeve' })) {
     await expect(page.getByTestId(`select-${head}`)).toHaveValue(value);
   }
-  await expect(page.getByTestId('confidence-tag-garment_type')).toContainText('%');
+  await expect(page.getByTestId('prediction-review-container')).not.toContainText('%');
   await page.getByTestId('confirm-btn').click();
   await expect(page.getByTestId('confirmed-badge')).toBeVisible();
   await page.getByRole('button', { name: 'Continue to measurements' }).click();

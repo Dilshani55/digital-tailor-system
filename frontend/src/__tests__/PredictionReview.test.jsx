@@ -64,11 +64,12 @@ describe('PredictionReview Component', () => {
     expect(screen.getByTestId('head-card-sleeve_style')).toBeInTheDocument();
   });
 
-  it('displays confidence percentages and low-confidence warning', () => {
+  it('hides model percentages while retaining low-confidence guidance and prediction labels', () => {
     render(<PredictionReview garmentAttributes={mockGarmentAttributes} />);
 
-    expect(screen.getByTestId('confidence-tag-garment_type')).toHaveTextContent('Model score 95.6%');
-    expect(screen.getByTestId('confidence-tag-sleeve_length')).toHaveTextContent('Model score 38.5% · uncertain');
+    expect(screen.queryByTestId('confidence-tag-garment_type')).toBeNull();
+    expect(screen.getByTestId('prediction-review-container').textContent).not.toMatch(/%|Model score/);
+    expect(screen.getByTestId('top-3-garment_type')).toHaveTextContent('AI top 3: blouse, t-shirt');
     expect(screen.getByTestId('low-confidence-alert')).toBeInTheDocument();
     expect(screen.getByTestId('low-confidence-alert')).toHaveTextContent('Sleeve Length');
     expect(screen.getByTestId('low-confidence-sleeve_length')).toHaveTextContent('Uncertain — please select');
@@ -174,7 +175,7 @@ describe('predictions outside the supported scope (deployed M13 model still pred
     render(<PredictionReview garmentAttributes={make({ [head]: top(label, 0.71) })} />);
     expect(screen.getByTestId('outside-scope-alert').textContent).toContain(MESSAGE);
     expect(screen.getByTestId(`outside-scope-${head}`).textContent).toContain(label);
-    expect(screen.getByTestId(`outside-scope-${head}`).textContent).toContain('71%');   // genuine confidence still shown
+    expect(screen.getByTestId(`outside-scope-${head}`).textContent).not.toContain('%');
     expect(screen.getByTestId(`select-${head}`).value).toBe('');                         // nothing pre-selected
     expect(screen.getByTestId('confirm-btn').disabled).toBe(true);                       // manual choice required
     expect(screen.getByTestId(`top-3-${head}`).textContent).toContain(label);            // raw prediction still visible
@@ -219,7 +220,7 @@ describe('uncertain predictions and honest score wording', () => {
     const note = screen.getByTestId('low-confidence-neckline_type').textContent;
     expect(note).toMatch(/Uncertain — please select/);
     expect(note).toMatch(/V-Neck/);
-    expect(note).toMatch(/41\.0%/);
+    expect(note).not.toContain('%');
     expect(screen.getByTestId('confirm-btn').disabled).toBe(true);
     expect(screen.getByTestId('select-garment_type').value).toBe('blouse');         // certain heads still pre-selected
   });
@@ -234,13 +235,15 @@ describe('uncertain predictions and honest score wording', () => {
     expect(screen.getByTestId('low-confidence-sleeve_style').textContent).toMatch(/sleeve could not be found/);
   });
 
-  it('every head shows its own model score; a high score is not called "confident" or proof', () => {
+  it('keeps all feature choices visible without score badges or percentages', () => {
     render(<PredictionReview garmentAttributes={make()} />);
     ['garment_type', 'neckline_type', 'sleeve_length', 'sleeve_style'].forEach((h) => {
-      expect(screen.getByTestId(`confidence-tag-${h}`).textContent).toMatch(/^Model score \d+(\.\d)?%$/);
+      expect(screen.queryByTestId(`confidence-tag-${h}`)).toBeNull();
+      expect(screen.getByTestId(`select-${h}`)).toBeVisible();
     });
     expect(document.body.textContent).not.toMatch(/High confidence|Confident|Verified/);
-    expect(document.body.textContent).toMatch(/not proof/);
+    expect(document.body.textContent).not.toMatch(/%|Model score/);
+    expect(document.body.textContent).toMatch(/check every feature/);
   });
 
   it('the user can correct an uncertain head and then confirm', () => {

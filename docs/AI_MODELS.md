@@ -28,8 +28,8 @@ All weights are PyTorch `.pt` files (TensorFlow / Keras is not used).
 **When is a suggestion filled in automatically?** Only when the model's score is at or above its threshold in
 `backend/model/thresholds.json`. The threshold is the lowest score at which the answers on the **validation** photos
 are at least 90 % correct while at least 20 % of photos are still answered; it is never chosen on test photos. A
-model for which no such score exists has no threshold and its feature is always shown as "please select" (with the
-model's guess and score next to it).
+model for which no such score exists has no threshold and its feature is always shown as "please select" with the
+model's guess next to it. Numeric model scores are retained in the API/stored research evidence and are not displayed in the design review UI.
 
 ## 2. Data
 

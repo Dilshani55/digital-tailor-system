@@ -108,7 +108,7 @@ export default function PredictionReview({
     <div data-testid="prediction-review-container">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
         <p className="form-hint" style={{ margin: 0 }}>
-          {hasPredictions ? 'The AI suggestion is a starting point — check every feature and correct anything that is wrong. A model score is not proof that a prediction is correct.'
+          {hasPredictions ? 'The AI suggestion is a starting point — check every feature and correct anything that is wrong.'
             : 'Choose each feature of the garment you want to make.'}
         </p>
         {!isEditing && confirmedAttributes && (
@@ -133,7 +133,7 @@ export default function PredictionReview({
             {outsideScopeHeads.map((h) => (
               <li key={h} data-testid={`outside-scope-${h}`}>
                 {HEAD_TITLES[h]}: detected “{predictions[h].label}”
-                {predictions[h].confidence != null ? ` (${(predictions[h].confidence * 100).toFixed(0)}%)` : ''} — please choose from the list.
+                {' '}— please choose from the list.
               </li>
             ))}
           </ul>
@@ -162,7 +162,6 @@ export default function PredictionReview({
           const title = HEAD_TITLES[headKey];
           const headPred = predictions[headKey];
           const options = ACTIVE_TAXONOMY_OPTIONS[headKey] || [];
-          const rawConfPct = headPred?.confidence != null ? (headPred.confidence * 100).toFixed(1) : null;
           const isLowConf = isUncertain(headKey);
           const Icon = HEAD_ICONS[headKey];
           const opt = supportOf(headKey, selections[headKey]);
@@ -172,18 +171,13 @@ export default function PredictionReview({
               <div>
                 <div className="head-card-top">
                   <label htmlFor={`sel-${headKey}`}>{title}</label>
-                  {rawConfPct !== null && (
-                    <span className={`pill ${isLowConf ? 'warn' : 'good'}`} data-testid={`confidence-tag-${headKey}`}>
-                      Model score {rawConfPct}%{isLowConf ? ' · uncertain' : ''}
-                    </span>
-                  )}
                 </div>
                 {isLowConf && isEditing && (
                   <div role="note" className="head-note warn" data-testid={`low-confidence-${headKey}`} style={{ marginTop: 0, marginBottom: 6 }}>
                     Uncertain — please select this feature yourself.
                     {headPred?.part_found === false
                       ? ` The ${headKey === 'neckline_type' ? 'neck area' : 'sleeve'} could not be found clearly in the photo.` : ''}
-                    {headPred?.label ? ` AI best guess: “${labelOf(headKey, headPred.label)}” (${rawConfPct}%).` : ''}
+                    {headPred?.label ? ` AI best guess: “${labelOf(headKey, headPred.label)}”.` : ''}
                   </div>
                 )}
                 {isEditing && draftBlock(headKey) && (
@@ -213,7 +207,7 @@ export default function PredictionReview({
                 </select>
                 {headPred?.top_3 && headPred.top_3.length > 0 && isEditing && (
                   <div className="head-note info" data-testid={`top-3-${headKey}`}>
-                    AI top 3: {headPred.top_3.map((t) => `${t.class_name} (${(t.confidence * 100).toFixed(0)}%)`).join(', ')}
+                    AI top 3: {headPred.top_3.map((t) => t.class_name).join(', ')}
                   </div>
                 )}
                 {opt && (opt.support === UNSUPPORTED || opt.support === APPROXIMATED) && opt.note && (

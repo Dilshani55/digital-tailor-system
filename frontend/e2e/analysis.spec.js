@@ -1,4 +1,4 @@
-// Real upload + real analysis by the four garment models: every feature shows its own model score, a feature whose
+// Real upload + real analysis by the four garment models: scores stay in the stored evidence; a feature whose
 // score is below its model's threshold is "uncertain - please select" (never pre-selected), the user corrects and
 // confirms, and the genuine prediction is stored next to the user's choice.
 import { test, expect } from '@playwright/test';
@@ -9,6 +9,7 @@ const IMG = (n) => path.resolve('../backend/training/data/eval_real_product_set/
 const HEADS = ['garment_type', 'neckline_type', 'sleeve_length', 'sleeve_style'];
 
 async function signIn(page, request) {
+  page.on('dialog', (dialog) => dialog.accept());
   const email = `e2e_ai_${Date.now()}_${Math.floor(Math.random() * 1e6)}@example.test`;
   const res = await request.post(`${API}/auth/register`, { data: { full_name: 'Analysis Tester', email, password: 'E2e-Passw0rd!' } });
   expect(res.ok()).toBeTruthy();
@@ -22,6 +23,7 @@ async function signIn(page, request) {
 
 async function analyse(page, file) {
   await page.goto('/upload');
+  await page.getByRole('button', { name: 'Start new pattern' }).click();
   await page.getByLabel('Customer name').fill('E2E Customer');
   await page.getByRole('button', { name: 'Continue to upload' }).click();
   await page.getByTestId('image-input').setInputFiles(IMG(file));
@@ -29,7 +31,7 @@ async function analyse(page, file) {
   await expect(page.getByRole('heading', { name: 'Review the AI suggestions' })).toBeVisible({ timeout: 180_000 });
 }
 
-test('four models: separate scores, uncertain features not pre-selected, manual confirmation, evidence stored', async ({ page, request }) => {
+test('four models: scores hidden in UI, uncertain features not pre-selected, manual confirmation, evidence stored', async ({ page, request }) => {
   const token = await signIn(page, request);
   const auth = { Authorization: `Bearer ${token}` };
 
@@ -43,30 +45,31 @@ test('four models: separate scores, uncertain features not pre-selected, manual 
 
   await analyse(page, 'blouse_19.jpg');
 
-  // every feature shows its OWN model score, worded as a score (not as proof)
+  // Predictions remain visible, while model scores are kept out of the user interface.
   for (const h of HEADS) {
-    await expect(page.getByTestId(`confidence-tag-${h}`)).toHaveText(/^Model score \d+(\.\d)?%( · uncertain)?$/);
-    await expect(page.getByTestId(`top-3-${h}`)).toContainText('%');
+    await expect(page.getByTestId(`confidence-tag-${h}`)).toHaveCount(0);
+    await expect(page.getByTestId(`top-3-${h}`)).toContainText('AI top 3:');
   }
+  await expect(page.getByTestId('prediction-review-container')).not.toContainText(/%|Model score/);
   await expect(page.locator('body')).not.toContainText(/High confidence/);
-  await expect(page.locator('body')).toContainText(/not proof/);
+  await expect(page.locator('body')).toContainText(/check every feature/);
   await expect(page.getByTestId('outside-scope-alert')).toHaveCount(0);            // the models only answer selectable classes
   await expect(page.locator('body')).not.toContainText(/crop.?top/i);
   await expect(page.getByTestId('select-garment_type').locator('option')).toHaveCount(3);     // placeholder + blouse + t-shirt
 
   // a feature is pre-selected only when its model is allowed to answer AND its score is high enough
   for (const h of HEADS) {
-    const tag = await page.getByTestId(`confidence-tag-${h}`).innerText();
+    const uncertain = await page.getByTestId(`low-confidence-${h}`).count() > 0;
     const value = await page.getByTestId(`select-${h}`).inputValue();
     const blocked = await page.getByTestId(`not-draftable-${h}`).count();
-    if (/uncertain/.test(tag)) {
+    if (uncertain) {
       expect(value, `${h} is uncertain but pre-selected`).toBe('');
       await expect(page.getByTestId(`low-confidence-${h}`)).toContainText('Uncertain — please select');
     } else if (!blocked) {
       expect(value, `${h} is confident but not pre-selected`).not.toBe('');
     }
     if (!status.models[h].answers_automatically && !(h === 'sleeve_style' && status.models.sleeve_length.answers_automatically)) {
-      expect(tag, `${h} has no threshold and must always be uncertain`).toMatch(/uncertain/);
+      expect(uncertain, `${h} has no threshold and must always be uncertain`).toBe(true);
     }
   }
 
@@ -101,9 +104,9 @@ test('across real photos a feature is pre-selected exactly when its model is con
   for (const f of files) {
     await analyse(page, f);
     for (const h of HEADS) {
-      const tag = await page.getByTestId(`confidence-tag-${h}`).innerText();
+      const uncertain = await page.getByTestId(`low-confidence-${h}`).count() > 0;
       const value = await page.getByTestId(`select-${h}`).inputValue();
-      if (/uncertain/.test(tag)) {
+      if (uncertain) {
         expect(value, `${f} ${h}`).toBe('');                                          // never forced
         seen.uncertain += 1;
       } else if (await page.getByTestId(`not-draftable-${h}`).count()) {

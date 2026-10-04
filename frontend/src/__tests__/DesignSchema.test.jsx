@@ -74,9 +74,11 @@ describe('PredictionReview keeps user corrections', () => {
     });
   });
 
-  it('still shows the real model confidence next to each head', () => {
+  it('shows the AI suggestion labels without displaying model percentages', () => {
     render(<PredictionReview garmentAttributes={garmentAttributes} />);
-    expect(screen.getByTestId('confidence-tag-neckline_type').textContent).toContain('50.3%');
+    expect(screen.queryByTestId('confidence-tag-neckline_type')).toBeNull();
+    expect(screen.getByTestId('top-3-neckline_type')).toHaveTextContent('v-neck');
+    expect(screen.getByTestId('prediction-review-container').textContent).not.toContain('%');
   });
 
   it('shows a style the engine cannot draft, does not pre-select it, and disables it', () => {
