@@ -20,6 +20,10 @@ vi.mock('../services/api', () => ({
   researchAPI: { submitFeedback: vi.fn() },
 }));
 vi.mock('../components/FabricRecommendation', () => ({ default: () => <div data-testid="fabric-stub" /> }));
+vi.mock('../utils/wizardDraft', () => ({
+  wizardOwner: () => 'measurement-test-user', readWizardDraft: async () => null,
+  saveWizardDraft: async () => {}, clearWizardDraft: async () => {},
+}));
 
 // what a short-sleeved woven blouse needs (the optional design values are left empty = calculated)
 const VALID = {
@@ -170,8 +174,9 @@ describe('measurementSchema utils', () => {
 });
 
 // ── the wizard's measurement step ─────────────────────────────────────────────
-function openMeasurementStep(design = D.shortBlouse) {
+async function openMeasurementStep(design = D.shortBlouse) {
   const view = render(<MemoryRouter><Upload /></MemoryRouter>);
+  await screen.findByLabelText('Customer name');
   fireEvent.change(screen.getByLabelText('Customer name'), { target: { value: 'Test Customer' } });
   fireEvent.click(screen.getByText('Continue to upload'));
   fireEvent.click(screen.getByText('Choose the design manually'));
@@ -199,8 +204,8 @@ describe('Measurement form in the Upload wizard', () => {
     measurementsAPI.save.mockResolvedValue({ data: { measurement_id: 'm1' } });
   });
 
-  it('shows only the measurements the confirmed design needs', () => {
-    openMeasurementStep(D.sleevelessBlouse);
+  it('shows only the measurements the confirmed design needs', async () => {
+    await openMeasurementStep(D.sleevelessBlouse);
     expect(screen.queryByTestId('design-selector')).toBeNull();      // the design really was confirmed
     // what the design needs, plus its optional design values (and the bust-point distance: it has a bust dart)
     expect(new Set(shown())).toEqual(new Set([...BODICE, ...BELOW_WAIST, 'shoulder_to_bust_cm', 'bust_point_distance_cm', ...OPTIONAL]));
@@ -212,22 +217,22 @@ describe('Measurement form in the Upload wizard', () => {
     expect(document.body.textContent).not.toMatch(/All 13 measurements/);
   });
 
-  it('a sleeve asks for its length, the upper arm and the arm at the sleeve end; a knit T-shirt has no bust-point fields', () => {
-    const v = openMeasurementStep(D.shortBlouse);
+  it('a sleeve asks for its length, the upper arm and the arm at the sleeve end; a knit T-shirt has no bust-point fields', async () => {
+    const v = await openMeasurementStep(D.shortBlouse);
     expect(shown()).toEqual(expect.arrayContaining(['bicep_cm', 'sleeve_cm', 'sleeve_end_cm', 'hip_cm', 'shoulder_to_bust_cm']));
     ['wrist_cm', 'height_cm', 'neck_cm', 'shoulder_cm', 'across_back_cm'].forEach((k) => expect(input(k)).toBeNull());
     expect(screen.getByLabelText(/^Sleeve length/)).toBeTruthy();
     expect(screen.getByLabelText(/^Upper arm around/)).toBeTruthy();
     expect(document.body.textContent).not.toMatch(/full arm/i);
     v.unmount();
-    openMeasurementStep(D.longTshirt);
+    await openMeasurementStep(D.longTshirt);
     expect(input('sleeve_end_cm')).toBeTruthy();
     expect(input('shoulder_to_bust_cm')).toBeNull();
     expect(input('bust_point_distance_cm')).toBeNull();
   });
 
-  it('shows the calculated value of an empty design field and hides it once a value is typed', () => {
-    openMeasurementStep();
+  it('shows the calculated value of an empty design field and hides it once a value is typed', async () => {
+    await openMeasurementStep();
     expect(screen.queryByTestId('calculated-armhole_depth_cm')).toBeNull();          // nothing to calculate from yet
     fireEvent.change(input('bust_cm'), { target: { value: '86.36' } });              // 34 in
     expect(screen.getByTestId('calculated-armhole_depth_cm').textContent).toMatch(/Calculated value: 19\.1 cm/);   // 7.5 in
@@ -240,7 +245,7 @@ describe('Measurement form in the Upload wizard', () => {
   });
 
   it('warns about an unusual value beside its field but still saves it', async () => {
-    openMeasurementStep();
+    await openMeasurementStep();
     fillAll({ ...VALID, bust_cm: 250 });
     expect(screen.getByTestId('warning-bust_cm').textContent).toMatch(/Please check/);
     save();
@@ -248,13 +253,13 @@ describe('Measurement form in the Upload wizard', () => {
     expect(measurementsAPI.save.mock.calls[0][0].bust_cm).toBe(250);                 // saved exactly as entered
   });
 
-  it('starts empty: no invented default measurements', () => {
-    openMeasurementStep();
+  it('starts empty: no invented default measurements', async () => {
+    await openMeasurementStep();
     shown().forEach((k) => expect(input(k).value).toBe(''));
   });
 
-  it('shows required errors for the design fields and does not call the API', () => {
-    openMeasurementStep();
+  it('shows required errors for the design fields and does not call the API', async () => {
+    await openMeasurementStep();
     save();
     expect(screen.getByTestId('error-bust_cm').textContent).toMatch(/required/);
     expect(screen.getByTestId('error-sleeve_cm').textContent).toMatch(/required/);
@@ -263,8 +268,8 @@ describe('Measurement form in the Upload wizard', () => {
     expect(measurementsAPI.save).not.toHaveBeenCalled();
   });
 
-  it('rejects zero, negative and non-numbers but not unusual sizes', () => {
-    openMeasurementStep();
+  it('rejects zero, negative and non-numbers but not unusual sizes', async () => {
+    await openMeasurementStep();
     fillAll({ ...VALID, bust_cm: 0, waist_cm: -4, bicep_cm: 'abc', garment_length_cm: 180 });
     save();
     expect(screen.getByTestId('error-bust_cm').textContent).toMatch(/greater than 0/);
@@ -273,8 +278,8 @@ describe('Measurement form in the Upload wizard', () => {
     expect(measurementsAPI.save).not.toHaveBeenCalled();
   });
 
-  it('clears a field error as the user edits that field', () => {
-    openMeasurementStep();
+  it('clears a field error as the user edits that field', async () => {
+    await openMeasurementStep();
     save();
     expect(screen.getByTestId('error-bust_cm')).toBeTruthy();
     fireEvent.change(input('bust_cm'), { target: { value: '88' } });
@@ -282,7 +287,7 @@ describe('Measurement form in the Upload wizard', () => {
   });
 
   it('saves the design fields exactly as typed (decimals kept), with their units and the design', async () => {
-    openMeasurementStep();
+    await openMeasurementStep();
     fillAll({ ...VALID, bust_cm: '88.75', sleeve_cm: '24.5' });
     save();
     await waitFor(() => expect(measurementsAPI.save).toHaveBeenCalledTimes(1));
@@ -297,7 +302,7 @@ describe('Measurement form in the Upload wizard', () => {
   });
 
   it('switching units changes only the display: no double conversion, values saved with the unit they were typed in', async () => {
-    openMeasurementStep();
+    await openMeasurementStep();
     fillAll(VALID);
     fireEvent.change(input('bust_cm'), { target: { value: '88.9' } });
     fireEvent.click(screen.getByTestId('unit-in'));
@@ -317,8 +322,8 @@ describe('Measurement form in the Upload wizard', () => {
     expect(payload.units.shoulder_width_cm).toBe('in');             // the server converts it once, exactly
   });
 
-  it('shows one guide instruction next to the active field and moves the sleeve line with the entered length', () => {
-    openMeasurementStep();
+  it('shows one guide instruction next to the active field and moves the sleeve line with the entered length', async () => {
+    await openMeasurementStep();
     fireEvent.focus(input('sleeve_cm'));
     const guide = screen.getByTestId('guide-sleeve_cm').textContent;
     expect(guide).toMatch(/How to measure/);
@@ -339,8 +344,8 @@ describe('Measurement form in the Upload wizard', () => {
     expect(screen.getByRole('complementary', { name: 'Measurement guide' })).toBeTruthy();
   });
 
-  it('the body guide has a front and a back view and highlights the measurement being entered', () => {
-    openMeasurementStep();
+  it('the body guide has a front and a back view and highlights the measurement being entered', async () => {
+    await openMeasurementStep();
     expect(screen.getByTestId('measure-view-front')).toBeTruthy();
     expect(screen.getByTestId('measure-view-back')).toBeTruthy();
     fireEvent.focus(input('bust_cm'));
@@ -362,7 +367,7 @@ describe('Measurement form in the Upload wizard', () => {
     measurementsAPI.save.mockRejectedValue({ response: { status: 400, data: {
       error: 'Upper arm around: required', error_code: 'MEASUREMENT_VALIDATION_FAILED',
       field_errors: { bicep_cm: [{ code: 'REQUIRED', message: 'Upper arm around is required for this design.' }] } } } });
-    openMeasurementStep();
+    await openMeasurementStep();
     fillAll(VALID);
     save();
     const msg = await screen.findByTestId('error-bicep_cm');
@@ -371,15 +376,15 @@ describe('Measurement form in the Upload wizard', () => {
 
   it('shows a general server error without pretending it is a field error', async () => {
     measurementsAPI.save.mockRejectedValue({ response: { status: 500, data: { error: 'Database down' } } });
-    openMeasurementStep();
+    await openMeasurementStep();
     fillAll(VALID);
     save();
     await screen.findByText('Database down');
     expect(screen.queryByTestId('error-bust_cm')).toBeNull();
   });
 
-  it('with no confirmed design the step shows a design selector and every measurement; saving explains, nothing is sent', () => {
-    openMeasurementStep({ ...D.shortBlouse, neckline_type: 'halter-neck' });   // not selectable -> never confirmed
+  it('with no confirmed design the step shows a design selector and every measurement; saving explains, nothing is sent', async () => {
+    await openMeasurementStep({ ...D.shortBlouse, neckline_type: 'halter-neck' });   // not selectable -> never confirmed
     expect(screen.getByTestId('design-selector')).toBeTruthy();
     expect(shown()).toEqual(FIELD_KEYS);                              // the same fields as the Measurements page: a new customer can be measured completely
     expect(screen.getByTestId('base-fields-note').textContent).toMatch(/All measurements can be entered now\. The first 5/);
@@ -398,8 +403,9 @@ describe('Measurement form in the Upload wizard', () => {
     expect(input('bust_cm').value).toBe('88.5');                      // the typed value is kept
   });
 
-  it('confirming the design inside the measurement step adds the fields it needs and keeps typed values', () => {
+  it('confirming the design inside the measurement step adds the fields it needs and keeps typed values', async () => {
     render(<MemoryRouter><Upload /></MemoryRouter>);
+    await screen.findByLabelText('Customer name');
     fireEvent.change(screen.getByLabelText('Customer name'), { target: { value: 'Test Customer' } });
     fireEvent.click(screen.getByRole('button', { name: /^Step 4: Measurements/ }));
     fireEvent.change(input('bust_cm'), { target: { value: '34.5' } });
@@ -420,7 +426,7 @@ describe('Measurement form in the Upload wizard', () => {
       shoulder_width_cm: 14.25 * 2.54, original_values: { shoulder_width_cm: { value: 14.25, unit: 'in' } } };
     measurementsAPI.getAll.mockResolvedValue({ data: { measurements: [saved] } });
     measurementsAPI.update.mockResolvedValue({ data: { measurement_id: 'm7', warnings: [] } });
-    openMeasurementStep();
+    await openMeasurementStep();
     await waitFor(() => expect(document.querySelector('#saved-client-meas option[value="m7"]')).toBeTruthy());
     shown().forEach((k) => expect(input(k).value).toBe(''));           // nothing until a customer is chosen
     fireEvent.change(document.querySelector('#saved-client-meas'), { target: { value: 'm7' } });
@@ -445,7 +451,7 @@ describe('Measurement form in the Upload wizard', () => {
   });
 
   it('uses text inputs so nothing typed is dropped, and reports a mistyped value beside its field', async () => {
-    openMeasurementStep();
+    await openMeasurementStep();
     expect(document.querySelectorAll('input[type="number"]').length).toBe(0);
     fillAll(VALID);
     fireEvent.change(input('bust_cm'), { target: { value: '1e2' } });

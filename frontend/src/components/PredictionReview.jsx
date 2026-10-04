@@ -14,6 +14,8 @@ const HEAD_ICONS = { garment_type: Shirt, neckline_type: Circle, sleeve_length: 
 export default function PredictionReview({
   garmentAttributes,
   confirmedAttributes,
+  draft,
+  onDraftChange,
   onConfirm,
   isSubmitting = false,
   error = ''
@@ -41,14 +43,16 @@ export default function PredictionReview({
   const outsideScopeHeads = Object.keys(HEAD_TITLES).filter((h) => predictionOutsideScope(h, predictions?.[h]?.label));
 
   // Initial state derived from confirmed values > selectable predictions > empty strings for manual mode
-  const [selections, setSelections] = useState({
+  const [localSelections, setSelections] = useState({
     garment_type: confirmedAttributes?.garment_type || suggest('garment_type'),
     neckline_type: confirmedAttributes?.neckline_type || suggest('neckline_type'),
     sleeve_length: confirmedAttributes?.sleeve_length || suggest('sleeve_length'),
     sleeve_style: confirmedAttributes?.sleeve_style || suggest('sleeve_style'),
   });
 
-  const [isEditing, setIsEditing] = useState(!confirmedAttributes || Object.keys(confirmedAttributes).length === 0);
+  const [localEditing, setIsEditing] = useState(!confirmedAttributes || Object.keys(confirmedAttributes).length === 0);
+  const selections = draft?.selections || localSelections;
+  const isEditing = draft?.isEditing ?? localEditing;
 
   useEffect(() => {
     if (confirmedAttributes && Object.keys(confirmedAttributes).length > 0) {
@@ -79,7 +83,9 @@ export default function PredictionReview({
   }, [garmentAttributes, confirmedAttributes]);
 
   const handleChange = (head, value) => {
-    setSelections((prev) => ({ ...prev, [head]: value }));
+    const next = { ...selections, [head]: value };
+    setSelections(next);
+    onDraftChange?.({ selections: next, isEditing });
   };
 
   const handleConfirmSubmit = (e) => {
@@ -232,7 +238,10 @@ export default function PredictionReview({
       ) : (
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           <span className="form-hint" style={{ color: 'var(--accent)', fontWeight: 600 }}>✓ Confirmed for fabric recommendation and pattern drafting.</span>
-          <button className="btn btn-outline btn-sm" onClick={() => setIsEditing(true)} data-testid="edit-reconfirm-btn">
+          <button className="btn btn-outline btn-sm" onClick={() => {
+            setIsEditing(true);
+            onDraftChange?.({ selections, isEditing: true });
+          }} data-testid="edit-reconfirm-btn">
             <RefreshCw size={13} /> Edit & Re-confirm
           </button>
         </div>

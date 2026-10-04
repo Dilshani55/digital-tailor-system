@@ -1,5 +1,21 @@
 # Testing
 
+## Wizard refresh checks (4 October 2026)
+
+The wizard now saves a versioned account-specific draft in IndexedDB, including the original photo File. It waits for restoration before writing defaults. The focused frontend run passed **122 tests** across Wizard, MeasurementValidation, PredictionReview, FabricRecommendation, DesignSchema and IntegrityCleanup; lint and production build passed. The reload regressions cover earlier-step inputs, unconfirmed review edits, entered units, saved IDs, generated results, stale-result detection, explicit customer selection, failed storage and draft reset. Existing measurement tests now wait for draft restoration before interacting.
+
+Two real-browser checks passed on the actual React/Flask/MongoDB stack at isolated test ports 3059/5159: `wizard-draft.spec.js` checks refresh, account switching, browser-local draft isolation, Start new pattern and Finish; the full AI-image wizard in `wizard.spec.js` now refreshes through photo selection, AI review, unsaved measurements, fabric ranking/selection, pattern, estimate, PDF and feedback. Its downloaded report passed digital PDF verification (10 A4 pages). These are software regressions, not collected research participant responses. The complete frontend/backend/browser suites were not rerun for this change.
+
+```powershell
+# From frontend
+npm.cmd run test -- src/__tests__/Wizard.test.jsx src/__tests__/MeasurementValidation.test.jsx src/__tests__/PredictionReview.test.jsx src/__tests__/FabricRecommendation.test.jsx src/__tests__/DesignSchema.test.jsx src/__tests__/IntegrityCleanup.test.jsx
+# With current frontend/backend running; override the two URLs for your test servers
+$env:E2E_BASE_URL = 'http://127.0.0.1:3059'
+$env:E2E_API_URL = 'http://127.0.0.1:5159/api'
+npm.cmd run e2e -- e2e/wizard-draft.spec.js
+npm.cmd run e2e -- e2e/wizard.spec.js --grep 'register -> upload'
+```
+
 ## Fabric algorithm checks (4 October 2026)
 
 The fabric workflow now uses published sample tables and live user goals/pairwise answers with crisp AHP/TOPSIS. The focused backend run passed **56 tests**, covering arithmetic, source-table anchors, user-input validation, catalogue integrity, saved pattern evidence and generation/ownership regressions. Fabric, wizard and library UI tests passed **44 tests**. Lint and production build passed; the `--published` CLI validated all 18 records. Synthetic fixtures remain test inputs and are not empirical validation. An earlier broader 53-test backend run additionally covered standard-width estimates and the design matrix.

@@ -5,6 +5,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import Upload from '../pages/Upload';
 import { imagesAPI, measurementsAPI, patternsAPI, exportAPI, researchAPI } from '../services/api';
 import { friendlyError, imageProblem } from '../utils/friendlyError';
+import { readWizardDraft, saveWizardDraft, clearWizardDraft } from '../utils/wizardDraft';
+
+vi.mock('../utils/wizardDraft', () => ({
+  wizardOwner: () => 'test-user', readWizardDraft: vi.fn(), saveWizardDraft: vi.fn(), clearWizardDraft: vi.fn(),
+}));
 
 vi.mock('../services/api', () => ({
   imagesAPI: { upload: vi.fn(), analyse: vi.fn(), confirmAttributes: vi.fn(), modelStatus: vi.fn() },
@@ -54,6 +59,9 @@ const ESTIMATES = (selectedCm = 114.3) => ({ data: {
 
 function stubAll() {
   vi.clearAllMocks();
+  readWizardDraft.mockResolvedValue(null);
+  saveWizardDraft.mockResolvedValue(undefined);
+  clearWizardDraft.mockResolvedValue(undefined);
   measurementsAPI.getAll.mockResolvedValue({ data: { measurements: [] } });
   imagesAPI.upload.mockResolvedValue({ data: { image_id: 'i1' } });
   imagesAPI.modelStatus.mockResolvedValue({ data: { available: true } });
@@ -88,8 +96,21 @@ const stepButton = (label) => screen.getByText(label, { selector: '.wstep-lbl' }
 
 const heading = (name) => screen.findByRole('heading', { name });
 
-function startWizard({ name = 'Test Customer', contact = '', project = '' } = {}) {
+async function reloadWizard() {
+  const saved = saveWizardDraft.mock.calls.at(-1)[1];
+  cleanup();
+  readWizardDraft.mockResolvedValue(saved);
   render(<MemoryRouter><Upload /></MemoryRouter>);
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Start new pattern' })).toBeVisible());
+}
+
+async function renderWizard() {
+  render(<MemoryRouter><Upload /></MemoryRouter>);
+  await heading('Customer and design');
+}
+
+async function startWizard({ name = 'Test Customer', contact = '', project = '' } = {}) {
+  await renderWizard();
   fireEvent.change(screen.getByLabelText('Customer name'), { target: { value: name } });
   if (contact) fireEvent.change(screen.getByLabelText(/Contact \/ reference/), { target: { value: contact } });
   if (project) fireEvent.change(screen.getByLabelText(/Design \/ project name/), { target: { value: project } });
@@ -97,7 +118,7 @@ function startWizard({ name = 'Test Customer', contact = '', project = '' } = {}
 }
 
 async function reachStep4(opts) {
-  startWizard(opts);
+  await startWizard(opts);
   const file = new File(['x'], 'top.jpg', { type: 'image/jpeg' });
   fireEvent.change(screen.getByTestId('image-input'), { target: { files: [file] } });
   fireEvent.click(screen.getByText('Upload and analyse'));
@@ -112,6 +133,161 @@ async function reachStep4(opts) {
 
 describe('creation wizard — full workflow', () => {
   beforeEach(stubAll);
+
+  it('restores the fabric step and earlier customer, confirmed design, measurements and selected sample after reload', async () => {
+    await reachStep4({ contact: 'amara@example.com', project: 'Refresh blouse' });
+    fireEvent.click(screen.getByText('pick-published-sample'));
+    fireEvent.click(screen.getByTestId('fit-loose'));
+    await reloadWizard();
+    await heading('Choose fabric and fit');
+    expect(screen.queryByText('Fabric recommendations pending')).toBeNull();
+    expect(screen.getByTestId('fit-loose')).toHaveAttribute('aria-pressed', 'true');
+    expect(stepButton('AI review')).toHaveAttribute('data-status', 'done');
+    expect(stepButton('Measurements')).toHaveAttribute('data-status', 'done');
+    fireEvent.click(stepButton('Customer & design'));
+    expect(screen.getByLabelText('Customer name')).toHaveValue('Test Customer');
+    expect(screen.getByLabelText(/Contact \/ reference/)).toHaveValue('amara@example.com');
+    expect(screen.getByLabelText(/Design \/ project name/)).toHaveValue('Refresh blouse');
+    fireEvent.click(stepButton('AI review'));
+    expect(screen.getByTestId('confirmed-badge')).toBeVisible();
+    expect(screen.getByTestId('select-garment_type')).toHaveValue('blouse');
+    expect(screen.getByRole('img', { name: 'Uploaded garment' })).toBeVisible();
+    fireEvent.click(stepButton('Measurements'));
+    expect(document.querySelector('#meas-bust_cm')).toHaveValue('88');
+    expect(document.querySelector('#meas-sleeve_cm')).toHaveValue('24');
+    fireEvent.click(stepButton('Fabric & fit'));
+    fireEvent.click(screen.getByText('Confirm and generate pattern'));
+    await heading('Pattern preview');
+    expect(patternsAPI.generate).toHaveBeenLastCalledWith(expect.objectContaining({
+      image_id: 'i1', measurement_id: 'm1', fabric_id: 'alam-2013-f06',
+      confirmed_attributes: CONFIRMED, fabric_preferences: expect.objectContaining({ study_id: 'alam-ghosh-2013' }),
+    }));
+    expect(imagesAPI.upload).toHaveBeenCalledTimes(1);
+    expect(imagesAPI.analyse).toHaveBeenCalledTimes(1);
+    expect(measurementsAPI.save).toHaveBeenCalledTimes(1);
+  });
+
+  it('restores unconfirmed design edits and unsaved measurements with their original units', async () => {
+    await startWizard();
+    fireEvent.click(screen.getByText('Choose the design manually'));
+    fireEvent.change(screen.getByTestId('select-garment_type'), { target: { value: 'blouse' } });
+    fireEvent.change(screen.getByTestId('select-neckline_type'), { target: { value: 'v-neck' } });
+    await reloadWizard();
+    await heading('Review the AI suggestions');
+    expect(screen.getByTestId('select-garment_type')).toHaveValue('blouse');
+    expect(screen.getByTestId('select-neckline_type')).toHaveValue('v-neck');
+    expect(screen.getByTestId('confirm-btn')).toBeDisabled();
+    expect(screen.queryByTestId('confirmed-badge')).toBeNull();
+    fireEvent.click(stepButton('Measurements'));
+    fireEvent.click(screen.getByTestId('unit-in'));
+    fireEvent.change(document.querySelector('#meas-bust_cm'), { target: { value: '38.5' } });
+    fireEvent.click(screen.getByTestId('unit-cm'));
+    await reloadWizard();
+    await heading('Body measurements');
+    expect(document.querySelector('#meas-bust_cm')).toHaveValue('97.79');
+    fireEvent.click(screen.getByTestId('unit-in'));
+    expect(document.querySelector('#meas-bust_cm')).toHaveValue('38.5');
+    expect(stepButton('Measurements')).toHaveAttribute('data-status', 'pending');
+    expect(measurementsAPI.save).not.toHaveBeenCalled();
+  });
+
+  it('restores pattern, estimate and PDF results without generating duplicates, and still invalidates changed inputs', async () => {
+    await reachStep4();
+    fireEvent.click(screen.getByText('pick-poplin'));
+    fireEvent.click(screen.getByText('Confirm and generate pattern'));
+    await heading('Pattern preview');
+    await reloadWizard();
+    await heading('Pattern preview');
+    expect(screen.getByTestId('pattern-preview')).toBeVisible();
+    fireEvent.click(screen.getByText('Continue to fabric estimate'));
+    await screen.findByTestId('width-comparison');
+    fireEvent.click(screen.getByTestId('width-60'));
+    await waitFor(() => expect(screen.getByTestId('width-60')).toHaveTextContent('Selected'));
+    await reloadWizard();
+    await heading('Fabric estimate');
+    expect(screen.getByTestId('width-60')).toHaveTextContent('Selected');
+    expect(exportAPI.estimates).toHaveBeenCalledTimes(2);
+    fireEvent.click(screen.getByText('Continue to PDF export'));
+    fireEvent.click(screen.getByTestId('pdf-part-report'));
+    fireEvent.click(screen.getByText('Create printable PDF'));
+    await screen.findByTestId('pdf-ready');
+    await reloadWizard();
+    await screen.findByTestId('pdf-ready');
+    expect(screen.getByTestId('pdf-part-report')).toBeChecked();
+    expect(screen.getByRole('button', { name: 'Download PDF' })).toBeVisible();
+    expect(patternsAPI.generate).toHaveBeenCalledTimes(1);
+    expect(exportAPI.pdf).toHaveBeenCalledTimes(1);
+    fireEvent.click(stepButton('Measurements'));
+    fireEvent.change(document.querySelector('#meas-bust_cm'), { target: { value: '91.5' } });
+    await reloadWizard();
+    expect(stepButton('Pattern preview')).toHaveAttribute('data-status', 'stale');
+    fireEvent.click(stepButton('Download PDF'));
+    expect(screen.queryByTestId('pdf-ready')).toBeNull();
+    expect(screen.getByTestId('step-empty')).toHaveTextContent('out of date');
+  });
+
+  it('waits for restoration before saving, so defaults never overwrite an existing draft', async () => {
+    let restore;
+    readWizardDraft.mockImplementationOnce(() => new Promise((resolve) => { restore = resolve; }));
+    render(<MemoryRouter><Upload /></MemoryRouter>);
+    expect(screen.getByText('Restoring your pattern draft…')).toBeVisible();
+    expect(saveWizardDraft).not.toHaveBeenCalled();
+    restore({ step: 1, meas: { client_name: 'Recovered customer' } });
+    expect(await screen.findByLabelText('Customer name')).toHaveValue('Recovered customer');
+  });
+
+  it('warns when draft storage fails while keeping inputs usable', async () => {
+    saveWizardDraft.mockRejectedValue(new Error('Quota exceeded'));
+    await startWizard({ name: 'Keep my inputs' });
+    expect(await screen.findByRole('alert')).toHaveTextContent('could not save this draft');
+    fireEvent.click(stepButton('Customer & design'));
+    expect(screen.getByLabelText('Customer name')).toHaveValue('Keep my inputs');
+  });
+
+  it('does not overwrite a draft after a restoration failure', async () => {
+    readWizardDraft.mockRejectedValue(new Error('Storage unavailable'));
+    await renderWizard();
+    expect(screen.getByRole('alert')).toHaveTextContent('could not restore');
+    fireEvent.change(screen.getByLabelText('Customer name'), { target: { value: 'Work in memory' } });
+    fireEvent.click(stepButton('Measurements'));
+    expect(saveWizardDraft).not.toHaveBeenCalled();
+    fireEvent.click(stepButton('Customer & design'));
+    expect(screen.getByLabelText('Customer name')).toHaveValue('Work in memory');
+  });
+
+  it('only clears a draft when Start new pattern is confirmed and leaves saved patterns alone', async () => {
+    await reachStep4();
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Start new pattern' }));
+    expect(clearWizardDraft).not.toHaveBeenCalled();
+    expect(screen.getByRole('heading', { name: 'Choose fabric and fit' })).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Start new pattern' }));
+    await heading('Customer and design');
+    expect(clearWizardDraft).toHaveBeenCalledWith('test-user');
+    expect(screen.getByLabelText('Customer name')).toHaveValue('');
+    expect(stepButton('AI review')).toHaveAttribute('data-status', 'pending');
+    expect(stepButton('Measurements')).toHaveAttribute('data-status', 'pending');
+    await reloadWizard();
+    expect(screen.getByLabelText('Customer name')).toHaveValue('');
+    confirm.mockRestore();
+  });
+
+  it('opens an explicitly selected customer in a fresh workflow rather than reviving a different customer draft', async () => {
+    readWizardDraft.mockResolvedValue({ step: 5, meas: { client_name: 'Old draft customer' }, confirmedAttributes: CONFIRMED,
+      isAttributesConfirmed: true, selectedFabricId: 'cotton-poplin', measurementId: 'old-m' });
+    render(<MemoryRouter initialEntries={[{ pathname: '/upload', state: { selectedProfile: {
+      measurement_id: 'new-m', client_name: 'Chosen customer', bust_cm: 90, waist_cm: 72, email: 'chosen@example.test',
+    } } }]}><Upload /></MemoryRouter>);
+    await heading('Customer and design');
+    expect(screen.getByLabelText('Customer name')).toHaveValue('Chosen customer');
+    expect(stepButton('AI review')).toHaveAttribute('data-status', 'pending');
+    await reloadWizard();
+    expect(screen.getByLabelText('Customer name')).toHaveValue('Chosen customer');
+    fireEvent.click(stepButton('Measurements'));
+    fireEvent.change(document.querySelector('#meas-bust_cm'), { target: { value: '92' } });
+    await reloadWizard();
+    expect(document.querySelector('#meas-bust_cm')).toHaveValue('92');
+  });
 
   it('sends the selected source sample and preferences for server recomputation, and clears them for a catalogue choice', async () => {
     await reachStep4();
@@ -192,7 +368,7 @@ describe('creation wizard — full workflow', () => {
   });
 
   it('opens any step at any time and shows that step\'s real controls, with no invented results', async () => {
-    render(<MemoryRouter><Upload /></MemoryRouter>);
+    await renderWizard();
     ['Upload image', 'AI review', 'Measurements', 'Fabric & fit', 'Pattern preview', 'Fabric estimate', 'Download PDF'].forEach((label) => {
       expect(stepButton(label).disabled).toBe(false);
       expect(stepButton(label).getAttribute('aria-label')).toMatch(/\(Pending\)/);
@@ -251,7 +427,7 @@ describe('creation wizard — full workflow', () => {
   });
 
   it('a checklist button takes the user to the step that is still missing', async () => {
-    render(<MemoryRouter><Upload /></MemoryRouter>);
+    await renderWizard();
     fireEvent.click(stepButton('Pattern preview'));
     fireEvent.click(screen.getByText('Go to measurements'));
     await heading('Body measurements');
@@ -262,7 +438,7 @@ describe('creation wizard — full workflow', () => {
   });
 
   it('the design can be chosen in the AI review step without a photo and is used for the pattern', async () => {
-    render(<MemoryRouter><Upload /></MemoryRouter>);
+    await renderWizard();
     fireEvent.change(screen.getByLabelText('Customer name'), { target: { value: 'Test Customer' } });
     fireEvent.click(stepButton('AI review'));
     chooseDesign();
@@ -280,7 +456,7 @@ describe('creation wizard — full workflow', () => {
   });
 
   it('keeps entered data when jumping between steps', async () => {
-    render(<MemoryRouter><Upload /></MemoryRouter>);
+    await renderWizard();
     fireEvent.change(screen.getByLabelText('Customer name'), { target: { value: 'Nadeesha' } });
     fireEvent.click(stepButton('Download PDF'));
     fireEvent.click(stepButton('Customer & design'));
@@ -289,7 +465,7 @@ describe('creation wizard — full workflow', () => {
   });
 
   it('asks for the customer name when the measurements are saved, not when navigating', async () => {
-    render(<MemoryRouter><Upload /></MemoryRouter>);
+    await renderWizard();
     fireEvent.click(screen.getByText('Continue to upload'));
     expect(screen.getByTestId('image-input')).toBeTruthy();                   // navigation is not blocked
     fireEvent.click(screen.getByText('Choose the design manually'));
@@ -334,8 +510,8 @@ describe('creation wizard — full workflow', () => {
     expect(screen.getByText('Regenerate pattern')).toBeTruthy();
   });
 
-  it('rejects a non-image or oversized file with a plain message', () => {
-    startWizard();
+  it('rejects a non-image or oversized file with a plain message', async () => {
+    await startWizard();
     fireEvent.change(screen.getByTestId('image-input'), { target: { files: [new File(['x'], 'a.pdf', { type: 'application/pdf' })] } });
     expect(screen.getByRole('alert').textContent).toMatch(/JPG, PNG or WEBP/);
     expect(imagesAPI.upload).not.toHaveBeenCalled();
@@ -344,7 +520,7 @@ describe('creation wizard — full workflow', () => {
   it('says which part of the photo was analysed and flags a garment that cannot be drafted', async () => {
     const region = (r) => ({ data: { confirmed_attributes: {}, garment_attributes: { predictions: {}, garment_region: r } } });
     imagesAPI.analyse.mockResolvedValueOnce(region({ used: 'garment_crop', supported_garment: true, note: null }));
-    startWizard();
+    await startWizard();
     fireEvent.change(screen.getByTestId('image-input'), { target: { files: [new File(['x'], 'a.jpg', { type: 'image/jpeg' })] } });
     fireEvent.click(screen.getByText('Upload and analyse'));
     expect((await screen.findByTestId('garment-region')).textContent).toMatch(/garment area it found/);
@@ -352,7 +528,7 @@ describe('creation wizard — full workflow', () => {
     cleanup();
     imagesAPI.analyse.mockResolvedValueOnce(region({ used: 'garment_crop', supported_garment: false,
       note: 'This photo looks like a dress. Only blouses, T-shirts and crop tops can be drafted; the suggestions below may not apply.' }));
-    startWizard();
+    await startWizard();
     fireEvent.change(screen.getByTestId('image-input'), { target: { files: [new File(['x'], 'b.jpg', { type: 'image/jpeg' })] } });
     fireEvent.click(screen.getByText('Upload and analyse'));
     const note = await screen.findByTestId('garment-region');
@@ -362,7 +538,7 @@ describe('creation wizard — full workflow', () => {
 
   it('shows a friendly message (no stack trace) when the AI service fails', async () => {
     imagesAPI.analyse.mockRejectedValue({ response: { status: 500, data: { error: 'Traceback (most recent call last): File "C:\\x\\y.py"' } } });
-    startWizard();
+    await startWizard();
     fireEvent.change(screen.getByTestId('image-input'), { target: { files: [new File(['x'], 'a.jpg', { type: 'image/jpeg' })] } });
     fireEvent.click(screen.getByText('Upload and analyse'));
     const alert = await screen.findByRole('alert');
@@ -372,7 +548,7 @@ describe('creation wizard — full workflow', () => {
 
   it('says honestly when the AI model is unavailable and keeps the manual path open', async () => {
     imagesAPI.modelStatus.mockResolvedValue({ data: { available: false } });
-    startWizard();
+    await startWizard();
     await screen.findByTestId('model-unavailable');
     fireEvent.change(screen.getByTestId('image-input'), { target: { files: [new File(['x'], 'a.jpg', { type: 'image/jpeg' })] } });
     expect(screen.getByText('Upload and analyse').disabled).toBe(true);
@@ -384,7 +560,7 @@ describe('creation wizard — full workflow', () => {
 
   it('turns a 503 from the analyse call into the model-unavailable message', async () => {
     imagesAPI.analyse.mockRejectedValue({ response: { status: 503, data: { error_code: 'MODEL_UNAVAILABLE', error: 'x' } } });
-    startWizard();
+    await startWizard();
     fireEvent.change(screen.getByTestId('image-input'), { target: { files: [new File(['x'], 'a.jpg', { type: 'image/jpeg' })] } });
     fireEvent.click(screen.getByText('Upload and analyse'));
     const alert = await screen.findByRole('alert');

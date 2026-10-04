@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   ArrowRight, Calendar, CheckCircle2, CircleDashed, Download, FileText, FolderOpen, Grid3x3, ImageUp, PencilLine, Ruler, Scissors,
@@ -21,6 +21,7 @@ import { formatResult, NOT_CALCULATED } from '../utils/results';
 import { friendlyError, imageProblem } from '../utils/friendlyError';
 import { getPreferences, widthLabel } from '../utils/preferences';
 import { setUnsaved, beforeUnloadHandler } from '../utils/unsavedChanges';
+import { wizardOwner, readWizardDraft, saveWizardDraft, clearWizardDraft } from '../utils/wizardDraft';
 import {
   imagesAPI, measurementsAPI, patternsAPI, exportAPI, researchAPI,
 } from '../services/api';
@@ -100,27 +101,91 @@ const Title = ({ title, help }) => (
 const NavRow = ({ children }) => <div className="wizard-nav">{children}</div>;
 
 export default function Upload() {
+  const owner = wizardOwner();
+  const [draft, setDraft] = useState(null);
+  const [loadedOwner, setLoadedOwner] = useState(null);
+  const [restorationFailed, setRestorationFailed] = useState(false);
+  const [revision, setRevision] = useState(0);
+  const [storageError, setStorageError] = useState('');
+  const navigate = useNavigate();
+  const location = useLocation();
+  const incomingProfile = location.state?.selectedProfile;
+
+  useEffect(() => {
+    let active = true;
+    readWizardDraft(owner).then((saved) => {
+      if (active) { setDraft(incomingProfile ? null : saved); setRestorationFailed(false); setLoadedOwner(owner); }
+    }).catch(() => {
+      if (active) {
+        setStorageError('Your browser could not restore the pattern draft. Keep this page open while you work.');
+        setDraft(null);
+        setRestorationFailed(true);
+        setLoadedOwner(owner);
+      }
+    });
+    return () => { active = false; };
+    // A profile explicitly opened from Customers starts a new workflow, rather than
+    // replacing the inputs of an old draft. The child consumes that route state once.
+  }, [owner]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const persist = useCallback((values) => {
+    if (restorationFailed) return; // Do not overwrite a draft we could not read.
+    saveWizardDraft(owner, values).then(() => setStorageError('')).catch(() => {
+      setStorageError('Your browser could not save this draft. Keep this page open to avoid losing your latest changes.');
+    });
+  }, [owner, restorationFailed]);
+
+  const startNew = async () => {
+    if (!window.confirm('Start a new pattern and clear this draft? Saved patterns stay in the library.')) return;
+    try {
+      await clearWizardDraft(owner);
+      setDraft(null);
+      setRestorationFailed(false);
+      setRevision((value) => value + 1);
+      setStorageError('');
+    } catch {
+      setStorageError('The draft could not be cleared. Please try again.');
+    }
+  };
+
+  const finish = async () => {
+    try {
+      await clearWizardDraft(owner);
+      setUnsaved(false);
+      navigate('/dashboard');
+    } catch {
+      setStorageError('The draft could not be cleared. Please try again. Your saved pattern is in the library.');
+    }
+  };
+
+  if (loadedOwner !== owner) return <LoadingSpinner message="Restoring your pattern draft…" />;
+  return <CreationWizard key={`${owner}:${revision}`} initialDraft={draft || {}} onDraftChange={persist}
+    onStartNew={startNew} onFinish={finish} storageError={storageError} />;
+}
+
+function CreationWizard({ initialDraft: draft, onDraftChange, onStartNew, onFinish, storageError }) {
   const navigate = useNavigate();
   const location = useLocation();
 
   // ── wizard state ──────────────────────────────────────────────────────────
-  const [step, setStep] = useState(S.CUSTOMER);
-  const [started, setStarted] = useState(false);          // the user has begun (drives the unsaved-changes guard)
+  const [step, setStep] = useState(draft.step ?? S.CUSTOMER);
+  const [started, setStarted] = useState(draft.started ?? false); // the user has begun (drives the unsaved-changes guard)
   const [loading, setLoading] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState('');
   const [error, setError] = useState('');
 
   // customer & design
-  const [customerContact, setCustomerContact] = useState('');
-  const [projectName, setProjectName] = useState('');
+  const [customerContact, setCustomerContact] = useState(draft.customerContact ?? '');
+  const [projectName, setProjectName] = useState(draft.projectName ?? '');
 
   // image, AI prediction, confirmation
-  const [imageFile, setImageFile] = useState(null);
-  const [imageId, setImageId] = useState(null);
+  const [imageFile, setImageFile] = useState(draft.imageFile ?? null);
+  const [imageId, setImageId] = useState(draft.imageId ?? null);
   const [imagePreview, setImagePreview] = useState(null);
-  const [garmentAttributes, setGarmentAttributes] = useState(null);
-  const [confirmedAttributes, setConfirmedAttributes] = useState(null);
-  const [isAttributesConfirmed, setIsAttributesConfirmed] = useState(false);
+  const [garmentAttributes, setGarmentAttributes] = useState(draft.garmentAttributes ?? null);
+  const [confirmedAttributes, setConfirmedAttributes] = useState(draft.confirmedAttributes ?? null);
+  const [isAttributesConfirmed, setIsAttributesConfirmed] = useState(draft.isAttributesConfirmed ?? false);
+  const [reviewDraft, setReviewDraft] = useState(draft.reviewDraft ?? null);
   const [confirmLoading, setConfirmLoading] = useState(false);
   const [confirmError, setConfirmError] = useState('');
   // null = unknown (status request failed), true/false = what the server reported
@@ -128,45 +193,66 @@ export default function Upload() {
 
   // measurements
   const [savedProfiles, setSavedProfiles] = useState([]);
-  const [measurementId, setMeasurementId] = useState(null);
-  const [meas, setMeas] = useState({ ...emptyMeas });
-  const [unit, setUnit] = useState(() => getPreferences().unit);
+  const [measurementId, setMeasurementId] = useState(draft.measurementId ?? null);
+  const [meas, setMeas] = useState({ ...emptyMeas, ...draft.meas });
+  const [unit, setUnit] = useState(() => draft.unit ?? getPreferences().unit);
   const [fieldErrors, setFieldErrors] = useState({});
-  const [measUnits, setMeasUnits] = useState({});         // unit each value was typed in (missing = cm)
-  const [savedMeasKey, setSavedMeasKey] = useState(null); // measurement values as last saved for this design
-  const [activeField, setActiveField] = useState('bust_cm');
-  const [manualDesign, setManualDesign] = useState(false);
-  const [measWarnings, setMeasWarnings] = useState([]);   // "please check" notes from the server (never errors)
+  const [measUnits, setMeasUnits] = useState(draft.measUnits ?? {}); // unit each value was typed in (missing = cm)
+  const [savedMeasKey, setSavedMeasKey] = useState(draft.savedMeasKey ?? null); // measurement values as last saved for this design
+  const [activeField, setActiveField] = useState(draft.activeField ?? 'bust_cm');
+  const [manualDesign, setManualDesign] = useState(draft.manualDesign ?? false);
+  const [measWarnings, setMeasWarnings] = useState(draft.measWarnings ?? []); // "please check" notes from the server (never errors)
 
   // fabric & fit
-  const [selectedFabricId, setSelectedFabricId] = useState('');
-  const [selectedFabricName, setSelectedFabricName] = useState('');
-  const [fabricPreferences, setFabricPreferences] = useState(null);
-  const [selectedFabricPreferences, setSelectedFabricPreferences] = useState(null);
+  const [selectedFabricId, setSelectedFabricId] = useState(draft.selectedFabricId ?? '');
+  const [selectedFabricName, setSelectedFabricName] = useState(draft.selectedFabricName ?? '');
+  const [fabricPreferences, setFabricPreferences] = useState(draft.fabricPreferences ?? null);
+  const [selectedFabricPreferences, setSelectedFabricPreferences] = useState(draft.selectedFabricPreferences ?? null);
   const [fabricValidationError, setFabricValidationError] = useState('');
 
   // pattern
-  const [patternId, setPatternId] = useState(null);
-  const [patternData, setPatternData] = useState(null);
-  const [patternKey, setPatternKey] = useState(null);     // inputs the current pattern was generated from
+  const [patternId, setPatternId] = useState(draft.patternId ?? null);
+  const [patternData, setPatternData] = useState(draft.patternData ?? null);
+  const [patternKey, setPatternKey] = useState(draft.patternKey ?? null); // inputs the current pattern was generated from
 
   // estimate
-  const [fabricWidth, setFabricWidth] = useState(() => getPreferences().fabricWidth);
-  const [cuttingMode, setCuttingMode] = useState('auto');
-  const [oneWay, setOneWay] = useState(false);              // nap / directional print: no piece is turned
-  const [pdfPart, setPdfPart] = useState('overview');
-  const [yardageData, setYardageData] = useState(null);     // the selected width's layout
-  const [estimates, setEstimates] = useState(null);         // 36" / 45" / 60" comparison rows
-  const [yardageError, setYardageError] = useState(false);
+  const [fabricWidth, setFabricWidth] = useState(() => draft.fabricWidth ?? getPreferences().fabricWidth);
+  const [cuttingMode, setCuttingMode] = useState(draft.cuttingMode ?? 'auto');
+  const [oneWay, setOneWay] = useState(draft.oneWay ?? false); // nap / directional print: no piece is turned
+  const [pdfPart, setPdfPart] = useState(draft.pdfPart ?? 'overview');
+  const [yardageData, setYardageData] = useState(draft.yardageData ?? null); // the selected width's layout
+  const [estimates, setEstimates] = useState(draft.estimates ?? null); // 36" / 45" / 60" comparison rows
+  const [yardageError, setYardageError] = useState(draft.yardageError ?? false);
 
   // export
-  const [exportId, setExportId] = useState(null);
-  const [pdfInfo, setPdfInfo] = useState(null);
-  const [pdfDownloaded, setPdfDownloaded] = useState(false);
-  const [feedbackScore, setFeedbackScore] = useState(5);
-  const [feedbackComment, setFeedbackComment] = useState('');
-  const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
+  const [exportId, setExportId] = useState(draft.exportId ?? null);
+  const [pdfInfo, setPdfInfo] = useState(draft.pdfInfo ?? null);
+  const [pdfDownloaded, setPdfDownloaded] = useState(draft.pdfDownloaded ?? false);
+  const [feedbackScore, setFeedbackScore] = useState(draft.feedbackScore ?? 5);
+  const [feedbackComment, setFeedbackComment] = useState(draft.feedbackComment ?? '');
+  const [feedbackSubmitted, setFeedbackSubmitted] = useState(draft.feedbackSubmitted ?? false);
   const [notice, setNotice] = useState('');
+
+  useEffect(() => {
+    onDraftChange({ step, started, customerContact, projectName, imageFile, imageId, garmentAttributes,
+      confirmedAttributes, isAttributesConfirmed, reviewDraft, measurementId, meas, unit, measUnits, savedMeasKey,
+      activeField, manualDesign, measWarnings, selectedFabricId, selectedFabricName, fabricPreferences,
+      selectedFabricPreferences, patternId, patternData, patternKey, fabricWidth, cuttingMode, oneWay,
+      pdfPart, yardageData, estimates, yardageError, exportId, pdfInfo, pdfDownloaded, feedbackScore,
+      feedbackComment, feedbackSubmitted });
+  }, [onDraftChange, step, started, customerContact, projectName, imageFile, imageId, garmentAttributes,
+    confirmedAttributes, isAttributesConfirmed, reviewDraft, measurementId, meas, unit, measUnits, savedMeasKey,
+    activeField, manualDesign, measWarnings, selectedFabricId, selectedFabricName, fabricPreferences,
+    selectedFabricPreferences, patternId, patternData, patternKey, fabricWidth, cuttingMode, oneWay,
+    pdfPart, yardageData, estimates, yardageError, exportId, pdfInfo, pdfDownloaded, feedbackScore,
+    feedbackComment, feedbackSubmitted]);
+
+  useEffect(() => {
+    if (!imageFile) { setImagePreview(null); return; }
+    const url = URL.createObjectURL(imageFile);
+    setImagePreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [imageFile]);
 
   const go = (n) => {
     setError('');
@@ -199,8 +285,9 @@ export default function Upload() {
       setUnit('cm');
       setFieldErrors({});
       setMeasurementId(p.measurement_id);
+      navigate(location.pathname, { replace: true, state: null });
     }
-  }, [location.state]);
+  }, [location.state, location.pathname, navigate]);
 
   const uniqueProfiles = useMemo(() => savedProfiles.reduce((acc, cur) => {
     const name = (cur.client_name || '').trim().toLowerCase();
@@ -277,7 +364,6 @@ export default function Upload() {
       return;
     }
     setImageFile(file);
-    setImagePreview(URL.createObjectURL(file));
     setError('');
   };
 
@@ -299,6 +385,7 @@ export default function Upload() {
       setManualDesign(false);
       const analyseRes = await imagesAPI.analyse(newImageId);
       setGarmentAttributes(analyseRes.data.garment_attributes || null);
+      setReviewDraft(null);
       const ca = analyseRes.data.confirmed_attributes;
       if (ca && Object.keys(ca).length > 0) {
         setConfirmedAttributes(ca);
@@ -318,12 +405,14 @@ export default function Upload() {
   const chooseManually = () => {
     setImageId(null);
     setGarmentAttributes(null);
+    setReviewDraft(null);
     setManualDesign(true);
     go(S.REVIEW);
   };
 
   // ── 3: confirm the design ─────────────────────────────────────────────────
   const applyConfirmed = (attrs) => {
+    setReviewDraft(null);
     setConfirmedAttributes(attrs);
     setIsAttributesConfirmed(true);
     // a knit garment defaults to knit fabric; the chosen fabric decides in the fabric step
@@ -598,8 +687,12 @@ export default function Upload() {
   return (
     <div className="view active" id="v-wizard">
       <div className="wizard-container">
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+          <button type="button" className="btn btn-outline btn-sm" onClick={onStartNew} disabled={loading || confirmLoading}>Start new pattern</button>
+        </div>
         <StepIndicator currentStep={step} setStep={go} status={stepStatus} />
 
+        {storageError && <div role="alert" className="alert warn wizard-alert">{storageError}</div>}
         {error && <div role="alert" className="alert error wizard-alert">{error}</div>}
         {notice && !error && <div role="status" className="alert success wizard-alert">{notice}</div>}
 
@@ -710,6 +803,7 @@ export default function Upload() {
                 )}
               </div>
               <PredictionReview garmentAttributes={garmentAttributes} confirmedAttributes={confirmedAttributes}
+                                draft={reviewDraft} onDraftChange={setReviewDraft}
                                 onConfirm={handleConfirmGarmentAttributes} isSubmitting={confirmLoading} error={confirmError} />
             </div>
             <NavRow>
@@ -734,6 +828,7 @@ export default function Upload() {
                   Confirm it here (or in the AI review step) and the list below updates.
                 </p>
                 <PredictionReview garmentAttributes={garmentAttributes} confirmedAttributes={confirmedAttributes}
+                                  draft={reviewDraft} onDraftChange={setReviewDraft}
                                   onConfirm={handleConfirmGarmentAttributes} isSubmitting={confirmLoading} error={confirmError} />
               </section>
             )}
@@ -1126,7 +1221,7 @@ export default function Upload() {
             {feedbackSubmitted && <p role="status" className="alert success" style={{ marginTop: 14 }}>Thank you — your feedback was saved.</p>}
             <NavRow>
               <button type="button" className="btn btn-outline" onClick={() => go(S.ESTIMATE)}>Back</button>
-              <button type="button" className="btn btn-primary" onClick={() => leave('/dashboard')}>Finish</button>
+              <button type="button" className="btn btn-primary" onClick={onFinish}>Finish</button>
             </NavRow>
           </div>
         )}

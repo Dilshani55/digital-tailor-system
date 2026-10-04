@@ -23,6 +23,7 @@ const shotter = (page) => async (name) => {
 };
 
 test('register -> upload -> AI review -> measurements -> fabric -> pattern -> estimate -> PDF -> history', async ({ page }) => {
+  page.on('dialog', (dialog) => dialog.accept()); // beforeunload when exercising refresh/navigation
   const email = `e2e_${Date.now()}@example.test`;
   const password = 'E2e-Passw0rd!';
   const steps = [];
@@ -48,8 +49,15 @@ test('register -> upload -> AI review -> measurements -> fabric -> pattern -> es
   // 2. upload a real garment photo and let the real classifier analyse it
   await page.goto('/upload');
   await page.getByLabel('Customer name').fill('E2E Customer');
+  await page.getByLabel(/Contact \/ reference/).fill('refresh@example.test');
+  await page.getByLabel(/Design \/ project name/).fill('Resumable blouse');
   await page.getByRole('button', { name: 'Continue to upload' }).click();
   await page.getByTestId('image-input').setInputFiles(IMAGE);
+  await expect(page.locator('.upload-zone img')).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'Upload a garment photo' })).toBeVisible();
+  await expect(page.locator('.upload-zone img')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Upload and analyse' })).toBeEnabled();
   await shot('01-upload');
   await page.getByRole('button', { name: 'Upload and analyse' }).click();
   await expect(page.getByRole('heading', { name: 'Review the AI suggestions' })).toBeVisible({ timeout: 180_000 });
@@ -63,6 +71,11 @@ test('register -> upload -> AI review -> measurements -> fabric -> pattern -> es
   await page.getByTestId('select-neckline_type').selectOption('round-neck');
   await page.getByTestId('select-sleeve_length').selectOption('short-sleeve');
   await page.getByTestId('select-sleeve_style').selectOption('regular-sleeve');
+  await page.reload();
+  for (const [head, value] of Object.entries({ garment_type: 'blouse', neckline_type: 'round-neck', sleeve_length: 'short-sleeve', sleeve_style: 'regular-sleeve' })) {
+    await expect(page.getByTestId(`select-${head}`)).toHaveValue(value);
+  }
+  await expect(page.getByTestId('confidence-tag-garment_type')).toContainText('%');
   await page.getByTestId('confirm-btn').click();
   await expect(page.getByTestId('confirmed-badge')).toBeVisible();
   await page.getByRole('button', { name: 'Continue to measurements' }).click();
@@ -96,6 +109,10 @@ test('register -> upload -> AI review -> measurements -> fabric -> pattern -> es
   await page.locator('#meas-bust_cm').fill('88.9');
   await page.getByTestId('unit-in').click();
   await expect(page.locator('#meas-bust_cm')).toHaveValue('35');
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'Body measurements' })).toBeVisible();
+  await expect(page.getByTestId('unit-in')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#meas-bust_cm')).toHaveValue('35');
   await page.getByTestId('unit-cm').click();
   await expect(page.locator('#meas-bust_cm')).toHaveValue('88.9');      // exactly what was typed
   await page.getByRole('button', { name: 'Save and continue' }).click();
@@ -118,6 +135,24 @@ test('register -> upload -> AI review -> measurements -> fabric -> pattern -> es
   await expect(page.getByRole('dialog')).toContainText('144 g/m2');
   await expect(page.getByRole('dialog')).toContainText('Your comparison consistency ratio: 0.000');
   await page.getByRole('button', { name: 'Select this sample' }).click();
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'Choose fabric and fit' })).toBeVisible();
+  await expect(page.getByTestId('ranked-fabrics')).toBeVisible();
+  await expect(chosenSample.locator('.fabric-card-main')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#fabric-goal-mass')).toHaveValue('cost');
+  await page.getByRole('button', { name: /^Step 1:/ }).click();
+  await expect(page.getByLabel('Customer name')).toHaveValue('E2E Customer');
+  await expect(page.getByLabel(/Contact \/ reference/)).toHaveValue('refresh@example.test');
+  await expect(page.getByLabel(/Design \/ project name/)).toHaveValue('Resumable blouse');
+  await page.getByRole('button', { name: /^Step 3:/ }).click();
+  await expect(page.getByTestId('confirmed-badge')).toBeVisible();
+  await expect(page.getByRole('img', { name: 'Uploaded garment', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: /^Step 4:/ }).click();
+  await expect(page.locator('#meas-bust_cm')).toHaveValue('88.9');
+  await expect(page.getByRole('button', { name: /^Step 4:/ })).toHaveAttribute('data-status', 'done');
+  await page.getByRole('button', { name: /^Step 5:/ }).click();
+  await expect(chosenSample.locator('.fabric-card-main')).toHaveAttribute('aria-pressed', 'true');
+  mark('refresh restored photo, AI suggestions, edits, units, customer, saved measurements and fabric priorities');
   const generationResponse = page.waitForResponse((r) => r.url().endsWith('/api/patterns/generate') && r.request().method() === 'POST');
   await page.getByRole('button', { name: 'Confirm and generate pattern' }).click();
   const generated = await (await generationResponse).json();
@@ -125,6 +160,8 @@ test('register -> upload -> AI review -> measurements -> fabric -> pattern -> es
   expect(generated.fabric_selection_snapshot.ranking_audit.weight_source).toBe('user_preferences');
   expect(generated.fabric_selection_snapshot.ranking_audit.preferences.goals.mass).toBe('cost');
   await expect(page.getByRole('heading', { name: 'Pattern preview' })).toBeVisible({ timeout: 60_000 });
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'Pattern preview' })).toBeVisible();
   await expect(page.getByText('Geometry validation passed')).toBeVisible();
   expect(await page.locator('[data-testid^="cutting-line-"]').count()).toBeGreaterThanOrEqual(3);
   expect(await page.locator('[data-testid^="notch-"]').count()).toBeGreaterThanOrEqual(3);
@@ -169,6 +206,10 @@ test('register -> upload -> AI review -> measurements -> fabric -> pattern -> es
   await expect(page.getByTestId('estimate-row-45')).not.toContainText('one-way', { timeout: 60_000 });
   expect(await page.getByTestId('estimate-row-45').innerText()).toBe(before);         // the same layout as before
   await shot('06-fabric-estimate');
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'Fabric estimate', exact: true })).toBeVisible();
+  await expect(page.getByTestId('width-60')).toHaveText('Selected');
+  await expect(page.getByTestId('estimate-row-45')).toHaveText(before, { useInnerText: true });
   mark(`estimates: ${JSON.stringify(lengths).replace(/\s+/g, ' ')}`);
 
   // 7. printable PDF
@@ -184,6 +225,9 @@ test('register -> upload -> AI review -> measurements -> fabric -> pattern -> es
   await expect(page.getByTestId('pdf-contents')).toContainText('Measurement report');
   await page.getByRole('button', { name: 'Create printable PDF' }).click();
   await expect(page.getByTestId('pdf-ready')).toContainText('report, not real size', { timeout: 120_000 });
+  await page.reload();
+  await expect(page.getByTestId('pdf-part-report')).toBeChecked();
+  await expect(page.getByTestId('pdf-ready')).toContainText('report, not real size');
   await shot('07-pdf-ready');
   const [download] = await Promise.all([
     page.waitForEvent('download'),
@@ -207,11 +251,16 @@ test('register -> upload -> AI review -> measurements -> fabric -> pattern -> es
   fs.writeFileSync(path.join(path.dirname(out), 'e2e_last_pdf_path.txt'), out);
 
   // 8. feedback; then a measurement change makes the pattern/estimate/PDF out of date (free step navigation)
+  await page.getByLabel(/Comments \(optional\)/).fill('Refresh kept my completed steps.');
+  await page.reload();
+  await expect(page.getByLabel(/Comments \(optional\)/)).toHaveValue('Refresh kept my completed steps.');
   await page.getByLabel(/How easy was it/).selectOption('5');
   await page.getByRole('button', { name: 'Send feedback' }).click();
   await expect(page.getByText(/Thank you/)).toBeVisible();
   await page.getByRole('button', { name: /^Step 4: Measurements/ }).click();
   await page.locator('#meas-bust_cm').fill('90');
+  await page.reload();
+  await expect(page.locator('#meas-bust_cm')).toHaveValue('90');
   await expect(page.getByRole('button', { name: /^Step 6: Pattern preview \(Needs update\)/ })).toBeVisible();
   await page.getByRole('button', { name: /^Step 6: Pattern preview/ }).click();
   await expect(page.getByTestId('step-empty')).toContainText(/generated again/);

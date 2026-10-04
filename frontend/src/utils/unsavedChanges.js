@@ -3,7 +3,7 @@
 // or closing the tab then asks for confirmation.
 let unsaved = false;
 
-export const UNSAVED_MESSAGE = 'You have an unfinished pattern. Leave this page and lose the unsaved steps?';
+export const UNSAVED_MESSAGE = 'You have an unfinished pattern. Leave this page?';
 
 export function setUnsaved(value) {
   unsaved = Boolean(value);
