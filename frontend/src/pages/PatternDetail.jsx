@@ -70,6 +70,7 @@ export default function PatternDetail() {
   if (loading) return <LoadingSpinner message="Loading your pattern…" />;
   const n = data?.nesting_summary || {};
   const a = data?.design_attributes || {};
+  const fabricEvidence = data?.fabric_selection_snapshot;
   return (
     <div className="page">
       <section className="page-heading">
@@ -97,6 +98,18 @@ export default function PatternDetail() {
                             draftingBlock={data.drafting_block} ease={data.ease} warnings={data.warnings}
                             unit={data.measurements_snapshot?.display_unit || 'cm'} />
           </section>
+          {fabricEvidence?.sample && <section className="ui-card" style={{ padding: '18px', marginTop: '14px' }} data-testid="saved-fabric-evidence">
+            <h2 style={{ fontSize: '14px' }}>Saved fabric selection</h2>
+            <p>{fabricEvidence.fabric_name} · Sample {fabricEvidence.sample.sample_id}</p>
+            <p><a href={fabricEvidence.source_url} target="_blank" rel="noreferrer">{fabricEvidence.citation}</a></p>
+            {fabricEvidence.ranking_audit ? <details>
+              <summary>Your saved fabric priorities</summary>
+              <ul>{fabricEvidence.ranking_audit.criteria.map((c, i) => <li key={c.id}>
+                {c.label}: {c.goal_options.find((g) => g.value === c.objective)?.label}; importance {(fabricEvidence.ranking_audit.ahp.weights[i] * 100).toFixed(1)}%.
+                {' '}Measured value: {fabricEvidence.sample.values[c.id].value} {c.unit}.
+              </li>)}</ul>
+            </details> : <p>This published sample was selected manually without a preference ranking.</p>}
+          </section>}
           <section className="ui-card" style={{ padding: '18px', marginTop: '14px' }}>
             <h2 style={{ fontSize: '14px', marginBottom: '8px' }}>Printable PDFs</h2>
             {(data.exports || []).length === 0

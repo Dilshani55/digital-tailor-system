@@ -183,12 +183,30 @@ def generate_pattern():
 
     # 3c. The SELECTED fabric decides woven vs knit drafting (not a stale profile value), and it must be
     #     compatible with the garment's block (T-shirt: knit; blouse: woven).
-    from app.logic.fabric_selection import TRAITS, compatibility
-    construction = TRAITS[selected_fabric_id][0]
+    from app.logic.fabric_selection import fabric_construction, compatibility
+    construction = fabric_construction(selected_fabric_id)
     ok, why_not = compatibility(clean["garment_type"], construction)
     if not ok:
         return jsonify({"error": f"{selected_fabric_name} cannot be used for this design. {why_not}",
                         "error_code": "FABRIC_NOT_COMPATIBLE"}), 422
+    fabric_snapshot = {"fabric_id": selected_fabric_id, "fabric_name": selected_fabric_name,
+                       "construction": construction, "selection_method": "manual_catalogue"}
+    selected_definition = get_fabric_by_id(selected_fabric_id)
+    if selected_definition.get("study_id"):
+        from app.logic.published_fabrics import rank_user_samples, study_for_garment
+        from app.logic.fabric_mcda import RankingDataError
+        study = study_for_garment(clean["garment_type"])
+        fabric_snapshot.update(selection_method="manual_published_sample", study_id=study["id"],
+                               source_url=study["url"], citation=study["citation"],
+                               sample=selected_definition["research_sample"], data_sha256=study["data_sha256"])
+        if data.get("fabric_preferences") is not None:
+            try:
+                comparison = rank_user_samples(study, data["fabric_preferences"], design=clean,
+                                               fit=measurements_dict["fit_preference"])
+            except RankingDataError as exc:
+                return jsonify({"error": str(exc), "error_code": "INVALID_FABRIC_PREFERENCES"}), 422
+            fabric_snapshot.update(selection_method="user_ahp_topsis", ranking_audit=comparison["audit"],
+                                   selected_result=comparison["results"][selected_fabric_id])
     if measurements_dict["fabric_type"] != "stretch-knit":     # stretch-knit (negative ease) is refused by the engine
         measurements_dict["fabric_type"] = construction
     measurements_snapshot = {
@@ -239,6 +257,7 @@ def generate_pattern():
             garment_type        = pattern["garment_type"],
             selected_fabric_id  = selected_fabric_id,
             selected_fabric_name= selected_fabric_name,
+            fabric_selection_snapshot = fabric_snapshot,
             validation_report   = validation,
             design_spec         = design_spec,
             base_block          = pattern["base_block"],
@@ -270,6 +289,7 @@ def generate_pattern():
             "fabric_type":         pattern["fabric_type"],
             "selected_fabric_id":   selected_fabric_id,
             "selected_fabric_name": selected_fabric_name,
+            "fabric_selection_snapshot": fabric_snapshot,
             "pieces_count":        len(pattern["pattern_pieces"]),
             "drafting_block":      pattern.get("drafting_block"),
             "design_spec":         design_spec,
@@ -357,6 +377,7 @@ def get_pattern(pattern_id):
         "yardage_metres": pattern.yardage_metres,
         "selected_fabric_id": pattern.selected_fabric_id,
         "selected_fabric_name": pattern.selected_fabric_name,
+        "fabric_selection_snapshot": getattr(pattern, "fabric_selection_snapshot", None) or {},
         "nesting_summary": pattern.nesting_summary or {},
         "pieces_count": len(pattern.pattern_coordinates),
         "pieces": [

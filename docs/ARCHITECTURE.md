@@ -36,7 +36,8 @@ The analyse step times the classifier inference and the generate step times the 
 | `logic/units.py` | exact cm / inch / metre / yard and area conversions |
 | `logic/nesting_algorithm.py` | polygon nesting + `estimate_fabric` |
 | `logic/pdf_generator.py` | PDF: one-page overview at a reduced scale, measurement report (a 1:1 tiled part exists in the API but is not used by the app) |
-| `logic/fabric_recommendation.py` | rule-based, explainable fabric ranking and catalogue |
+| `logic/fabric_recommendation.py` | generic descriptive catalogue and ID lookup |
+| `logic/fabric_selection.py`, `published_fabrics.py`, `fabric_research.py`, `fabric_mcda.py` | drafting compatibility; published within-study sample data plus live user preferences; optional recorded expert profiles; crisp AHP/TOPSIS and saved provenance ([method](fabric-ranking-algorithm.md), [data](published-fabric-data.md)) |
 | `logic/research_metrics.py` | study metrics computed from stored data only |
 | `ai/garment_models.py` | the four garment models: loading, thresholds, suggestions, status |
 | `ai/garment_detector.py`, `ai/preprocess.py` | garment box; upright / crop / square-pad shared with training |

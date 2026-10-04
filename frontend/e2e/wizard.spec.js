@@ -103,9 +103,27 @@ test('register -> upload -> AI review -> measurements -> fabric -> pattern -> es
   await shot('04-fabric-and-fit');
   mark('only design measurements shown, non-positive value rejected inline, unit toggle kept typed values, saved');
 
-  // 5. recommended fabric with explanation, then generate
-  await expect(page.getByText(/Cotton Poplin|Linen|Rayon|Jersey/).first()).toBeVisible({ timeout: 30_000 });
+  // 5. Compare real published woven samples with explicit user answers (not expert observations).
+  await expect(page.getByTestId('fabric-preferences')).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole('button', { name: 'Compare fabric samples' })).toBeDisabled();
+  for (const key of ['mass', 'thickness', 'thermal_resistance']) await page.locator(`#fabric-goal-${key}`).selectOption('cost');
+  for (const [left, right] of [['mass', 'thickness'], ['mass', 'thermal_resistance'], ['thickness', 'thermal_resistance']]) {
+    await page.locator(`#fabric-pair-${left}-${right}`).selectOption('1');
+  }
+  await page.getByRole('button', { name: 'Compare fabric samples' }).click();
+  await expect(page.getByTestId('ranked-fabrics')).toBeVisible();
+  const chosenSample = page.getByTestId('fabric-alam-2013-f06');
+  await expect(chosenSample).toContainText('Rank 1');
+  await chosenSample.getByRole('button', { name: 'View Details' }).click();
+  await expect(page.getByRole('dialog')).toContainText('144 g/m2');
+  await expect(page.getByRole('dialog')).toContainText('Your comparison consistency ratio: 0.000');
+  await page.getByRole('button', { name: 'Select this sample' }).click();
+  const generationResponse = page.waitForResponse((r) => r.url().endsWith('/api/patterns/generate') && r.request().method() === 'POST');
   await page.getByRole('button', { name: 'Confirm and generate pattern' }).click();
+  const generated = await (await generationResponse).json();
+  expect(generated.fabric_selection_snapshot.sample.sample_id).toBe('6');
+  expect(generated.fabric_selection_snapshot.ranking_audit.weight_source).toBe('user_preferences');
+  expect(generated.fabric_selection_snapshot.ranking_audit.preferences.goals.mass).toBe('cost');
   await expect(page.getByRole('heading', { name: 'Pattern preview' })).toBeVisible({ timeout: 60_000 });
   await expect(page.getByText('Geometry validation passed')).toBeVisible();
   expect(await page.locator('[data-testid^="cutting-line-"]').count()).toBeGreaterThanOrEqual(3);

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { X, Check, ChevronDown, ChevronUp, Info, Sparkles } from 'lucide-react';
 
-export default function FabricDetailsModal({ fabric, isSelected, onSelect, onClose }) {
+export default function FabricDetailsModal({ fabric, rankingAudit, publishedStudy, isSelected, onSelect, onClose }) {
   const [showTechDetails, setShowTechDetails] = useState(false);
   const [imgError, setImgError] = useState(false);
   const modalRef = useRef(null);
@@ -25,13 +25,58 @@ export default function FabricDetailsModal({ fabric, isSelected, onSelect, onClo
     }
   };
 
+  if (fabric.study_id) {
+    const audit = rankingAudit?.profile_id === fabric.study_id ? rankingAudit : null;
+    const criteria = audit?.criteria || publishedStudy?.criteria || [];
+    return (
+      <div className="modal-overlay published-fabric-overlay" role="dialog" aria-modal="true" aria-labelledby="fabric-modal-title" onClick={handleOverlayClick}>
+        <div className="published-fabric-modal">
+          <div className="section-head">
+            <h2 id="fabric-modal-title">{fabric.name}</h2>
+            <button type="button" className="btn btn-outline btn-sm" aria-label="Close modal" onClick={onClose}><X size={20} /></button>
+          </div>
+          <p>{fabric.simple_description}</p>
+          <p>{fabric.explanation}</p>
+          <h4>Recorded sample evidence</h4>
+          <p>Sample ID: {fabric.research_sample.sample_id}. Values apply to this sample.</p>
+          <div style={{ overflowX: 'auto' }}>
+            <table>
+              <thead><tr><th>Property</th><th>Measured value</th><th>Your goal</th><th>Weight</th><th>Source table</th></tr></thead>
+              <tbody>{criteria.map((c, i) => {
+                const observation = fabric.research_sample.values[c.id];
+                return <tr key={c.id}>
+                  <td>{c.label}</td><td>{observation.value} {observation.unit}</td>
+                  <td>{c.goal_options.find((g) => g.value === c.objective)?.label || 'Not set'}</td>
+                  <td>{audit ? `${(audit.ahp.weights[i] * 100).toFixed(1)}%` : 'Not set'}</td>
+                  <td>{observation.table}</td>
+                </tr>;
+              })}</tbody>
+            </table>
+          </div>
+          {audit && <p>Your comparison consistency ratio: {audit.ahp.consistency_ratio.toFixed(3)} (accepted at 0.10 or below). TOPSIS closeness is a relative comparison, not a probability of fit.</p>}
+          <p><a href={fabric.source_url} target="_blank" rel="noreferrer">{fabric.reference_source}</a></p>
+          <details><summary>Measurement methods and scope</summary>
+            <ul>{criteria.map((c) => <li key={c.id}><strong>{c.label}:</strong> {c.protocol}</li>)}</ul>
+            <p>{audit?.scope_note || publishedStudy?.scope_note}</p>
+          </details>
+          <div className="form-actions">
+            <button type="button" className="btn btn-outline" onClick={onClose}>Close</button>
+            <button type="button" className="btn btn-primary" onClick={() => { onSelect(); onClose(); }}>
+              {isSelected ? 'Selected' : 'Select this sample'}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   const getStatusBadgeStyle = (status) => {
     switch (status) {
-      case 'Best Match':
+      case 'Top ranked sample':
         return { background: '#2D5A43', color: '#FFFFFF', border: '1px solid #1E3A2B' };
-      case 'Highly Suitable':
+      case 'Ranked sample':
         return { background: '#D97706', color: '#FFFFFF', border: '1px solid #B45309' };
-      case 'Suitable':
+      case 'Compatible — unranked':
         return { background: '#2563EB', color: '#FFFFFF', border: '1px solid #1D4ED8' };
       default:
         return { background: '#6B7280', color: '#FFFFFF', border: '1px solid #4B5563' };
@@ -102,7 +147,7 @@ export default function FabricDetailsModal({ fabric, isSelected, onSelect, onClo
               </span>
             </div>
             <span style={{ fontSize: '12px', color: 'var(--text-accent, #2D5A43)', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '4px' }}>
-              <Sparkles size={13} /> {fabric.badge_type || 'Rule-based recommendation'}
+              <Sparkles size={13} /> {fabric.rank ? 'AHP / TOPSIS sample comparison' : 'Catalogue fabric guide'}
             </span>
           </div>
 
@@ -170,7 +215,7 @@ export default function FabricDetailsModal({ fabric, isSelected, onSelect, onClo
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '13px' }}>
               <div style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', padding: '10px 12px', borderRadius: '8px', color: '#166534' }}>
                 <strong style={{ display: 'block', fontSize: '12px', color: '#14532D', marginBottom: '2px' }}>
-                  Why the system recommends it:
+                  {fabric.rank ? 'Why this sample ranks here:' : 'Fabric selection:'}
                 </strong>
                 <span>{fabric.explanation}</span>
               </div>
@@ -197,6 +242,21 @@ export default function FabricDetailsModal({ fabric, isSelected, onSelect, onClo
           </div>
 
           {/* Suitable Garments & Climate */}
+          {fabric.research_sample && rankingAudit?.criteria && (
+            <div>
+              <h4>Recorded sample evidence</h4>
+              <p>Sample: {fabric.research_sample.label} ({fabric.research_sample.sample_id}). These measurements apply to this sample.</p>
+              <table style={{ width: '100%', fontSize: '12px', textAlign: 'left' }}>
+                <thead><tr><th>Criterion</th><th>Observed value</th><th>Weight</th><th>Source</th></tr></thead>
+                <tbody>{rankingAudit.criteria.map((c, index) => {
+                  const observation = fabric.research_sample.values[c.id];
+                  return <tr key={c.id}><td>{c.label}</td><td>{observation.value} {observation.unit}</td><td>{(rankingAudit.ahp.weights[index] * 100).toFixed(1)}%</td><td>{observation.source}</td></tr>;
+                })}</tbody>
+              </table>
+              <p>{rankingAudit.weight_source === 'user_preferences' ? 'Your' : 'Expert'} comparison consistency ratio: {rankingAudit.ahp.consistency_ratio.toFixed(3)}. TOPSIS closeness is a relative comparison, not a probability of fit.</p>
+              <p>Profile source: {rankingAudit.profile_source}</p>
+            </div>
+          )}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
             <div style={{ background: 'var(--surface-2, #F8FAFC)', padding: '12px 14px', borderRadius: '8px', border: '1px solid var(--border, #E2E8F0)' }}>
               <h4 style={{ margin: '0 0 6px 0', fontSize: '13px', fontWeight: '600', color: 'var(--text-primary, #0F172A)' }}>
@@ -290,6 +350,7 @@ export default function FabricDetailsModal({ fabric, isSelected, onSelect, onClo
                   <strong>GSM Specs: </strong>
                   <span>{fabric.technical_details?.typical_gsm_range}</span>
                 </div>
+                <div>Catalogue properties are general descriptions, not laboratory measurements of your sample.</div>
                 <div>
                   <strong>Composition Note: </strong>
                   <span>{fabric.technical_details?.composition_note}</span>

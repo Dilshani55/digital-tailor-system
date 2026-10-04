@@ -397,6 +397,21 @@ button.wstep:disabled { cursor: not-allowed; }
 .fabric-warning { font-size: 12px; color: var(--warn); display: flex; gap: 4px; align-items: center; }
 .fabric-details-btn { border: 0; border-top: 1px solid var(--line); background: #fafbfa; padding: 9px; font-size: 12px; font-weight: 600; color: var(--ink-2); display: flex; gap: 5px; justify-content: center; align-items: center; cursor: pointer; }
 .fabric-more { margin-top: 14px; }
+.fabric-more summary, .fabric-source summary { cursor: pointer; font-weight: 600; }
+.fabric-more .fabric-grid { margin-top: 14px; }
+.fabric-preferences { background: var(--surface-soft); border: 1px solid var(--line); border-radius: 12px; padding: 18px; margin: 14px 0 20px; }
+.fabric-preferences p, .fabric-source { font-size: 13px; color: var(--ink-2); margin: 6px 0 12px; }
+.fabric-preference-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin: 12px 0 18px; }
+.fabric-preference-grid label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 600; }
+.fabric-preference-grid select { width: 100%; min-width: 0; padding: 10px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; color: var(--ink); font: inherit; }
+.fabric-source { margin-bottom: 0; }
+.fabric-list-heading { margin: 14px 0 12px; }
+.published-fabric-modal { background: var(--surface); border-radius: 16px; padding: 24px; max-width: 780px; width: 100%; max-height: 90vh; overflow-y: auto; }
+.published-fabric-overlay { position: fixed; inset: 0; z-index: 1000; padding: 16px; background: rgba(15, 23, 42, .75); display: grid; place-items: center; }
+.published-fabric-modal .section-head { display: flex; justify-content: space-between; gap: 16px; }
+.published-fabric-modal p, .published-fabric-modal details { font-size: 13px; line-height: 1.6; margin: 12px 0; }
+.published-fabric-modal table { width: 100%; text-align: left; font-size: 12px; border-collapse: collapse; }
+.published-fabric-modal td, .published-fabric-modal th { padding: 10px 8px; border-bottom: 1px solid var(--line); }
 .fabric-incompatible { margin-top: 12px; font-size: 13px; color: var(--ink-2); }
 .fabric-incompatible summary { cursor: pointer; font-weight: 600; }
 .fabric-incompatible ul { padding-left: 18px; margin-top: 6px; line-height: 1.6; }

@@ -1,4 +1,4 @@
-"""Design-aware rule-based fabric recommendation, and fabric requirement at 36" / 45" / 60"."""
+"""Design-aware data-dependent fabric recommendation, and fabric requirement at 36" / 45" / 60"."""
 import copy
 import unittest
 from types import SimpleNamespace
@@ -29,30 +29,23 @@ class TestRecommendation(unittest.TestCase):
                     self.assertFalse(f["recommended"])
                     self.assertIsNone(f["recommendation_score"])
 
-    def test_two_to_four_compatible_fabrics_are_recommended_and_listed_first(self):
-        for d in (D(), D(style="puff-sleeve"), D(length="long-sleeve", style="puff-sleeve"), D(garment="t-shirt"),
-                  D(length="sleeveless", style="none")):
+    def test_without_user_preferences_every_compatible_fabric_is_unranked(self):
+        for d in (D(), D(style="puff-sleeve"), D(garment="t-shirt"), D(length="sleeveless", style="none")):
             r = recommend_for_design(d)
-            rec = [f for f in r["fabrics"] if f["recommended"]]
-            self.assertTrue(2 <= len(rec) <= 4, (d, len(rec)))
-            self.assertEqual([f["id"] for f in r["fabrics"][:len(rec)]], r["recommended_ids"])
-            self.assertTrue(all(f["compatible"] for f in rec))
+            self.assertEqual(r["ranking_status"], "awaiting_preferences")
+            self.assertEqual(r["recommended_ids"], [])
+            for fabric in r["fabrics"]:
+                self.assertFalse(fabric["recommended"])
+                self.assertIsNone(fabric["topsis_closeness"])
+                self.assertIsNone(fabric["recommendation_score"])
 
-    def test_sleeve_style_drives_the_choice(self):
-        puff = recommend_for_design(D(style="puff-sleeve"))["recommended_ids"]
-        self.assertTrue(all(TRAITS[f][1] <= 3 for f in puff), puff)     # crisp fabrics hold gathers
-        self.assertNotIn("silk-chiffon", puff)
-
-    def test_sheer_fabric_carries_a_lining_warning_and_every_score_is_explained(self):
+    def test_catalogue_opacity_warning_does_not_turn_into_a_score(self):
         r = recommend_for_design(D())
         chiffon = next(f for f in r["fabrics"] if f["id"] == "silk-chiffon")
         self.assertTrue(any("lining" in w for w in chiffon["warnings"]))
-        for f in r["fabrics"]:
-            if f["compatible"]:
-                self.assertEqual(f["recommendation_score"], 60 + sum(x["delta"] for x in f["score_reasons"]))
-            for banned in ("price", "stock", "availability", "sustainability"):
-                self.assertNotIn(banned, f)
-        self.assertIn("not machine-learned", r["method"])
+        self.assertIsNone(chiffon["recommendation_score"])
+        self.assertEqual(chiffon["score_reasons"], [])
+        self.assertIn("AHP", r["method"])
 
     def test_route_uses_the_confirmed_design(self):
         app = create_app()
@@ -61,7 +54,7 @@ class TestRecommendation(unittest.TestCase):
         r = c.post("/api/fabric/recommend", json={"confirmed_attributes": D(garment="t-shirt"), "fit_preference": "standard"})
         body = r.get_json()
         self.assertEqual(r.status_code, 200)
-        self.assertEqual({f["construction"] for f in body["recommendations"] if f["recommended"]}, {"knit"})
+        self.assertEqual({f["construction"] for f in body["recommendations"] if f["compatible"]}, {"knit"})
         bad = c.post("/api/fabric/recommend", json={"confirmed_attributes": D(garment="dress")})
         self.assertEqual(bad.status_code, 400)
 

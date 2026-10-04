@@ -141,6 +141,8 @@ export default function Upload() {
   // fabric & fit
   const [selectedFabricId, setSelectedFabricId] = useState('');
   const [selectedFabricName, setSelectedFabricName] = useState('');
+  const [fabricPreferences, setFabricPreferences] = useState(null);
+  const [selectedFabricPreferences, setSelectedFabricPreferences] = useState(null);
   const [fabricValidationError, setFabricValidationError] = useState('');
 
   // pattern
@@ -227,7 +229,7 @@ export default function Upload() {
   const measKey = useMemo(() => JSON.stringify(shownKeys.map((k) => [k, cmValues[k] ?? null])), [shownKeys, cmValues]);
   const measurementsSaved = Boolean(measurementId) && savedMeasKey !== null && savedMeasKey === measKey;
   // everything the pattern depends on: when any of it changes, the old pattern, estimate and PDF are out of date
-  const inputsKey = JSON.stringify([confirmedAttributes, measKey, selectedFabricId, meas.fit_preference, imageId]);
+  const inputsKey = JSON.stringify([confirmedAttributes, measKey, selectedFabricId, selectedFabricPreferences, meas.fit_preference, imageId]);
   const patternStale = Boolean(patternData) && patternKey !== inputsKey;
   const patternCurrent = Boolean(patternData) && !patternStale;
   useEffect(() => {
@@ -417,7 +419,7 @@ export default function Upload() {
       return;
     }
     if (!selectedFabricId) {
-      setFabricValidationError('Please choose one of the recommended fabrics to continue.');
+      setFabricValidationError('Please choose a compatible fabric to continue.');
       setError('Please choose a fabric before generating the pattern.');
       return;
     }
@@ -437,6 +439,7 @@ export default function Upload() {
         confirmed_attributes: confirmedAttributes || undefined,
         fabric_id: selectedFabricId,
         fabric_name: selectedFabricName,
+        ...(selectedFabricPreferences ? { fabric_preferences: selectedFabricPreferences } : {}),
         display_unit: unit,
         ...(projectName.trim() ? { project_name: projectName.trim() } : {}),
       });
@@ -831,9 +834,12 @@ export default function Upload() {
                 confirmedAttributes={designReady ? confirmedAttributes : null}
                 fitPreference={meas.fit_preference}
                 selectedFabricId={selectedFabricId}
-                onSelectFabric={(id, name, type) => {
+                preferences={fabricPreferences}
+                onPreferencesChange={setFabricPreferences}
+                onSelectFabric={(id, name, type, selectionPreferences) => {
                   setSelectedFabricId(id);
                   setSelectedFabricName(name);
+                  setSelectedFabricPreferences(selectionPreferences || null);
                   setMeas((prev) => ({ ...prev, fabric_type: type === 'knit' || type === 'stretch-knit' ? 'knit' : (type || prev.fabric_type) }));
                   setFabricValidationError('');
                   setError('');

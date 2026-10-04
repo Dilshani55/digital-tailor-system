@@ -1,0 +1,711 @@
+{
+  "schema_version": 1,
+  "transcription_date": "2026-10-04",
+  "provenance": "Published numerical table transcriptions; user preferences are collected at runtime. No expert responses or fabric property values are simulated.",
+  "studies": [
+    {
+      "id": "cubric-2022-cotton",
+      "title": "Material and Structural Functionalization of Knitted Fabrics for Sportswear",
+      "citation": "Salopek Cubric, I., Potocic Matkovic, V. M., Pavlovic, Z., & Pavko Cuden, A. (2022). Materials, 15(9), 3306. doi:10.3390/ma15093306.",
+      "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC9104909/",
+      "construction": "knit",
+      "composition": "100% cotton",
+      "criteria": [
+        {
+          "id": "mass",
+          "label": "Fabric weight",
+          "unit": "g/m2",
+          "protocol": "100 x 100 mm specimens; Kern ALJ 220-4 analytic balance",
+          "table": "Table 4",
+          "goal_options": [
+            {
+              "value": "cost",
+              "label": "Lighter fabric"
+            },
+            {
+              "value": "benefit",
+              "label": "Heavier fabric"
+            }
+          ]
+        },
+        {
+          "id": "air_flow",
+          "label": "Air flow",
+          "unit": "L/min",
+          "protocol": "ISO 9237; Air-Tronic B; 50 Pa pressure drop; 20 cm2 test area (Y1 cotton only)",
+          "table": "Table 6",
+          "goal_options": [
+            {
+              "value": "cost",
+              "label": "Less air flow"
+            },
+            {
+              "value": "benefit",
+              "label": "More air flow"
+            }
+          ]
+        },
+        {
+          "id": "thermal_resistance",
+          "label": "Heat insulation",
+          "unit": "m2 K/W",
+          "protocol": "ISO 11092; sweating guarded hotplate; 20 C, 65% RH, 1 m/s airflow",
+          "table": "Table 5",
+          "goal_options": [
+            {
+              "value": "cost",
+              "label": "Less insulation (cooler preference)"
+            },
+            {
+              "value": "benefit",
+              "label": "More insulation (warmer preference)"
+            }
+          ]
+        }
+      ],
+      "scope_note": "Five Y1 cotton knit samples from one study, knitted on a 12-gauge machine. Air-flow values use the same 50 Pa / 20 cm2 conditions. PA samples tested at 5 cm2 are excluded. No measured fabric stretch, recovery, drape or garment-fit evidence; knit block support is an implementation constraint. These are identified research samples, not products for sale.",
+      "samples": [
+        {
+          "fabric_id": "cubric-2022-y1-sp",
+          "sample_id": "Y1 SP",
+          "label": "Cotton single plain - Y1 SP",
+          "structure": "Single plain",
+          "values": {
+            "mass": {
+              "value": 260.38,
+              "unit": "g/m2",
+              "protocol": "100 x 100 mm specimens; Kern ALJ 220-4 analytic balance",
+              "source": "Salopek Cubric, I., Potocic Matkovic, V. M., Pavlovic, Z., & Pavko Cuden, A. (2022). Materials, 15(9), 3306. doi:10.3390/ma15093306. Table 4; sample Y1 SP",
+              "source_url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC9104909/",
+              "table": "Table 4"
+            },
+            "air_flow": {
+              "value": 140.12,
+              "unit": "L/min",
+              "protocol": "ISO 9237; Air-Tronic B; 50 Pa pressure drop; 20 cm2 test area (Y1 cotton only)",
+              "source": "Salopek Cubric, I., Potocic Matkovic, V. M., Pavlovic, Z., & Pavko Cuden, A. (2022). Materials, 15(9), 3306. doi:10.3390/ma15093306. Table 6; sample Y1 SP",
+              "source_url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC9104909/",
+              "table": "Table 6"
+            },
+            "thermal_resistance": {
+              "value": 0.0444,
+              "unit": "m2 K/W",
+              "protocol": "ISO 11092; sweating guarded hotplate; 20 C, 65% RH, 1 m/s airflow",
+              "source": "Salopek Cubric, I., Potocic Matkovic, V. M., Pavlovic, Z., & Pavko Cuden, A. (2022). Materials, 15(9), 3306. doi:10.3390/ma15093306. Table 5; sample Y1 SP",
+              "source_url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC9104909/",
+              "table": "Table 5"
+            }
+          }
+        },
+        {
+          "fabric_id": "cubric-2022-y1-sm",
+          "sample_id": "Y1 SM",
+          "label": "Cotton single miss - Y1 SM",
+          "structure": "Single miss",
+          "values": {
+            "mass": {
+              "value": 287.17,
+              "unit": "g/m2",
+              "protocol": "100 x 100 mm specimens; Kern ALJ 220-4 analytic balance",
+              "source": "Salopek Cubric, I., Potocic Matkovic, V. M., Pavlovic, Z., & Pavko Cuden, A. (2022). Materials, 15(9), 3306. doi:10.3390/ma15093306. Table 4; sample Y1 SM",
+              "source_url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC9104909/",
+              "table": "Table 4"
+            },
+            "air_flow": {
+              "value": 119.72,
+              "unit": "L/min",
+              "protocol": "ISO 9237; Air-Tronic B; 50 Pa pressure drop; 20 cm2 test area (Y1 cotton only)",
+              "source": "Salopek Cubric, I., Potocic Matkovic, V. M., Pavlovic, Z., & Pavko Cuden, A. (2022). Materials, 15(9), 3306. doi:10.3390/ma15093306. Table 6; sample Y1 SM",
+              "source_url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC9104909/",
+              "table": "Table 6"
+            },
+            "thermal_resistance": {
+              "value": 0.0504,
+              "unit": "m2 K/W",
+              "protocol": "ISO 11092; sweating guarded hotplate; 20 C, 65% RH, 1 m/s airflow",
+              "source": "Salopek Cubric, I., Potocic Matkovic, V. M., Pavlovic, Z., & Pavko Cuden, A. (2022). Materials, 15(9), 3306. doi:10.3390/ma15093306. Table 5; sample Y1 SM",
+              "source_url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC9104909/",
+              "table": "Table 5"
+            }
+          }
+        },
+        {
+          "fabric_id": "cubric-2022-y1-st",
+          "sample_id": "Y1 ST",
+          "label": "Cotton single tuck / pique - Y1 ST",
+          "structure": "Single tuck / pique",
+          "values": {
+            "mass": {
+              "value": 267.35,
+              "unit": "g/m2",
+              "protocol": "100 x 100 mm specimens; Kern ALJ 220-4 analytic balance",
+              "source": "Salopek Cubric, I., Potocic Matkovic, V. M., Pavlovic, Z., & Pavko Cuden, A. (2022). Materials, 15(9), 3306. doi:10.3390/ma15093306. Table 4; sample Y1 ST",
+              "source_url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC9104909/",
+              "table": "Table 4"
+            },
+            "air_flow": {
+              "value": 206.14,
+              "unit": "L/min",
+              "protocol": "ISO 9237; Air-Tronic B; 50 Pa pressure drop; 20 cm2 test area (Y1 cotton only)",
+              "source": "Salopek Cubric, I., Potocic Matkovic, V. M., Pavlovic, Z., & Pavko Cuden, A. (2022). Materials, 15(9), 3306. doi:10.3390/ma15093306. Table 6; sample Y1 ST",
+              "source_url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC9104909/",
+              "table": "Table 6"
+            },
+            "thermal_resistance": {
+              "value": 0.0424,
+              "unit": "m2 K/W",
+              "protocol": "ISO 11092; sweating guarded hotplate; 20 C, 65% RH, 1 m/s airflow",
+              "source": "Salopek Cubric, I., Potocic Matkovic, V. M., Pavlovic, Z., & Pavko Cuden, A. (2022). Materials, 15(9), 3306. doi:10.3390/ma15093306. Table 5; sample Y1 ST",
+              "source_url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC9104909/",
+              "table": "Table 5"
+            }
+          }
+        },
+        {
+          "fabric_id": "cubric-2022-y1-dp",
+          "sample_id": "Y1 DP",
+          "label": "Cotton double plain - Y1 DP",
+          "structure": "Double plain",
+          "values": {
+            "mass": {
+              "value": 433.4,
+              "unit": "g/m2",
+              "protocol": "100 x 100 mm specimens; Kern ALJ 220-4 analytic balance",
+              "source": "Salopek Cubric, I., Potocic Matkovic, V. M., Pavlovic, Z., & Pavko Cuden, A. (2022). Materials, 15(9), 3306. doi:10.3390/ma15093306. Table 4; sample Y1 DP",
+              "source_url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC9104909/",
+              "table": "Table 4"
+            },
+            "air_flow": {
+              "value": 82.44,
+              "unit": "L/min",
+              "protocol": "ISO 9237; Air-Tronic B; 50 Pa pressure drop; 20 cm2 test area (Y1 cotton only)",
+              "source": "Salopek Cubric, I., Potocic Matkovic, V. M., Pavlovic, Z., & Pavko Cuden, A. (2022). Materials, 15(9), 3306. doi:10.3390/ma15093306. Table 6; sample Y1 DP",
+              "source_url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC9104909/",
+              "table": "Table 6"
+            },
+            "thermal_resistance": {
+              "value": 0.0464,
+              "unit": "m2 K/W",
+              "protocol": "ISO 11092; sweating guarded hotplate; 20 C, 65% RH, 1 m/s airflow",
+              "source": "Salopek Cubric, I., Potocic Matkovic, V. M., Pavlovic, Z., & Pavko Cuden, A. (2022). Materials, 15(9), 3306. doi:10.3390/ma15093306. Table 5; sample Y1 DP",
+              "source_url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC9104909/",
+              "table": "Table 5"
+            }
+          }
+        },
+        {
+          "fabric_id": "cubric-2022-y1-dm",
+          "sample_id": "Y1 DM",
+          "label": "Cotton double milano rib - Y1 DM",
+          "structure": "Double Milano rib",
+          "values": {
+            "mass": {
+              "value": 430.49,
+              "unit": "g/m2",
+              "protocol": "100 x 100 mm specimens; Kern ALJ 220-4 analytic balance",
+              "source": "Salopek Cubric, I., Potocic Matkovic, V. M., Pavlovic, Z., & Pavko Cuden, A. (2022). Materials, 15(9), 3306. doi:10.3390/ma15093306. Table 4; sample Y1 DM",
+              "source_url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC9104909/",
+              "table": "Table 4"
+            },
+            "air_flow": {
+              "value": 77.14,
+              "unit": "L/min",
+              "protocol": "ISO 9237; Air-Tronic B; 50 Pa pressure drop; 20 cm2 test area (Y1 cotton only)",
+              "source": "Salopek Cubric, I., Potocic Matkovic, V. M., Pavlovic, Z., & Pavko Cuden, A. (2022). Materials, 15(9), 3306. doi:10.3390/ma15093306. Table 6; sample Y1 DM",
+              "source_url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC9104909/",
+              "table": "Table 6"
+            },
+            "thermal_resistance": {
+              "value": 0.0419,
+              "unit": "m2 K/W",
+              "protocol": "ISO 11092; sweating guarded hotplate; 20 C, 65% RH, 1 m/s airflow",
+              "source": "Salopek Cubric, I., Potocic Matkovic, V. M., Pavlovic, Z., & Pavko Cuden, A. (2022). Materials, 15(9), 3306. doi:10.3390/ma15093306. Table 5; sample Y1 DM",
+              "source_url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC9104909/",
+              "table": "Table 5"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "alam-ghosh-2013",
+      "title": "Selection of Cotton Fabrics for Optimal Comfort Properties Using Multi-Criteria Decision Making",
+      "citation": "Alam, M. S., & Ghosh, A. (2013). JTATM, 8(3).",
+      "url": "https://jtatm.textiles.ncsu.edu/index.php/JTATM/article/view/3836",
+      "construction": "woven",
+      "composition": "100% cotton",
+      "criteria": [
+        {
+          "id": "mass",
+          "label": "Fabric weight",
+          "unit": "g/m2",
+          "protocol": "GSM cutter; paper Methods section",
+          "table": "Table 4, PDF p. 7",
+          "goal_options": [
+            {
+              "value": "cost",
+              "label": "Lighter fabric"
+            },
+            {
+              "value": "benefit",
+              "label": "Heavier fabric"
+            }
+          ]
+        },
+        {
+          "id": "thickness",
+          "label": "Thickness",
+          "unit": "mm",
+          "protocol": "Paper Table 4; thickness test pressure not reported",
+          "table": "Table 4, PDF p. 7",
+          "goal_options": [
+            {
+              "value": "cost",
+              "label": "Thinner fabric"
+            },
+            {
+              "value": "benefit",
+              "label": "Thicker fabric"
+            }
+          ]
+        },
+        {
+          "id": "thermal_resistance",
+          "label": "Heat insulation",
+          "unit": "m2 K/W",
+          "protocol": "ALAMBETA; non-convective two-plate method, paper Methods section",
+          "table": "Table 6, PDF p. 7",
+          "goal_options": [
+            {
+              "value": "cost",
+              "label": "Less insulation (cooler preference)"
+            },
+            {
+              "value": "benefit",
+              "label": "More insulation (warmer preference)"
+            }
+          ]
+        }
+      ],
+      "scope_note": "13 woven cotton samples from one study. Only weight, thickness and measured thermal resistance are compared; no airflow, stretch, drape or garment-fit measurements are available. Thickness test pressure is not reported. No cross-study comparison.",
+      "samples": [
+        {
+          "fabric_id": "alam-2013-f01",
+          "sample_id": "1",
+          "label": "Cotton 3/1 twill - F01",
+          "structure": "3/1 twill",
+          "values": {
+            "mass": {
+              "value": 151,
+              "unit": "g/m2",
+              "protocol": "GSM cutter; paper Methods section",
+              "source": "Alam, M. S., & Ghosh, A. (2013). JTATM, 8(3). Table 4, PDF p. 7; sample 1",
+              "source_url": "https://jtatm.textiles.ncsu.edu/index.php/JTATM/article/view/3836",
+              "table": "Table 4, PDF p. 7"
+            },
+            "thickness": {
+              "value": 0.44,
+              "unit": "mm",
+              "protocol": "Paper Table 4; thickness test pressure not reported",
+              "source": "Alam, M. S., & Ghosh, A. (2013). JTATM, 8(3). Table 4, PDF p. 7; sample 1",
+              "source_url": "https://jtatm.textiles.ncsu.edu/index.php/JTATM/article/view/3836",
+              "table": "Table 4, PDF p. 7"
+            },
+            "thermal_resistance": {
+              "value": 0.0097,
+              "unit": "m2 K/W",
+              "protocol": "ALAMBETA; non-convective two-plate method, paper Methods section",
+              "source": "Alam, M. S., & Ghosh, A. (2013). JTATM, 8(3). Table 6, PDF p. 7; sample 1",
+              "source_url": "https://jtatm.textiles.ncsu.edu/index.php/JTATM/article/view/3836",
+              "table": "Table 6, PDF p. 7"
+            }
+          }
+        },
+        {
+          "fabric_id": "alam-2013-f02",
+          "sample_id": "2",
+          "label": "Cotton 3/1 twill - F02",
+          "structure": "3/1 twill",
+          "values": {
+            "mass": {
+              "value": 169,
+              "unit": "g/m2",
+              "protocol": "GSM cutter; paper Methods section",
+              "source": "Alam, M. S., & Ghosh, A. (2013). JTATM, 8(3). Table 4, PDF p. 7; sample 2",
+              "source_url": "https://jtatm.textiles.ncsu.edu/index.php/JTATM/article/view/3836",
+              "table": "Table 4, PDF p. 7"
+            },
+            "thickness": {
+              "value": 0.32,
+              "unit": "mm",
+              "protocol": "Paper Table 4; thickness test pressure not reported",
+              "source": "Alam, M. S., & Ghosh, A. (2013). JTATM, 8(3). Table 4, PDF p. 7; sample 2",
+              "source_url": "https://jtatm.textiles.ncsu.edu/index.php/JTATM/article/view/3836",
+              "table": "Table 4, PDF p. 7"
+            },
+            "thermal_resistance": {
+              "value": 0.0061,
+              "unit": "m2 K/W",
+              "protocol": "ALAMBETA; non-convective two-plate method, paper Methods section",
+              "source": "Alam, M. S., & Ghosh, A. (2013). JTATM, 8(3). Table 6, PDF p. 7; sample 2",
+              "source_url": "https://jtatm.textiles.ncsu.edu/index.php/JTATM/article/view/3836",
+              "table": "Table 6, PDF p. 7"
+            }
+          }
+        },
+        {
+          "fabric_id": "alam-2013-f03",
+          "sample_id": "3",
+          "label": "Cotton 3/1 twill - F03",
+          "structure": "3/1 twill",
+          "values": {
+            "mass": {
+              "value": 534,
+              "unit": "g/m2",
+              "protocol": "GSM cutter; paper Methods section",
+              "source": "Alam, M. S., & Ghosh, A. (2013). JTATM, 8(3). Table 4, PDF p. 7; sample 3",
+              "source_url": "https://jtatm.textiles.ncsu.edu/index.php/JTATM/article/view/3836",
+              "table": "Table 4, PDF p. 7"
+            },
+            "thickness": {
+              "value": 0.95,
+              "unit": "mm",
+              "protocol": "Paper Table 4; thickness test pressure not reported",
+              "source": "Alam, M. S., & Ghosh, A. (2013). JTATM, 8(3). Table 4, PDF p. 7; sample 3",
+              "source_url": "https://jtatm.textiles.ncsu.edu/index.php/JTATM/article/view/3836",
+              "table": "Table 4, PDF p. 7"
+            },
+            "thermal_resistance": {
+              "value": 0.0133,
+              "unit": "m2 K/W",
+              "protocol": "ALAMBETA; non-convective two-plate method, paper Methods section",
+              "source": "Alam, M. S., & Ghosh, A. (2013). JTATM, 8(3). Table 6, PDF p. 7; sample 3",
+              "source_url": "https://jtatm.textiles.ncsu.edu/index.php/JTATM/article/view/3836",
+              "table": "Table 6, PDF p. 7"
+            }
+          }
+        },
+        {
+          "fabric_id": "alam-2013-f04",
+          "sample_id": "4",
+          "label": "Cotton plain - F04",
+          "structure": "Plain",
+          "values": {
+            "mass": {
+              "value": 173,
+              "unit": "g/m2",
+              "protocol": "GSM cutter; paper Methods section",
+              "source": "Alam, M. S., & Ghosh, A. (2013). JTATM, 8(3). Table 4, PDF p. 7; sample 4",
+              "source_url": "https://jtatm.textiles.ncsu.edu/index.php/JTATM/article/view/3836",
+              "table": "Table 4, PDF p. 7"
+            },
+            "thickness": {
+              "value": 0.37,
+              "unit": "mm",
+              "protocol": "Paper Table 4; thickness test pressure not reported",
+              "source": "Alam, M. S., & Ghosh, A. (2013). JTATM, 8(3). Table 4, PDF p. 7; sample 4",
+              "source_url": "https://jtatm.textiles.ncsu.edu/index.php/JTATM/article/view/3836",
+              "table": "Table 4, PDF p. 7"
+            },
+            "thermal_resistance": {
+              "value": 0.0075,
+              "unit": "m2 K/W",
+              "protocol": "ALAMBETA; non-convective two-plate method, paper Methods section",
+              "source": "Alam, M. S., & Ghosh, A. (2013). JTATM, 8(3). Table 6, PDF p. 7; sample 4",
+              "source_url": "https://jtatm.textiles.ncsu.edu/index.php/JTATM/article/view/3836",
+              "table": "Table 6, PDF p. 7"
+            }
+          }
+        },
+        {
+          "fabric_id": "alam-2013-f05",
+          "sample_id": "5",
+          "label": "Cotton plain - F05",
+          "structure": "Plain",
+          "values": {
+            "mass": {
+              "value": 151,
+              "unit": "g/m2",
+              "protocol": "GSM cutter; paper Methods section",
+              "source": "Alam, M. S., & Ghosh, A. (2013). JTATM, 8(3). Table 4, PDF p. 7; sample 5",
+              "source_url": "https://jtatm.textiles.ncsu.edu/index.php/JTATM/article/view/3836",
+              "table": "Table 4, PDF p. 7"
+            },
+            "thickness": {
+              "value": 0.28,
+              "unit": "mm",
+              "protocol": "Paper Table 4; thickness test pressure not reported",
+              "source": "Alam, M. S., & Ghosh, A. (2013). JTATM, 8(3). Table 4, PDF p. 7; sample 5",
+              "source_url": "https://jtatm.textiles.ncsu.edu/index.php/JTATM/article/view/3836",
+              "table": "Table 4, PDF p. 7"
+            },
+            "thermal_resistance": {
+              "value": 0.006,
+              "unit": "m2 K/W",
+              "protocol": "ALAMBETA; non-convective two-plate method, paper Methods section",
+              "source": "Alam, M. S., & Ghosh, A. (2013). JTATM, 8(3). Table 6, PDF p. 7; sample 5",
+              "source_url": "https://jtatm.textiles.ncsu.edu/index.php/JTATM/article/view/3836",
+              "table": "Table 6, PDF p. 7"
+            }
+          }
+        },
+        {
+          "fabric_id": "alam-2013-f06",
+          "sample_id": "6",
+          "label": "Cotton plain - F06",
+          "structure": "Plain",
+          "values": {
+            "mass": {
+              "value": 144,
+              "unit": "g/m2",
+              "protocol": "GSM cutter; paper Methods section",
+              "source": "Alam, M. S., & Ghosh, A. (2013). JTATM, 8(3). Table 4, PDF p. 7; sample 6",
+              "source_url": "https://jtatm.textiles.ncsu.edu/index.php/JTATM/article/view/3836",
+              "table": "Table 4, PDF p. 7"
+            },
+            "thickness": {
+              "value": 0.23,
+              "unit": "mm",
+              "protocol": "Paper Table 4; thickness test pressure not reported",
+              "source": "Alam, M. S., & Ghosh, A. (2013). JTATM, 8(3). Table 4, PDF p. 7; sample 6",
+              "source_url": "https://jtatm.textiles.ncsu.edu/index.php/JTATM/article/view/3836",
+              "table": "Table 4, PDF p. 7"
+            },
+            "thermal_resistance": {
+              "value": 0.0049,
+              "unit": "m2 K/W",
+              "protocol": "ALAMBETA; non-convective two-plate method, paper Methods section",
+              "source": "Alam, M. S., & Ghosh, A. (2013). JTATM, 8(3). Table 6, PDF p. 7; sample 6",
+              "source_url": "https://jtatm.textiles.ncsu.edu/index.php/JTATM/article/view/3836",
+              "table": "Table 6, PDF p. 7"
+            }
+          }
+        },
+        {
+          "fabric_id": "alam-2013-f07",
+          "sample_id": "7",
+          "label": "Cotton plain - F07",
+          "structure": "Plain",
+          "values": {
+            "mass": {
+              "value": 161,
+              "unit": "g/m2",
+              "protocol": "GSM cutter; paper Methods section",
+              "source": "Alam, M. S., & Ghosh, A. (2013). JTATM, 8(3). Table 4, PDF p. 7; sample 7",
+              "source_url": "https://jtatm.textiles.ncsu.edu/index.php/JTATM/article/view/3836",
+              "table": "Table 4, PDF p. 7"
+            },
+            "thickness": {
+              "value": 0.31,
+              "unit": "mm",
+              "protocol": "Paper Table 4; thickness test pressure not reported",
+              "source": "Alam, M. S., & Ghosh, A. (2013). JTATM, 8(3). Table 4, PDF p. 7; sample 7",
+              "source_url": "https://jtatm.textiles.ncsu.edu/index.php/JTATM/article/view/3836",
+              "table": "Table 4, PDF p. 7"
+            },
+            "thermal_resistance": {
+              "value": 0.0064,
+              "unit": "m2 K/W",
+              "protocol": "ALAMBETA; non-convective two-plate method, paper Methods section",
+              "source": "Alam, M. S., & Ghosh, A. (2013). JTATM, 8(3). Table 6, PDF p. 7; sample 7",
+              "source_url": "https://jtatm.textiles.ncsu.edu/index.php/JTATM/article/view/3836",
+              "table": "Table 6, PDF p. 7"
+            }
+          }
+        },
+        {
+          "fabric_id": "alam-2013-f08",
+          "sample_id": "8",
+          "label": "Cotton plain - F08",
+          "structure": "Plain",
+          "values": {
+            "mass": {
+              "value": 166,
+              "unit": "g/m2",
+              "protocol": "GSM cutter; paper Methods section",
+              "source": "Alam, M. S., & Ghosh, A. (2013). JTATM, 8(3). Table 4, PDF p. 7; sample 8",
+              "source_url": "https://jtatm.textiles.ncsu.edu/index.php/JTATM/article/view/3836",
+              "table": "Table 4, PDF p. 7"
+            },
+            "thickness": {
+              "value": 0.29,
+              "unit": "mm",
+              "protocol": "Paper Table 4; thickness test pressure not reported",
+              "source": "Alam, M. S., & Ghosh, A. (2013). JTATM, 8(3). Table 4, PDF p. 7; sample 8",
+              "source_url": "https://jtatm.textiles.ncsu.edu/index.php/JTATM/article/view/3836",
+              "table": "Table 4, PDF p. 7"
+            },
+            "thermal_resistance": {
+              "value": 0.0059,
+              "unit": "m2 K/W",
+              "protocol": "ALAMBETA; non-convective two-plate method, paper Methods section",
+              "source": "Alam, M. S., & Ghosh, A. (2013). JTATM, 8(3). Table 6, PDF p. 7; sample 8",
+              "source_url": "https://jtatm.textiles.ncsu.edu/index.php/JTATM/article/view/3836",
+              "table": "Table 6, PDF p. 7"
+            }
+          }
+        },
+        {
+          "fabric_id": "alam-2013-f09",
+          "sample_id": "9",
+          "label": "Cotton 2/1 twill - F09",
+          "structure": "2/1 twill",
+          "values": {
+            "mass": {
+              "value": 292,
+              "unit": "g/m2",
+              "protocol": "GSM cutter; paper Methods section",
+              "source": "Alam, M. S., & Ghosh, A. (2013). JTATM, 8(3). Table 4, PDF p. 7; sample 9",
+              "source_url": "https://jtatm.textiles.ncsu.edu/index.php/JTATM/article/view/3836",
+              "table": "Table 4, PDF p. 7"
+            },
+            "thickness": {
+              "value": 0.42,
+              "unit": "mm",
+              "protocol": "Paper Table 4; thickness test pressure not reported",
+              "source": "Alam, M. S., & Ghosh, A. (2013). JTATM, 8(3). Table 4, PDF p. 7; sample 9",
+              "source_url": "https://jtatm.textiles.ncsu.edu/index.php/JTATM/article/view/3836",
+              "table": "Table 4, PDF p. 7"
+            },
+            "thermal_resistance": {
+              "value": 0.0077,
+              "unit": "m2 K/W",
+              "protocol": "ALAMBETA; non-convective two-plate method, paper Methods section",
+              "source": "Alam, M. S., & Ghosh, A. (2013). JTATM, 8(3). Table 6, PDF p. 7; sample 9",
+              "source_url": "https://jtatm.textiles.ncsu.edu/index.php/JTATM/article/view/3836",
+              "table": "Table 6, PDF p. 7"
+            }
+          }
+        },
+        {
+          "fabric_id": "alam-2013-f10",
+          "sample_id": "10",
+          "label": "Cotton 3/1 twill - F10",
+          "structure": "3/1 twill",
+          "values": {
+            "mass": {
+              "value": 210,
+              "unit": "g/m2",
+              "protocol": "GSM cutter; paper Methods section",
+              "source": "Alam, M. S., & Ghosh, A. (2013). JTATM, 8(3). Table 4, PDF p. 7; sample 10",
+              "source_url": "https://jtatm.textiles.ncsu.edu/index.php/JTATM/article/view/3836",
+              "table": "Table 4, PDF p. 7"
+            },
+            "thickness": {
+              "value": 0.32,
+              "unit": "mm",
+              "protocol": "Paper Table 4; thickness test pressure not reported",
+              "source": "Alam, M. S., & Ghosh, A. (2013). JTATM, 8(3). Table 4, PDF p. 7; sample 10",
+              "source_url": "https://jtatm.textiles.ncsu.edu/index.php/JTATM/article/view/3836",
+              "table": "Table 4, PDF p. 7"
+            },
+            "thermal_resistance": {
+              "value": 0.0047,
+              "unit": "m2 K/W",
+              "protocol": "ALAMBETA; non-convective two-plate method, paper Methods section",
+              "source": "Alam, M. S., & Ghosh, A. (2013). JTATM, 8(3). Table 6, PDF p. 7; sample 10",
+              "source_url": "https://jtatm.textiles.ncsu.edu/index.php/JTATM/article/view/3836",
+              "table": "Table 6, PDF p. 7"
+            }
+          }
+        },
+        {
+          "fabric_id": "alam-2013-f11",
+          "sample_id": "11",
+          "label": "Cotton 2/2 twill - F11",
+          "structure": "2/2 twill",
+          "values": {
+            "mass": {
+              "value": 215,
+              "unit": "g/m2",
+              "protocol": "GSM cutter; paper Methods section",
+              "source": "Alam, M. S., & Ghosh, A. (2013). JTATM, 8(3). Table 4, PDF p. 7; sample 11",
+              "source_url": "https://jtatm.textiles.ncsu.edu/index.php/JTATM/article/view/3836",
+              "table": "Table 4, PDF p. 7"
+            },
+            "thickness": {
+              "value": 0.46,
+              "unit": "mm",
+              "protocol": "Paper Table 4; thickness test pressure not reported",
+              "source": "Alam, M. S., & Ghosh, A. (2013). JTATM, 8(3). Table 4, PDF p. 7; sample 11",
+              "source_url": "https://jtatm.textiles.ncsu.edu/index.php/JTATM/article/view/3836",
+              "table": "Table 4, PDF p. 7"
+            },
+            "thermal_resistance": {
+              "value": 0.0079,
+              "unit": "m2 K/W",
+              "protocol": "ALAMBETA; non-convective two-plate method, paper Methods section",
+              "source": "Alam, M. S., & Ghosh, A. (2013). JTATM, 8(3). Table 6, PDF p. 7; sample 11",
+              "source_url": "https://jtatm.textiles.ncsu.edu/index.php/JTATM/article/view/3836",
+              "table": "Table 6, PDF p. 7"
+            }
+          }
+        },
+        {
+          "fabric_id": "alam-2013-f12",
+          "sample_id": "12",
+          "label": "Cotton 2/2 twill - F12",
+          "structure": "2/2 twill",
+          "values": {
+            "mass": {
+              "value": 211,
+              "unit": "g/m2",
+              "protocol": "GSM cutter; paper Methods section",
+              "source": "Alam, M. S., & Ghosh, A. (2013). JTATM, 8(3). Table 4, PDF p. 7; sample 12",
+              "source_url": "https://jtatm.textiles.ncsu.edu/index.php/JTATM/article/view/3836",
+              "table": "Table 4, PDF p. 7"
+            },
+            "thickness": {
+              "value": 0.49,
+              "unit": "mm",
+              "protocol": "Paper Table 4; thickness test pressure not reported",
+              "source": "Alam, M. S., & Ghosh, A. (2013). JTATM, 8(3). Table 4, PDF p. 7; sample 12",
+              "source_url": "https://jtatm.textiles.ncsu.edu/index.php/JTATM/article/view/3836",
+              "table": "Table 4, PDF p. 7"
+            },
+            "thermal_resistance": {
+              "value": 0.0091,
+              "unit": "m2 K/W",
+              "protocol": "ALAMBETA; non-convective two-plate method, paper Methods section",
+              "source": "Alam, M. S., & Ghosh, A. (2013). JTATM, 8(3). Table 6, PDF p. 7; sample 12",
+              "source_url": "https://jtatm.textiles.ncsu.edu/index.php/JTATM/article/view/3836",
+              "table": "Table 6, PDF p. 7"
+            }
+          }
+        },
+        {
+          "fabric_id": "alam-2013-f13",
+          "sample_id": "13",
+          "label": "Cotton 4 end satin - F13",
+          "structure": "4 end satin",
+          "values": {
+            "mass": {
+              "value": 212,
+              "unit": "g/m2",
+              "protocol": "GSM cutter; paper Methods section",
+              "source": "Alam, M. S., & Ghosh, A. (2013). JTATM, 8(3). Table 4, PDF p. 7; sample 13",
+              "source_url": "https://jtatm.textiles.ncsu.edu/index.php/JTATM/article/view/3836",
+              "table": "Table 4, PDF p. 7"
+            },
+            "thickness": {
+              "value": 0.47,
+              "unit": "mm",
+              "protocol": "Paper Table 4; thickness test pressure not reported",
+              "source": "Alam, M. S., & Ghosh, A. (2013). JTATM, 8(3). Table 4, PDF p. 7; sample 13",
+              "source_url": "https://jtatm.textiles.ncsu.edu/index.php/JTATM/article/view/3836",
+              "table": "Table 4, PDF p. 7"
+            },
+            "thermal_resistance": {
+              "value": 0.0085,
+              "unit": "m2 K/W",
+              "protocol": "ALAMBETA; non-convective two-plate method, paper Methods section",
+              "source": "Alam, M. S., & Ghosh, A. (2013). JTATM, 8(3). Table 6, PDF p. 7; sample 13",
+              "source_url": "https://jtatm.textiles.ncsu.edu/index.php/JTATM/article/view/3836",
+              "table": "Table 6, PDF p. 7"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

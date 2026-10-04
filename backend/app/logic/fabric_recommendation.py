@@ -1,8 +1,8 @@
 """
-Fabric Knowledge Base and Explainable Recommendation Engine for Digital Tailor System.
+Generic Fabric Catalogue for Digital Tailor System.
 
-Provides authoritative fabric metadata, structure/stretch-driven recommendation rules,
-and helper functions for validating fabric selection and deriving canonical fabric names.
+Provides author-compiled descriptive metadata and fabric ID/name lookup helpers.
+These descriptions are not sample measurements. Ranking lives in fabric_selection.py.
 """
 
 FABRIC_KNOWLEDGE_BASE = {
@@ -341,7 +341,7 @@ def validate_fabric_id(fabric_id):
     """
     if not fabric_id or not isinstance(fabric_id, str):
         return False
-    return fabric_id.strip().lower() in FABRIC_KNOWLEDGE_BASE
+    return get_fabric_by_id(fabric_id) is not None
 
 
 def get_fabric_by_id(fabric_id):
@@ -349,142 +349,10 @@ def get_fabric_by_id(fabric_id):
     Retrieves fabric definition by ID.
     Returns dict or None if invalid.
     """
-    if not validate_fabric_id(fabric_id):
+    if not isinstance(fabric_id, str) or not fabric_id.strip():
         return None
-    return FABRIC_KNOWLEDGE_BASE[fabric_id.strip().lower()]
-
-
-def normalize_feature_label(value):
-    """
-    THE canonical form of a garment-feature label for rule matching.
-
-    The UI/API send confirmed taxonomy labels ("sweetheart-neck", "t-shirt", "short-sleeve") while
-    older callers send spaced CAD labels ("sweetheart neck", "short sleeve"). Both normalise to the
-    same lower-case, single-space form so every rule compares like with like.
-    """
-    text = str(value or "").strip().lower().replace("_", " ").replace("-", " ")
-    text = " ".join(text.split())
-    return {"off shoulder": "off the shoulder", "collar": "collared neck"}.get(text, text)
-
-
-def recommend_fabrics(garment_type, neckline=None, sleeves=None, darts=None, seams=None):
-    """
-    Explainable rule-based fabric recommendation engine.
-    
-    Evaluates detected design features (garment type, neckline, sleeves, darts, seams)
-    against physical garment requirements (structure stiffness, stretch flexibility,
-    drape, volume, breathability in Sri Lankan climate).
-    
-    Returns a list of fabrics sorted by score descending, formatted with:
-    - score (int 0-100)
-    - status ('Best Match', 'Highly Suitable', 'Suitable', 'Less Suitable')
-    - rationale/explanation (str)
-    """
-    garment_label = (garment_type or "").strip().lower()      # for display text only
-    garment_type_norm = normalize_feature_label(garment_type)
-    neckline_norm = normalize_feature_label(neckline)
-    sleeves_norm = normalize_feature_label(sleeves)
-    darts_norm = normalize_feature_label(darts)
-    
-    # Flags derived from multi-feature analysis
-    requires_stretch = garment_type_norm in ["t shirt", "tshirt", "stretch top", "fitted top", "activewear"]
-    requires_structure = garment_type_norm in ["crop top", "croptop", "corset", "structured blouse", "waistcoat"] or "dart" in darts_norm
-    requires_drape = garment_type_norm in ["blouse"] or any(s in sleeves_norm for s in ["bell", "flared", "bishop", "balloon", "cape", "butterfly"])
-    is_sleeveless = sleeves_norm in ["sleeveless", "none", "off the shoulder"]
-    is_cowl_or_party = neckline_norm in ["sweetheart neck", "off the shoulder", "halter neck", "boat neck"]
-    
-    scores = {}
-    explanations = {}
-    
-    for fid, fabric in FABRIC_KNOWLEDGE_BASE.items():
-        score = 70  # Baseline suitable score
-        reasons = []
-        
-        # Rule 1: Stretch Requirement Evaluation
-        if requires_stretch:
-            if fabric["stretch"] == "Stretchable":
-                score += 25
-                reasons.append(f"Ideal elasticity for the detected {garment_label or 'stretch'} fit")
-            elif fabric["stretch"] == "Slight Stretch":
-                score += 10
-                reasons.append("Slight stretch provides flexibility")
-            elif fabric["stretch"] == "No Stretch":
-                score -= 35
-                reasons.append("Low stretch woven construction limits movement in tight stretch designs")
-        else:
-            if fabric["stretch"] == "Stretchable" and requires_structure:
-                score -= 20
-                reasons.append("Elastic knit may sag under structured darts and firm seam construction")
-        
-        # Rule 2: Garment Structure & Shape Maintenance
-        if requires_structure:
-            if fid in ["cotton-poplin", "cotton-twill", "linen-blend"]:
-                score += 20
-                reasons.append(f"Provides crisp structural body required for the {garment_label or 'structured'} design")
-            elif fid in ["silk-chiffon", "georgette", "rayon"]:
-                score -= 10
-                reasons.append("Highly fluid drape may not hold sharp structured body lines")
-        
-        # Rule 3: Fluid Drape & Sleeve Flow
-        if requires_drape:
-            if fid in ["rayon", "silk-chiffon", "georgette", "crepe-de-chine"]:
-                score += 25
-                reasons.append(f"Delivers smooth fluid drape essential for flowing {garment_label or 'blouse'} and sleeve styles")
-            elif fid == "linen-blend":
-                score += 15
-                reasons.append("Offers medium relaxed drape suitable for casual blouse silhouettes")
-            elif fid == "satin":
-                score += 18
-                reasons.append("Rich liquid drape suits flowing blouse styles")
-            elif fid == "cotton-poplin":
-                score += 5
-                reasons.append("Maintains tailored shape for structured blouses")
-        
-        # Rule 4: Party / Cowl Neckline Aesthetics
-        if is_cowl_or_party:
-            if fid in ["satin", "silk-chiffon", "crepe-de-chine"]:
-                score += 15
-                reasons.append(f"Enhances the elegant {(neckline or '').strip().lower() or 'decorative'} neckline aesthetic")
-        
-        # Rule 5: Climate & Warm-Weather Sleeveless Prioritisation
-        if is_sleeveless or garment_type_norm in ["crop top", "blouse"]:
-            if fabric["breathability"].startswith("High") or fabric["breathability"].startswith("Very High"):
-                score += 5
-                reasons.append("Highly breathable material suited to the warm Sri Lankan climate")
-        
-        # Cap score between 30 and 98
-        score = max(30, min(98, score))
-        scores[fid] = score
-        
-        # Build explanation string
-        if not reasons:
-            reasons.append(f"Good general-purpose material for {garment_label or 'garment'} tailoring")
-        
-        explanation = f"This material is recommended because it is {fabric['weight'].lower()} weight and {reasons[0].lower()}."
-        explanations[fid] = explanation
-
-    # Rank fabrics by score descending
-    sorted_fids = sorted(scores.keys(), key=lambda k: scores[k], reverse=True)
-    
-    recommendations = []
-    for idx, fid in enumerate(sorted_fids):
-        fab = FABRIC_KNOWLEDGE_BASE[fid].copy()
-        s = scores[fid]
-        
-        if idx == 0 and s >= 80:
-            status = "Best Match"
-        elif s >= 75:
-            status = "Highly Suitable"
-        elif s >= 60:
-            status = "Suitable"
-        else:
-            status = "Less Suitable"
-            
-        fab["recommendation_score"] = s
-        fab["recommendation_status"] = status
-        fab["explanation"] = explanations[fid]
-        fab["badge_type"] = "System Recommended"
-        
-        recommendations.append(fab)
-        
-    return recommendations
+    fid = fabric_id.strip().lower()
+    if fid in FABRIC_KNOWLEDGE_BASE:
+        return FABRIC_KNOWLEDGE_BASE[fid]
+    from app.logic.published_fabrics import get_published_fabric
+    return get_published_fabric(fid)

@@ -49,6 +49,9 @@ class Config:
 
     # Folders
     BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+    FABRIC_RESEARCH_DATA_PATH = os.environ.get(
+        "FABRIC_RESEARCH_DATA_PATH", os.path.join(BASE_DIR, "app", "data", "fabric_research.json")
+    )
     UPLOAD_FOLDER = os.environ.get("UPLOAD_FOLDER", os.path.join(BASE_DIR, "uploads"))
     OUTPUT_FOLDER = os.environ.get("OUTPUT_FOLDER", os.path.join(BASE_DIR, "outputs"))
 

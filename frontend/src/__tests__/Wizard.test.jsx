@@ -15,7 +15,15 @@ vi.mock('../services/api', () => ({
 }));
 vi.mock('../components/FabricRecommendation', () => ({
   default: ({ onSelectFabric }) => (
+    <>
     <button type="button" onClick={() => onSelectFabric('cotton-poplin', 'Cotton Poplin', 'woven')}>pick-poplin</button>
+    <button type="button" onClick={() => onSelectFabric('alam-2013-f06', 'Cotton plain - F06', 'woven', {
+      study_id: 'alam-ghosh-2013', goals: { mass: 'cost', thickness: 'cost', thermal_resistance: 'cost' }, comparisons: [
+        { left: 'mass', right: 'thickness', ratio: 1 }, { left: 'mass', right: 'thermal_resistance', ratio: 1 },
+        { left: 'thickness', right: 'thermal_resistance', ratio: 1 },
+      ],
+    })}>pick-published-sample</button>
+    </>
   ),
 }));
 
@@ -104,6 +112,21 @@ async function reachStep4(opts) {
 
 describe('creation wizard — full workflow', () => {
   beforeEach(stubAll);
+
+  it('sends the selected source sample and preferences for server recomputation, and clears them for a catalogue choice', async () => {
+    await reachStep4();
+    fireEvent.click(screen.getByText('pick-published-sample'));
+    fireEvent.click(screen.getByText('Confirm and generate pattern'));
+    await heading('Pattern preview');
+    expect(patternsAPI.generate.mock.calls[0][0]).toMatchObject({ fabric_id: 'alam-2013-f06',
+      fabric_preferences: { study_id: 'alam-ghosh-2013', goals: { mass: 'cost' }, comparisons: expect.any(Array) } });
+    fireEvent.click(stepButton('Fabric & fit'));
+    await heading('Choose fabric and fit');
+    fireEvent.click(screen.getByText('pick-poplin'));
+    fireEvent.click(screen.getByRole('button', { name: 'Regenerate pattern' }));
+    await heading('Pattern preview');
+    expect(patternsAPI.generate.mock.calls[1][0]).not.toHaveProperty('fabric_preferences');
+  });
 
   it('runs customer → upload → AI review → measurements → fabric → pattern → estimate → PDF → feedback', async () => {
     await reachStep4({ contact: 'amara@example.com', project: 'Wedding blouse' });

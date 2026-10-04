@@ -1,5 +1,32 @@
 # Testing
 
+## Fabric algorithm checks (4 October 2026)
+
+The fabric workflow now uses published sample tables and live user goals/pairwise answers with crisp AHP/TOPSIS. The focused backend run passed **56 tests**, covering arithmetic, source-table anchors, user-input validation, catalogue integrity, saved pattern evidence and generation/ownership regressions. Fabric, wizard and library UI tests passed **44 tests**. Lint and production build passed; the `--published` CLI validated all 18 records. Synthetic fixtures remain test inputs and are not empirical validation. An earlier broader 53-test backend run additionally covered standard-width estimates and the design matrix.
+
+```powershell
+# From backend
+venv\Scripts\python.exe -m unittest tests.test_fabric_mcda tests.test_fabric_recommendation tests.test_fabric_selection_and_widths.TestRecommendation tests.test_published_fabrics tests.test_measurement_validation.TestGenerateUsesValidatedMeasurements tests.test_pattern_list -q
+# From frontend
+npm.cmd run test -- src/__tests__/FabricRecommendation.test.jsx src/__tests__/Wizard.test.jsx src/__tests__/Library.test.jsx
+npm.cmd run lint
+npm.cmd run build
+```
+
+The two real-browser regressions in `e2e/fabric-ranking.spec.js` passed with the actual React, Flask and MongoDB stack: blouse and T-shirt manual design, measurements, explicit preferences, published-sample ranking, source/weights display, generation and reopening saved evidence. They use test-user answers, not collected participant responses. Initial attempts on port 5055 reached a stale server (old measurement range validation / unavailable model); fresh isolated ports 5157/3057 resolved that environment conflict. A further real AI-image wizard regression passed on the fresh stack: image analysis, confirmed design, published-sample preferences/ranking, pattern generation, three-width estimates, reduced-scale PDF download/verification, feedback and library reopening (1 test, 42.5 s; 10-page A4 report verified). The full browser suite was not run. See [method](fabric-ranking-algorithm.md) and [published data](published-fabric-data.md).
+
+```powershell
+# With the current backend/frontend running on isolated test ports
+$env:E2E_API_URL = 'http://127.0.0.1:5157/api'
+$env:E2E_BASE_URL = 'http://127.0.0.1:3057'
+npm.cmd run e2e -- e2e/fabric-ranking.spec.js
+npm.cmd run e2e -- e2e/wizard.spec.js --grep 'register -> upload'
+# From the repository root; no web server needed
+backend\venv\Scripts\python.exe backend\tools\fabric_research_data.py --published
+```
+
+## Historical suite counts (2 October 2026)
+
 Counts below are from the runs of 2 Oct 2026 on the commit that contains this file. Tests that need local files that are not in Git (the trained models, benchmark photos) **skip with an explicit "SKIPPED: …" reason**; a skip is never counted as a pass. In these runs the model files were present and nothing was skipped.
 
 | Suite | Command (from the folder shown) | Count | Notes |
