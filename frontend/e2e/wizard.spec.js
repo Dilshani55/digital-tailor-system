@@ -124,24 +124,23 @@ test('register -> upload -> AI review -> measurements -> fabric -> pattern -> es
 
   // 5. Compare real published woven samples with explicit user answers (not expert observations).
   await expect(page.getByTestId('fabric-preferences')).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByRole('button', { name: 'Compare fabric samples' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Find recommended fabrics' })).toBeDisabled();
   for (const key of ['mass', 'thickness', 'thermal_resistance']) await page.locator(`#fabric-goal-${key}`).selectOption('cost');
-  for (const [left, right] of [['mass', 'thickness'], ['mass', 'thermal_resistance'], ['thickness', 'thermal_resistance']]) {
-    await page.locator(`#fabric-pair-${left}-${right}`).selectOption('1');
-  }
-  await page.getByRole('button', { name: 'Compare fabric samples' }).click();
+  await page.getByRole('button', { name: 'Treat all properties equally' }).click();
+  await page.getByRole('button', { name: 'Find recommended fabrics' }).click();
   await expect(page.getByTestId('ranked-fabrics')).toBeVisible();
   const chosenSample = page.getByTestId('fabric-alam-2013-f06');
-  await expect(chosenSample).toContainText('Rank 1');
+  await expect(chosenSample).toContainText('Recommended');
   await chosenSample.getByRole('button', { name: 'View Details' }).click();
-  await expect(page.getByRole('dialog')).toContainText('144 g/m2');
+  await expect(page.getByRole('dialog')).toContainText('144 g/m²');
+  await page.getByText('Measurement references', { exact: true }).click();
   await expect(page.getByRole('dialog')).toContainText('Your comparison consistency ratio: 0.000');
-  await page.getByRole('button', { name: 'Select this sample' }).click();
+  await page.getByRole('button', { name: 'Select material' }).click();
   await page.reload();
   await expect(page.getByRole('heading', { name: 'Choose fabric and fit' })).toBeVisible();
   await expect(page.getByTestId('ranked-fabrics')).toBeVisible();
   await expect(chosenSample.locator('.fabric-card-main')).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.locator('#fabric-goal-mass')).toHaveValue('cost');
+  await expect(page.getByTestId('fabric-preference-summary')).toContainText('Lighter fabric');
   await page.getByRole('button', { name: /^Step 1:/ }).click();
   await expect(page.getByLabel('Customer name')).toHaveValue('E2E Customer');
   await expect(page.getByLabel(/Contact \/ reference/)).toHaveValue('refresh@example.test');

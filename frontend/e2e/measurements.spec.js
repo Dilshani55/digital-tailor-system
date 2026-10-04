@@ -152,11 +152,11 @@ test('wizard: every step opened directly shows its controls; measurements in the
   // step 5 without a design: fit choices and the fabric catalogue, recommendations pending
   await step(5).click();
   await expect(page.getByTestId('fabric-pending')).toBeVisible();
-  await expect(page.getByTestId('catalogue-fabrics').locator('article')).toHaveCount(10);
-  await expect(page.getByTestId('recommended-fabrics')).toHaveCount(0);
+  await expect(page.getByTestId('other-fabrics').locator('article')).toHaveCount(10);
+  await expect(page.getByTestId('ranked-fabrics')).toHaveCount(0);
   await page.getByTestId('fit-loose').click();
   await page.getByTestId('fabric-cotton-jersey-knit').getByRole('button').first().click();
-  await expect(page.getByTestId('fabric-construction')).toContainText('Knit');
+  await expect(page.getByTestId('fabric-construction')).toHaveCount(0);
   await shot(page, 'step5-no-design');
 
   // steps 6-8 without a pattern: structure and next action, no numbers

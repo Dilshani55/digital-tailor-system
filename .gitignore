@@ -69,3 +69,16 @@ frontend/test-results/
 frontend/playwright-report/
 
 # Training data, prepared image folders and run outputs: see backend/training/.gitignore
+
+# Thesis documentation, research guidelines, and generated thesis artifacts
+thesis/
+thesis_generator/
+extracted_figures/
+Thesis Guideline - Senate Approved.pdf
+Final_Thesis_*.docx
+Original_Thesis_*.docx
+THESIS_AUDIT_REPORT.md
+RESULTS_EVIDENCE_INDEX.md
+CITATION_EVIDENCE_MATRIX.md
+INTERACTIVE_CITATION_VERIFICATION.md
+FINAL_THESIS_VERIFICATION_REPORT.md

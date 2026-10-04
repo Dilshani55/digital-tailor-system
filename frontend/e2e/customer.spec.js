@@ -36,16 +36,16 @@ test('customer -> linked pattern -> saved pattern -> settings', async ({ page, r
 
   await uiSignIn(page, email);
 
-  // 1. customer created in the UI; measurements are optional but must be numbers greater than 0
+  // 1. customer created in the UI with profile details only; a name is required
   await page.goto('/customers');
   await page.getByRole('button', { name: 'Add customer' }).click();
-  await page.getByLabel('Full Name').fill('Walk-in A');
-  await page.getByLabel('Bust around (cm)', { exact: true }).fill('0');
+  await expect(page.getByLabel('Bust around (cm)', { exact: true })).toHaveCount(0);
+  await expect(page.getByLabel('Waist around (cm)', { exact: true })).toHaveCount(0);
+  await expect(page.getByLabel('Hip around (cm)', { exact: true })).toHaveCount(0);
+  await expect(page.getByLabel('Shoulder to shoulder (cm)', { exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'Save Customer' }).click();
-  await expect(page.getByTestId('customer-form-error')).toContainText('greater than 0');   // honest validation
-  for (const [label, v] of [['Bust around (cm)', 90], ['Waist around (cm)', 72], ['Hip around (cm)', 96], ['Shoulder to shoulder (cm)', 38]]) {
-    await page.getByLabel(label, { exact: true }).fill(String(v));
-  }
+  await expect(page.getByTestId('customer-form-error')).toContainText('Please enter the customer name.');
+  await page.getByLabel('Full Name').fill('Walk-in A');
   await page.getByRole('button', { name: 'Save Customer' }).click();
   await expect(page.getByText('Walk-in A').first()).toBeVisible();
   await expect(page.getByText(/@email\.com/)).toHaveCount(0);

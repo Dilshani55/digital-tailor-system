@@ -22,6 +22,16 @@ TOPSIS follows vector normalisation, weighted Euclidean distances and relative i
 
 Constant criteria contribute no distance; an all-zero column normalises to zero. When no criterion distinguishes the samples, the coefficient is undefined: return `null`, status `indistinguishable` and no recommendation. A coefficient of 1 means closest among these assessed alternatives under these preferences; it is not 100% suitability, confidence, accuracy or a fit guarantee. Results depend on the alternative set; adding/removing samples can change TOPSIS ranks.
 
+## User flow
+
+1. Choose the three measured-property goals. Each input explains the property; no goal is preselected.
+2. Explicitly choose **Treat all properties equally** (records three pairwise answers of `1`), or **Set priorities individually** and enter the three comparisons. Equal importance is a user answer, never a default or an expert judgment. The button remains disabled until the goals and valid comparisons are complete. Inconsistent answers return a correction message and reveal the comparisons without discarding the answers.
+3. Choose **Find recommended fabrics**. The server applies the existing consistency check and ranking calculation to every sample in the study. Preferences collapse to a summary after a successful comparison. **Recommended materials** contains the rank-1 sample(s), including ties. **Other materials** contains all remaining samples and catalogue alternatives as visible cards. Selecting another sample keeps it in Other materials; selection alone never makes it a recommendation. Unsupported fabrics are visible with selection disabled and details available.
+4. Choose **Select fabric**, or open **View Details** to see **About this material**: composition, construction/structure, weight and available properties, or catalogue uses, care and sewing notes. Published samples have no supplied swatch photographs or measured care/drape data; those are not invented. Their source tables, goals, AHP weights and consistency are available under **Measurement references** inside the dialog. The main page omits the algorithm badge, technical accordion list and drafting-construction explanation. Published-study material cards appear after comparison; before design confirmation, catalogue cards are still available without a recommendation.
+5. **Edit preferences** only opens the editor. Actual changes clear the old sample selection and ranking, then require a new comparison. Refresh restores the user's saved preferences/choice and recalculates them. The details dialog supports Escape, focus containment and returning keyboard focus to its opener. Samples cannot be selected before comparison; generic catalogue alternatives stay unranked rather than receiving invented scores.
+
+This is a presentation change, not a new textile model or participant usability evaluation. The published measurements, source scope, crisp AHP/TOPSIS arithmetic and server-side pattern evidence remain the same.
+
 ## What counts as input data
 
 | Input | Acceptable record | What does not supply it |

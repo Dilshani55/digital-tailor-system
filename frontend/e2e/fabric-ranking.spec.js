@@ -7,6 +7,9 @@ const measurements = { bust_cm: 88, waist_cm: 70, hip_cm: 94, shoulder_width_cm:
   back_waist_length_cm: 40, shoulder_to_bust_cm: 25, waist_to_hip_cm: 20,
   garment_length_cm: 65, bicep_cm: 28, sleeve_cm: 24, sleeve_end_cm: 27 };
 
+for (const device of ['desktop', 'phone']) {
+test.describe(device, () => {
+  test.use({ viewport: device === 'phone' ? { width: 390, height: 844 } : { width: 1440, height: 1000 } });
 for (const garment of ['blouse', 't-shirt']) {
   test(`${garment}: published samples, user preferences and saved evidence`, async ({ page, request }, testInfo) => {
     const email = `fabric_e2e_${garment}_${Date.now()}@example.test`;
@@ -33,27 +36,82 @@ for (const garment of ['blouse', 't-shirt']) {
     }
     await page.getByRole('button', { name: 'Save and continue' }).click();
     await expect(page.getByTestId('fabric-preferences')).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Compare fabric samples' })).toBeDisabled();
+    await expect(page.getByRole('button', { name: 'Find recommended fabrics' })).toBeDisabled();
+    await expect(page.locator('#fabric-pairwise')).toBeHidden();
+    await page.screenshot({ path: testInfo.outputPath('fabric-preferences.png'), fullPage: true });
     const middle = garment === 'blouse' ? 'thickness' : 'air_flow';
     for (const key of ['mass', middle, 'thermal_resistance']) {
       await page.locator(`#fabric-goal-${key}`).selectOption(key === 'air_flow' ? 'benefit' : 'cost');
     }
-    for (const [left, right] of [['mass', middle], ['mass', 'thermal_resistance'], [middle, 'thermal_resistance']]) {
-      await page.locator(`#fabric-pair-${left}-${right}`).selectOption('1');
+    await expect(page.getByRole('button', { name: 'Find recommended fabrics' })).toBeDisabled();
+    if (device === 'phone') {
+      await page.getByRole('button', { name: 'Set priorities individually' }).click();
+      for (const [left, right] of [['mass', middle], ['mass', 'thermal_resistance'], [middle, 'thermal_resistance']]) {
+        await page.locator(`#fabric-pair-${left}-${right}`).selectOption(left === 'mass' ? '3' : '1');
+      }
+    } else {
+      await page.getByRole('button', { name: 'Treat all properties equally' }).click();
     }
-    await page.getByRole('button', { name: 'Compare fabric samples' }).click();
+    await page.getByRole('button', { name: 'Find recommended fabrics' }).click();
     await expect(page.getByTestId('ranked-fabrics')).toBeVisible();
+    await expect(page.getByTestId('ranked-fabrics').locator('article')).toHaveCount(1);
+    await expect(page.getByRole('heading', { name: 'Recommended materials' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Other materials' })).toBeVisible();
+    await expect(page.locator('.fabric-recommendation details')).toHaveCount(0);
+    await expect(page.getByText(/^Construction:.*drafting block/)).toHaveCount(0);
+    await expect(page.getByTestId('fabric-preference-summary')).toBeVisible();
+    await expect(page.getByTestId('fabric-preference-summary')).toContainText(device === 'phone' ? 'Most important: Fabric weight' : 'All properties equally important');
+    await expect(page.getByTestId('fabric-selection-summary')).toHaveCount(0);
     const first = page.getByTestId('ranked-fabrics').locator('article').first();
-    await expect(first).toContainText('Rank 1');
+    await expect(first).toContainText('Recommended');
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
     await page.screenshot({ path: testInfo.outputPath('ranked-samples.png'), fullPage: true });
     await first.getByRole('button', { name: 'View Details' }).click();
+    await expect(page.getByRole('heading', { name: 'About this material' })).toBeVisible();
+    await expect(page.getByRole('dialog')).toContainText('100% cotton');
+    await page.screenshot({ path: testInfo.outputPath('material-details.png'), fullPage: true });
+    await page.getByText('Measurement references', { exact: true }).click();
     await expect(page.getByRole('dialog')).toContainText('Your comparison consistency ratio: 0.000');
-    await expect(page.getByRole('dialog').getByRole('cell', { name: '33.3%' })).toHaveCount(3);
+    if (device === 'phone') {
+      await expect(page.getByRole('dialog').getByRole('cell', { name: '60.0%' })).toHaveCount(1);
+      await expect(page.getByRole('dialog').getByRole('cell', { name: '20.0%' })).toHaveCount(2);
+    } else {
+      await expect(page.getByRole('dialog').getByRole('cell', { name: '33.3%' })).toHaveCount(3);
+    }
     const sourceLink = page.getByRole('dialog').getByRole('link');
     await expect(sourceLink).toHaveAttribute('href', garment === 'blouse'
       ? 'https://jtatm.textiles.ncsu.edu/index.php/JTATM/article/view/3836'
       : 'https://pmc.ncbi.nlm.nih.gov/articles/PMC9104909/');
-    await page.getByRole('button', { name: 'Select this sample' }).click();
+    await page.getByRole('button', { name: 'Close modal' }).focus();
+    await expect(page.getByRole('button', { name: 'Close modal' })).toBeFocused();
+    await page.keyboard.press('Shift+Tab');
+    await expect(page.getByRole('button', { name: 'Select material' })).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(page.getByRole('button', { name: 'Close modal' })).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(first.getByRole('button', { name: 'View Details' })).toBeFocused();
+    await first.getByRole('button', { name: 'Select fabric', exact: true }).click();
+    if (device === 'desktop') {
+      const last = page.getByTestId('other-fabrics').locator('article').filter({ has: page.getByRole('button', { name: 'Select fabric', exact: true }) }).first();
+      const chosenId = await last.getAttribute('data-testid');
+      await last.getByRole('button', { name: 'Select fabric', exact: true }).click();
+      await expect(page.getByTestId('other-fabrics').getByTestId(chosenId)).toHaveClass(/selected/);
+    }
+    await expect(page.getByTestId('fabric-selection-summary')).toContainText('Selected fabric:');
+    await page.getByRole('button', { name: 'Edit preferences' }).click();
+    await expect(page.locator('#fabric-goal-mass')).toHaveValue('cost');
+    await expect(page.getByTestId('fabric-selection-summary')).toBeVisible();
+    // Opening the editor preserves the choice; an actual goal edit invalidates it.
+    await page.locator('#fabric-goal-mass').selectOption('benefit');
+    await expect(page.getByTestId('ranked-fabrics')).toHaveCount(0);
+    await expect(page.getByTestId('fabric-selection-summary')).toHaveCount(0);
+    await page.locator('#fabric-goal-mass').selectOption('cost');
+    await page.getByRole('button', { name: 'Find recommended fabrics' }).click();
+    await expect(first).toContainText('Recommended');
+    await first.getByRole('button', { name: 'Select fabric', exact: true }).click();
+    await page.reload();
+    await expect(page.getByTestId('fabric-selection-summary')).toBeVisible();
+    await expect(page.getByTestId('fabric-preference-summary')).toBeVisible();
     const generatedResponse = page.waitForResponse((r) => r.url().endsWith('/api/patterns/generate') && r.request().method() === 'POST');
     await page.getByRole('button', { name: 'Confirm and generate pattern' }).click();
     const generated = await (await generatedResponse).json();
@@ -67,6 +125,8 @@ for (const garment of ['blouse', 't-shirt']) {
     await page.goto(`/patterns/${generated.pattern_id}`);
     await expect(page.getByTestId('saved-fabric-evidence')).toContainText(snapshot.sample.sample_id);
     await page.getByText('Your saved fabric priorities', { exact: true }).click();
-    await expect(page.getByTestId('saved-fabric-evidence')).toContainText('33.3%');
+    await expect(page.getByTestId('saved-fabric-evidence')).toContainText(device === 'phone' ? '60.0%' : '33.3%');
   });
+}
+});
 }

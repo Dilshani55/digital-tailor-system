@@ -1,5 +1,22 @@
 # Testing
 
+## Fabric selection usability (4 October 2026)
+
+The fabric step asks for property goals and explicitly chosen equal/individual priorities, then shows **Recommended materials** and **Other materials** as cards. All tied highest-ranked samples are recommended. Selecting another material keeps it in Other materials. The previous technical accordion list, algorithm badge and drafting-construction explanation are absent from the page. **View Details** shows material descriptions/properties, with measured evidence under **Measurement references** inside the dialog. Unsupported cards allow details but disable selection. Published samples cannot be selected until comparison succeeds. Actual preference edits invalidate their ranking and selection; opening the editor preserves them. Dialogs contain keyboard focus, close with Escape and return focus.
+
+The focused frontend run passed **70 tests**: FabricRecommendation (21), Wizard (39), Library (10). Lint and the production build passed. Five browser checks passed using the actual React/Flask/MongoDB stack at isolated ports 3059/5159: blouse and T-shirt at 1440×1000 and 390×844, explicit equal versus individual priorities, recommendation/other grouping, plain material details, unchanged published evidence/weights, direct/alternative selection, keyboard operation, preference invalidation, refresh, generation and saved-library evidence; and the AI-image wizard through PDF download, digital verification of 10 A4 pages and saved-library reopening. Screenshots were inspected and both screen sizes passed a document-width check. Full suites were not rerun. These functional/layout checks are not research-participant usability results or independent textile/fit validation.
+
+```powershell
+# From frontend; browser checks require the real frontend/backend test servers.
+npm.cmd run test -- src/__tests__/FabricRecommendation.test.jsx src/__tests__/Wizard.test.jsx src/__tests__/Library.test.jsx
+npm.cmd run lint
+npm.cmd run build
+$env:E2E_BASE_URL = 'http://127.0.0.1:3059'
+$env:E2E_API_URL = 'http://127.0.0.1:5159/api'
+npm.cmd run e2e -- e2e/fabric-ranking.spec.js
+npm.cmd run e2e -- e2e/wizard.spec.js --grep 'register ->'
+```
+
 ## Separate drafts and saved customer measurements (4 October 2026)
 
 Leaving Create pattern clears its automatic resume marker. Returning (including browser Back) starts a fresh form and lists account-specific Saved drafts with customer/project, step and saved time. Continue draft explicitly restores that workflow; refreshing an active workflow restores it automatically. Start new pattern preserves previous work under a separate draft ID, Save draft & exit waits for storage before navigation, Delete draft removes only that draft, and Finish removes only the finished draft. Blank forms are not saved. The previous account-keyed IndexedDB record is offered as a legacy draft without requiring a database version change.

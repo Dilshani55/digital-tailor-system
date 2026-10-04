@@ -1126,7 +1126,7 @@ function CreationWizard({ initialDraft: draft, onDraftChange, onStartNew, onSave
         {/* ── 5 FABRIC & FIT ── */}
         {!loading && step === S.FABRIC && (
           <div className="wizard-body" id="wp5">
-            <Title title="Choose fabric and fit" help="Pick how loose the garment should be and a fabric. The chosen fabric decides woven or knit drafting." />
+            <Title title="Choose fabric and fit" help="Choose the fit, tell us your fabric goals, and select a material." />
             {!designReady && (
               <EmptyState title="Fabric recommendations pending" action="Go to AI review" onAction={() => go(S.REVIEW)}>
                 Which fabrics suit the garment depends on the confirmed garment, neckline and sleeves. You can already choose the fit and a fabric below.
@@ -1173,9 +1173,6 @@ function CreationWizard({ initialDraft: draft, onDraftChange, onStartNew, onSave
                 }}
                 validationError={fabricValidationError}
               />
-              <p className="form-hint" data-testid="fabric-construction" style={{ marginTop: 10 }}>
-                Construction: {meas.fabric_type === 'knit' ? 'Knit' : 'Woven'} — set by the chosen fabric (it decides the drafting block).
-              </p>
             </section>
             <div className="summary-strip">
               <strong>Summary:</strong>
